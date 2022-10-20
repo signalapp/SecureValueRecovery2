@@ -1,0 +1,349 @@
+\documentclass{article}
+
+% Language setting Replace `english' with e.g. `spanish' to change the document
+% language
+\usepackage[english]{babel}
+
+% Set page size and margins Replace `letterpaper' with `a4paper' for UK/EU
+% standard size
+\usepackage[letterpaper,top=2cm,bottom=2cm,left=3cm,right=3cm,marginparwidth=1.75cm]{geometry}
+
+% Useful packages
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage[colorlinks=true, allcolors=blue]{hyperref}
+\usepackage[ n, % or lambda
+advantage, operators, sets, adversary, landau , probability, notions, logic, ff,
+mm, primitives, events, complexity, oracles, asymptotics, keys]{cryptocode}
+%% Primitives
+\newcommand{\OPRF}{\pcalgostyle{OPRF}} 
+\newcommand{\POPRF}{\pcalgostyle{POPRF}} 
+\newcommand{\VOPRF}{\pcalgostyle{VOPRF}}
+
+\newcommand{\Blind}{\pcalgostyle{Blind}}
+\newcommand{\BlindEvaluate}{\pcalgostyle{BlindEvaluate}}
+\newcommand{\BlindEvaluateForClient}{\pcalgostyle{BlindEvaluateForClient}}
+\newcommand{\Finalize}{\pcalgostyle{Finalize}}
+
+\newcommand{\PPSSStore}{\pcalgostyle{PPSSStore}}
+\newcommand{\PPSSRecover}{\pcalgostyle{PPSSRecover}}
+
+\newcommand{\ServerCreateOPRFVersion}{\pcalgostyle{ServerCreateOPRFVersion}}
+
+
+%% Hashes
+\newcommand{\HashToPoint}{\pcalgostyle{HashToPoint}}
+\newcommand{\HashToScalar}{\pcalgostyle{HashToScalar}}
+\newcommand{\HashToField}{\pcalgostyle{HashToField}}
+\newcommand{\EncodeToField}{\pcalgostyle{EncodeToField}}
+
+%% Variables
+\newcommand{\oprfinput}{\pcalgostyle{oprf\_input}}
+\newcommand{\oprfkeys}{\pcalgostyle{oprf\_keys}}
+\newcommand{\usage}{\pcalgostyle{usage}}
+\newcommand{\usagecount}{\pcalgostyle{usage\_count}}
+\newcommand{\maxuses}{\pcalgostyle{max\_uses}}
+\newcommand{\blind}{\pcalgostyle{blind}}
+\newcommand{\blindedElement}{\pcalgostyle{blindedElement}}
+\newcommand{\evaluatedElement}{\pcalgostyle{evaluatedElement}}
+
+\newcommand{\clientstate}{\pcalgostyle{client\_state}}
+\newcommand{\serverstate}{\pcalgostyle{server\_state}}
+\newcommand{\clientid}{\pcalgostyle{client\_id}}
+\newcommand{\client}{\pcalgostyle{client}}
+\newcommand{\server}{\pcalgostyle{server}}
+\newcommand{\servers}{\pcalgostyle{servers}}
+\newcommand{\name}{\pcalgostyle{name}}
+\newcommand{\context}{\pcalgostyle{context}}
+\newcommand{\return}{\ensuremath{\mathbf{return}\ }}
+
+
+\title{DRAFT Guess Limited Password Protected Secret Sharing Proposal}
+\author{Rolfe Schmidt}
+
+
+\begin{document}
+\maketitle
+
+\section{Overview}
+
+This is a protocol for {\em guess-limited password-based secure value recovery}.
+It allows clients to interact with servers to securely reconstruct a secret
+using a password while providing protection against both offline and online
+dictionary attacks - even in the event of server compromise. It protects against
+online dictionary attacks through guess limiting: after a configured number of
+failed reconstruction attempts, the secure value becomes unrecoverable.
+
+\subsection{Outline}
+
+This protocol is a variation of the PPSS protocol of \cite{jkkx} implemented
+with a {\em usage limited} version of the standards track 2HashDH $\OPRF$ of
+\cite{2hashdh} as specified in \cite{ietf-oprf} that can be used safely with
+smaller curves like Ristretto255. 
+
+After covering notation in section \ref{sec:notation} we present an augmentation
+of the standards track $\OPRF$ of \cite{ietf-oprf} in section \ref{sec:oprf}
+that has servers generate per-client $\OPRF$ keys, enforces strict usage limits
+on these keys, and allows clients to rotate their keys to avoid running into
+usage limits.
+
+In section \ref{sec:ppss} we use this usage limited $\OPRF$ to construct a
+secure PPSS. This protocol is close to that of \cite{jkkx}, but does not mandate
+storage of masked shares on servers and eliminates the share commitment storage
+on servers. We discuss ways to obtain robustness in section \ref{sec:robustness}. 
+
+Importantly, we observe that if the underlying $\OPRF$ limits clients to
+$\maxuses$ per key, then against a $(t,N)$ threshold scheme an attacker will be
+limited to $\lfloor \frac{N}{t+1}\maxuses\rfloor$ password guess attempts before
+the secret becomes unrecoverable. Thus our PPSS is {\em guess limited}. We also
+show how keys can be deleted from the server to offer a form of forward security
+in case of server compromise.
+
+
+\section{Notation}
+\label{sec:notation}
+{\bf Algebraic objects.} This protocol will use a prime order cyclic group,
+$\GG$ among those specified in \cite{ietf-oprf}. Since key use will be limited,
+we can take $\GG$ to be Ristretto255. We
+denote the order of $\GG$ by $q$ and thus denote the set of scalars for $\GG$ by
+$\ZZ_{q}$. Group elements will be denoted by capital Latin letters, e.g. $A, B,
+C, \ldots$. Scalars will be denoted by lower case Latin letters, e.g. $a, b,
+c,\ldots$. $G$ denotes a public generator of $\GG$. Scalar multiplication will
+usually be denoted without a symbol - $aG$ - but in places the infix operator
+$*$ will be used for clarity, as in $\sk_{oprf}*G$. 
+
+Secret sharing will be performed using polynomials over a finite field, $\FF$,
+that is not related to the group $\GG$.
+
+{\bf Domain separation.} Throughout the protocol we will use $\context$ to
+denote a domain separation prefix unique to the application performing the
+protocol.
+
+{\bf Server and client state.} Each server will have state information captured
+in the variable \serverstate. The public part of this state is available in the
+variable \server. 
+
+Similarly, each client will have persistent information captured in the variable
+\clientstate, and the public part of this state will be accessible through the
+variable \client.
+
+{\bf Function parameters.} We will use a number of functions associated with
+$\GG$ and $\FF$ which we consider as protocol parameters. In an instantiation of
+the protocol the parameters will be identified in the \context string. The
+function parameters are:
+\begin{itemize}
+    \item All parameters for the $\OPRF$ specified in \cite{ietf-oprf}
+    \item $\HashToField: \bin^{*} \rightarrow \FF$
+\end{itemize}
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%
+%%   OPRF
+%%
+
+\section{ The $\OPRF$}
+\label{sec:oprf}
+The PPSS protocol relies on the verifiable 2HashDH $\OPRF$ of \cite{2hashdh} as
+specified in the IRTF draft standard \cite{ietf-oprf}. We describe the protocol
+using the $\OPRF$ mode of the standard but in section \ref{sec:robustness} note 
+situations where follow up calls to the $\VOPRF$ mode can be used to ensure 
+robustness.
+
+The IRTF standard specifies the following functions:
+\begin{enumerate}
+    \item $(\blind, \blindedElement) \leftarrow \Blind(\oprfinput)$: Used by a
+    client to prepare the $\OPRF$ input to be sent to the server.
+    \item $\evaluatedElement \leftarrow \BlindEvaluate(\sk,
+    \blindedElement)$: Executed by the server to evaluate the $\OPRF$
+    parameterized by the server-secret key $\sk$ on $\blindedElement$ to compute
+    a blinded output.
+    \item $v \leftarrow \Finalize(\oprfinput, \blind, \evaluatedElement,
+    \blindedElement)$: Takes the values returned by $\BlindEvaluate$
+    along with original input, and values returned by $\Blind$ to compute the 
+    final $\prf$ value, $v$.
+\end{enumerate}
+
+\subsection{Usage Limited Evaluation}
+The server for our protocol adds to these functions in two ways: it uses a
+random per-client $\OPRF$ key stored in the dictionary $\serverstate.\oprfkeys$
+and it enforces a usage limit. Each $\OPRF$ key can only be used a fixed number
+of times. Setting and rotation of these keys is discussed in
+\ref{sec:versioning}. This is done with the function $\BlindEvaluateForClient$:
+
+
+
+\procedureblock[linenumbering]{$\BlindEvaluateForClient(\serverstate, \clientid,
+\blindedElement)$}{ \usagecount \leftarrow \serverstate.\usagecount[\clientid]
+\\
+\serverstate.\usagecount[\clientid] \leftarrow \usagecount + 1 \\
+\pcif \usagecount \geq \serverstate.\maxuses: \\
+\t \pcreturn \perp \\
+(\sk, \pk) \leftarrow \serverstate.\oprfkeys[\clientid]  \pccomment{The client
+MAY obtain the \ensuremath{\pk} corresponding to \ensuremath{\sk} at
+registration} \\
+\pcreturn  \BlindEvaluate(\sk, \blindedElement) }
+
+
+
+\subsection{$\OPRF$ Key Creation and Versioning}
+\label{sec:versioning}
+As noted in the previous section, $\OPRF$ keys are created per-client and each
+key is strictly limited to a fixed number of uses. The usage limitation has two
+useful purposes. First, since the security of the $\OPRF$ is based on the
+one-more Diffie Hellman assumption, the security of a key used for $Q$ queries
+is reduced by $\log(Q)/2$ bits (see, e.g.,
+\href{https://www.ietf.org/id/draft-irtf-cfrg-voprf-21.html#section-7.2.3}{7.2.3
+of the IRTF draft}). So, for example, by limiting key usage to no more than 16
+queries we only lose 2 bits of security and can safely use a group like
+Ristretto255. Second, this limit enforcement will be the basis of the guess
+limiting in the PPSS described in section \ref{sec:ppss}.
+
+Clients in our PPSS will need to reconstruct their secret an unlimited number of
+times, though. To do this, upon successful reconstruction the client will create
+a new version of their $\OPRF$ key. This new version will be constructed
+with the function $\ServerCreateOPRFVersion$, which creates a new key pair,
+stores it indexed by the client's identifier, clears the usage count, and
+evaluates the $\OPRF$ with the new key on a blinded element:
+
+
+\procedureblock[linenumbering]{$\ServerCreateOPRFVersion(\serverstate,
+\clientid, \blindedElement)$}{ \sk \sample \ZZ_q \\
+\pk \leftarrow kG \\
+\serverstate.\oprfkeys[\clientid] \leftarrow (\sk, \pk)\\
+\serverstate.\usagecount[\clientid] \leftarrow 0 \\
+\evaluatedElement \leftarrow \BlindEvaluate(\sk, \blindedElement) \\
+\pcreturn (\evaluatedElement, \pk) \pccomment{Return the public key in case \nizk\ proof is needed later} 
+}
+
+\subsection{A Note About $\POPRF$ Mode}
+It is tempting to use the $\POPRF$ mode introduced in \cite{poprf} rather than
+generating client specific keys. If usage limitation were not a requirement this
+would have a clear advantage - the server state would be no more than one secret
+$\OPRF$ scalar. However, once we introduce the need for key usage limits and
+key rotation this advantage disappears. Usage limitation requires storage of
+per-client state. Key rotation requires the use of a nonce or a counter for each
+client, effectively requiring the same storage as the proposed per-client key
+solution.
+
+\section{A Guess Limited PPSS from the \OPRF}
+\label{sec:ppss}
+With these primitives in place we define the PPSS scheme with the functions
+$\PPSSStore$ and $\PPSSRecover$. The idea is simple. To create a $(t,N)$
+threshold PPSS to store a secret $s$ with $N$ servers we 
+\begin{enumerate}
+    \item Create a degree $t$ polynomial $f\in\FF[x]$ with $s$ as the leading
+    coefficient, all other coefficients random.
+    \item Create a share for each server: $s_i = f(x_i)$ where $x_i =
+    \HashToField(\server_{i}.id)$
+    \item Use the $\OPRF$ values to mask the shares: $m_i = s_i +
+    \server_i.\OPRF(\clientid, pwd)$.
+    \item Store the values $m_i$ somewhere reliable, but confidentiality is not
+    important.
+    \item To reconstruct, simply call $(t+1)$ or more servers to get their
+    $\OPRF$ values and use these to unmask the shares: $s_i = m_i -
+    \server_i.\OPRF(\clientid, pwd)$.
+    \item These shares can now be used to reconstruct the secret $s$.
+    \item Upon successful reconstruction the client can create new key versions
+    on all servers, refresh their guess counts, and create new masked shares.
+    All of this can be done without changing the password or master secret.
+\end{enumerate}
+
+In the following $\servers$ is a set of $N$ $\server$ objects, $\mathbf{e}$
+is a dictionary that will store masked shares of a secret $s$, and $\mathbf{pks}$ 
+is a dictionary that stores server $\OPRF$ public keys.
+\procedureblock[linenumbering]{$\PPSSStore(\clientstate, \servers, t, pwd, s)$}{
+r \concat K \leftarrow \hash(\context \concat ``keygen", s) \\
+\forall i \in [0,t-1] : f_i \sample \FF \\
+f_{t} \leftarrow \EncodeToField(s) \\
+\pcfor \server \in \servers: \\
+\t \oprfinput \leftarrow \context \concat \server.id \concat pwd \\
+\t x \leftarrow \HashToField(\server.id) \\
+\t y \leftarrow \sum_{i=0}^{t} f_i x^i \\
+\t (\blind, \blindedElement) \leftarrow \Blind(\oprfinput) \\
+\t (\evaluatedElement, \pk) \leftarrow
+\server.\ServerCreateOPRFVersion(\clientstate.id, \blindedElement) \\
+\t \rho \leftarrow \Finalize(\oprfinput, \blind, \evaluatedElement,\blindedElement) \\
+\pccomment{ \ensuremath{\mathbf{e}} and \ensuremath{\mathbf{pks}} should be
+stored somewhere reliable, but confidentiality is not needed} \\
+\t \mathbf{s}[x] \leftarrow y \\
+\t \clientstate.\mathbf{e}[x] \leftarrow y + \rho \\
+\t \clientstate.\mathbf{pks}[\server.id] \leftarrow \pk \\
+\clientstate.C \leftarrow \hash(\context\concat ``commitment", pwd, \clientstate.\mathbf{e}, \mathbf{s}, r) \\
+\pcreturn K
+}
+
+\procedureblock[linenumbering]{$\PPSSRecover(\clientstate, \servers, t, pwd)$}{
+\text{Choose } \mathcal{R} \subset \servers, |\mathcal{R}| > t \\
+pairs \leftarrow \{\} \\
+\pcfor \server \in \mathcal{R}: \\
+\t \oprfinput \leftarrow \context \concat \server.id \concat pwd \\
+\t x \leftarrow \HashToField(\server.id) \\
+\t (\blind, \blindedElement) \leftarrow \Blind(\oprfinput) \\
+\t (\evaluatedElement, \pk) \leftarrow
+\server.\BlindEvaluateForClient(\clientstate.id, \blindedElement) \\
+\t r \leftarrow \Finalize(\oprfinput, \blind, \evaluatedElement,\blindedElement) \\
+\t y \leftarrow \clientstate.\mathbf{m}[x] - r \\
+\t \mathbf{s}[x] \leftarrow y \\
+\t pairs \leftarrow pairs \cup \{(x,y)\} \\
+(f_{t}, \ldots, f_0) \leftarrow \pcalgostyle{Interpolate}_{\FF}(pairs) \\
+s \leftarrow f_{t} \\
+r \concat K \leftarrow \hash(\context \concat ``keygen", s) \\
+C \leftarrow  \hash(\context\concat ``commitment", pwd, \clientstate.\mathbf{e}, \mathbf{s}, r) \\
+\pcif C \neq \clientstate.C: \\
+\t \pcreturn \perp \\
+\pcelse \\
+\t \PPSSStore(\clientstate, servers,t,pwd, f_{t}) \pccomment{store the secret again
+to reset keys, counters, and shares} \\
+\t \pcreturn K }
+
+\subsection{Usage Limits on the $\OPRF$ lead to Guess Limits on the PPSS}
+Now we can see how the usage limit we enforce on the $\OPRF$ naturally creates a
+guess limit on the PPSS that provides protection against online dictionary
+attacks. Consider the scenario where a client has constructed a $(t,N)$-sharing
+scheme to protect a secret $s$ with password $pwd$ using $\PPSSStore$. Now an
+attacker trying to guess the password and recover the secret faces the following
+fact: each password guess requires using $t+1$ $\OPRF$ calls, and only
+$\maxuses$ are possible on each of the $N$ servers. Thus the attacker has no
+more than $\lfloor\frac{N}{t+1}\maxuses\rfloor$ guesses before the secret
+becomes unrecoverable.
+
+\subsection{Deleting Keys}
+\label{sec:deleting}
+A client can protect themselves from future server compromise by deleting keys
+from the server. This can be done by simply calling $\ServerCreateOPRFVersion$
+with arbitrary $\oprfinput$ and discarding the result. For the user to have
+confidence that the keys were in fact deleted - now and during each $\PPSSStore$
+call - server functions can be executed in an attested, confidential TEE.
+
+Additionally, in the case that a TEE based server is being retired it can
+produce an attested certificate of secret deletion.  If a client has confidence
+that their secrets have, in fact, been deleted from a server then they know that
+their $(t,N)$ threshold scheme has become a $(t,N-1)$ scheme and they can safely
+add a new server.
+
+\section{Robustness}
+\label{sec:robustness}
+Unlike \cite{jkkx} we do not store the commitment, $C$, and the masked shares, 
+$\mathbf{e}$, on each server. Instead we will have clients store $\clientstate$,
+which includes both both these values, in a reliable place as suggested in \cite{2hashdh}.
+We then rely on subset testing or follow-up $\VOPRF$ calls to
+detect incorrect servers.
+
+The sole reason the server $\pk$ values are stored by the client in the protocol
+above is to allow follow-up $\nizk$ proof verification if the $\VOPRF$ mode
+is used for robustness. If only subset testing will be used (e.g. for small 
+values of $N$) then these public keys do not need to be stored.
+
+\section{Acknowledgements}  
+We would like to thank Mark Johnson for helping to develop an earlier version of
+this protocol and Trevor Perrin for important feedback and pointers to the
+literature. We also thank Emma Dautermann, Vivian Fang, and Raluca Ada Popa for
+discussion that led to significant design decisions and simplifications of this
+protocol.
+
+\bibliographystyle{alpha}
+\bibliography{svr3}
+
+\end{document}

@@ -1,0 +1,373 @@
+// Copyright 2023 Signal Messenger, LLC
+// SPDX-License-Identifier: AGPL-3.0-only
+
+//TESTDEP gtest
+//TESTDEP context
+//TESTDEP env
+//TESTDEP env/test
+//TESTDEP env
+//TESTDEP util
+//TESTDEP metrics
+//TESTDEP proto
+//TESTDEP protobuf-lite
+//TESTDEP libsodium
+
+#include <gtest/gtest.h>
+#include "db/db3.h"
+#include "env/env.h"
+#include "util/log.h"
+#include "util/endian.h"
+#include "util/bytes.h"
+#include "util/hex.h"
+#include "proto/client3.pb.h"
+#include "proto/clientlog.pb.h"
+#include <memory>
+#include <sodium/crypto_scalarmult_ristretto255.h>
+#include <sodium/crypto_auth_hmacsha512.h>
+
+namespace svr2::db {
+
+class DB3Test : public ::testing::Test {
+ protected:
+  static void SetUpTestCase() {
+    env::Init();
+  }
+
+  context::Context ctx;
+  DB3 db;
+  static std::string backup_id;
+};
+
+std::string DB3Test::backup_id("BACKUP7890123456");
+
+TEST_F(DB3Test, SingleBackupLifecycle) {
+  std::string blinded_element;
+  blinded_element.resize(DB3::ELEMENT_SIZE);
+  crypto_core_ristretto255_random(
+      reinterpret_cast<uint8_t*>(blinded_element.data()));
+  std::string evaluated_element;
+  int tries = 3;
+  {
+    client::Log3 log;
+    log.set_backup_id(backup_id);
+    auto b = log.mutable_req()->mutable_create();
+    b->set_max_tries(3);
+    b->set_blinded_element(blinded_element);
+    auto [priv, pub] = DB3::Protocol::NewKeys();
+    log.set_create_privkey(util::ByteArrayToString(priv));
+    log.set_create_pubkey(util::ByteArrayToString(pub));
+
+    auto resp = dynamic_cast<client::Response3*>(db.Run(&ctx, log));
+    auto r = resp->create();
+    ASSERT_EQ(client::CreateResponse::OK, r.status());
+    evaluated_element = r.evaluated_element();
+  }
+  for (int i = 0; i < tries; i++) {
+    client::Log3 log;
+    log.set_backup_id(backup_id);
+    auto b = log.mutable_req()->mutable_evaluate();
+    b->set_blinded_element(blinded_element);
+
+    auto resp = dynamic_cast<client::Response3*>(db.Run(&ctx, log));
+    auto r = resp->evaluate();
+    ASSERT_EQ(client::EvaluateResponse::OK, r.status());
+    EXPECT_EQ(r.tries_remaining(), tries - i - 1);
+    EXPECT_EQ(r.evaluated_element(), evaluated_element);
+  }
+  {
+    client::Log3 log;
+    log.set_backup_id(backup_id);
+    auto b = log.mutable_req()->mutable_evaluate();
+    b->set_blinded_element(blinded_element);
+
+    auto resp = dynamic_cast<client::Response3*>(db.Run(&ctx, log));
+    auto r = resp->evaluate();
+    ASSERT_EQ(client::EvaluateResponse::MISSING, r.status());
+  }
+}
+
+TEST_F(DB3Test, Remove) {
+  std::string blinded_element;
+  blinded_element.resize(DB3::ELEMENT_SIZE);
+  crypto_core_ristretto255_random(
+      reinterpret_cast<uint8_t*>(blinded_element.data()));
+  std::string evaluated_element;
+  int tries = 3;
+  {
+    client::Log3 log;
+    log.set_backup_id(backup_id);
+    auto b = log.mutable_req()->mutable_create();
+    b->set_max_tries(3);
+    b->set_blinded_element(blinded_element);
+    auto [priv, pub] = DB3::Protocol::NewKeys();
+    log.set_create_privkey(util::ByteArrayToString(priv));
+    log.set_create_pubkey(util::ByteArrayToString(pub));
+
+    auto resp = dynamic_cast<client::Response3*>(db.Run(&ctx, log));
+    auto r = resp->create();
+    ASSERT_EQ(client::CreateResponse::OK, r.status());
+    evaluated_element = r.evaluated_element();
+  }
+  {
+    client::Log3 log;
+    log.set_backup_id(backup_id);
+    auto b = log.mutable_req()->mutable_remove();
+
+    db.Run(&ctx, log);
+  }
+  {
+    client::Log3 log;
+    log.set_backup_id(backup_id);
+    auto b = log.mutable_req()->mutable_evaluate();
+    b->set_blinded_element(blinded_element);
+
+    auto resp = dynamic_cast<client::Response3*>(db.Run(&ctx, log));
+    auto r = resp->evaluate();
+    ASSERT_EQ(client::EvaluateResponse::MISSING, r.status());
+  }
+}
+
+// IETF VOPRF v21 test vectors (https://www.ietf.org/archive/id/draft-irtf-cfrg-voprf-21.html)
+
+const std::string context_string_prefix{"OPRFV1-"};
+const std::string ciphersuite_identifier{"ristretto255-SHA512"};
+
+static const size_t PRIVATE_KEY_SIZE = 32;
+static const size_t PUBLIC_KEY_SIZE = 32;
+static const size_t SHA512_BLOCK_BYTES = 128;
+static const size_t SHA512_OUTPUT_BYTES = 64;
+
+// https://www.rfc-editor.org/rfc/rfc8017
+std::string I2OSP(uint64_t x, size_t n) {
+  std::string X;
+  X.resize(n);
+  for(size_t i = 0; i < n; ++i) {
+    X[n-1-i] = x%256;
+    x /= 256;
+  }
+  return X;
+}
+
+/*
+def CreateContextString(mode, identifier):
+  return "OPRFV1-" || I2OSP(mode, 1) || "-" || identifier
+*/
+std::string context_string() {
+  auto mode = I2OSP(0x00, 1);
+  return context_string_prefix + mode + "-" + ciphersuite_identifier;
+}
+
+std::string sha512_hash(std::string s) {
+  crypto_hash_sha512_state sha;
+  crypto_hash_sha512_init(&sha);
+  crypto_hash_sha512_update(&sha, reinterpret_cast<uint8_t*>(s.data()), s.size());
+  std::array<uint8_t, SHA512_OUTPUT_BYTES> out;
+  crypto_hash_sha512_final(&sha, out.data());
+  return util::ByteArrayToString(out);
+}
+
+std::string strxor(const std::string& lhs, const std::string& rhs) {
+  CHECK(lhs.size() == rhs.size());
+  std::string result;
+  result.resize(rhs.size());
+  for(size_t i = 0; i < lhs.size(); ++i) {
+    result[i] = lhs[i] ^ rhs[i];
+  }
+  return result;
+}
+
+template<size_t N>
+bool is_zero(const std::array<uint8_t, N>& arr) {
+  bool result = true;
+  for(size_t i = 0; i < N; ++i) {
+    result = result && (arr[i] == 0);
+  }
+  return result;
+}
+
+// https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-hash-to-curve-12#name-expand_message_xmd
+template<size_t N> 
+std::array<uint8_t, N> ExpandMessageXMD_SHA512(std::string msg, std::string dst) {
+  auto ell = N / SHA512_OUTPUT_BYTES + ((N%SHA512_OUTPUT_BYTES == 0) ? 0 : 1);
+  CHECK(ell <= 255);
+  LOG(DEBUG) << "expand_message_xmd blocks: " << ell;
+  std::array<uint8_t, N> result{0};
+
+  auto dst_prime = dst + I2OSP(dst.size(),1);
+  auto z_pad = I2OSP(0, SHA512_BLOCK_BYTES);
+  auto l_i_b_str = I2OSP(N,2);
+  auto msg_prime = z_pad + msg + l_i_b_str + I2OSP(0,1) + dst_prime;
+  auto b_0 = sha512_hash(msg_prime);
+  auto b_1 = sha512_hash(b_0 + I2OSP(1,1) + dst_prime);
+  auto bytes_to_copy = std::min(b_1.size(), N);
+  std::copy(b_1.data(), b_1.data()+ bytes_to_copy, result.data());
+  auto b_last = b_1;
+  for(size_t i = 2; i <= ell; ++i) {
+    auto b_next = sha512_hash(
+      strxor(b_0, b_last)
+      + I2OSP(i,1)
+      + dst_prime
+    );
+    auto bytes_to_copy = std::min(SHA512_OUTPUT_BYTES, N - (i-1)*SHA512_OUTPUT_BYTES);
+    LOG(DEBUG) << "copying " << bytes_to_copy << " bytes";
+    std::copy(b_next.data(), b_next.data() + bytes_to_copy, result.data() + (i-1)*SHA512_OUTPUT_BYTES);
+    b_last = b_next;
+  }
+  return result;
+}
+
+std::array<uint8_t, PRIVATE_KEY_SIZE> HashToScalar(const std::string& data) {
+  std::string dst = std::string{"HashToScalar-"} + context_string();
+  auto uniform_bytes = ExpandMessageXMD_SHA512<64>(data, dst);
+  std::array<uint8_t, PRIVATE_KEY_SIZE> s;
+  // TODO: verify that this interprets numbers in little-endian order
+  crypto_core_ristretto255_scalar_reduce(s.data(), uniform_bytes.data());
+  return s;
+}
+
+std::pair<std::array<uint8_t, PUBLIC_KEY_SIZE>, std::array<uint8_t, PRIVATE_KEY_SIZE>>
+DeriveKeyPair(std::string seed, std::string info) {
+  std::string derive_input = seed + I2OSP(info.size(),2) + info;
+  size_t counter = 0;
+  std::array<uint8_t, PRIVATE_KEY_SIZE> sk{0};
+  std::array<uint8_t, PUBLIC_KEY_SIZE> pk{0};
+
+  std::string dst = std::string{"DeriveKeyPair"} + context_string();
+  while(is_zero(sk)) {
+    LOG(DEBUG) << "derive key pair attempt " << counter;
+    CHECK(counter < 255);
+    auto uniform_bytes = 
+      ExpandMessageXMD_SHA512<64>(derive_input + I2OSP(counter,1), dst);
+    crypto_core_ristretto255_scalar_reduce(sk.data(), uniform_bytes.data());
+    counter += 1;
+  }
+  CHECK(0 == crypto_scalarmult_ristretto255_base(pk.data(), sk.data()));
+
+  return std::make_pair(pk, sk);
+}
+
+std::array<uint8_t, PUBLIC_KEY_SIZE> HashToGroup(std::string input) {
+  std::string dst = std::string{"HashToGroup-"} + context_string();
+  auto uniform_bytes = ExpandMessageXMD_SHA512<64>(input, dst);
+  std::array<uint8_t, PUBLIC_KEY_SIZE> result{};
+  crypto_core_ristretto255_from_hash(result.data(), uniform_bytes.data());
+  return result;
+}
+
+TEST_F(DB3Test, IETF_A_1_1) {
+  auto seed = util::HexToBytes("a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3");
+  auto key_info = util::HexToBytes("74657374206b6579");
+  auto sk_expected = "5ebcea5ee37023ccb9fc2d2019f9d7737be85591ae8652ffa9ef0f4d37063b0e";
+
+  auto cs = context_string();
+  for(size_t i = 0; i < cs.size(); ++i) {
+    LOG(DEBUG) << " (" << static_cast<int>(cs[i]) << ") " << cs[i] ;
+  }
+  LOG(DEBUG) << cs;
+
+  auto [pk, sk] = DeriveKeyPair(seed, key_info);
+  auto sk_hex = util::BytesToHex(sk.data(), PRIVATE_KEY_SIZE);
+  EXPECT_EQ(sk_hex, sk_expected);
+}
+
+TEST_F(DB3Test, EXPAND_MESSAGE_XMD_1) {
+  std::string dst{"QUUX-V01-CS02-with-expander-SHA512-256"};
+  std::string msg{"abc"};
+  size_t len_in_bytes = 0x80;
+  auto uniform_bytes = ExpandMessageXMD_SHA512<0x80>(msg, dst);
+  LOG(DEBUG) << "here";
+  auto hex = util::BytesToHex(uniform_bytes.data(), uniform_bytes.size());
+  LOG(DEBUG) << hex;
+  LOG(DEBUG) << "there";
+
+  EXPECT_EQ(util::BytesToHex(uniform_bytes.data(), uniform_bytes.size()), "7f1dddd13c08b543f2e2037b14cefb255b44c83cc397c1786d975653e36a6b11bdd7732d8b38adb4a0edc26a0cef4bb45217135456e58fbca1703cd6032cb1347ee720b87972d63fbf232587043ed2901bce7f22610c0419751c065922b488431851041310ad659e4b23520e1772ab29dcdeb2002222a363f0c2b1c972b3efe1");
+}
+
+TEST_F(DB3Test, EXPAND_MESSAGE_XMD_2) {
+  std::string dst{"QUUX-V01-CS02-with-expander-SHA512-256"};
+  std::string msg{"abcdef0123456789"};
+  size_t len_in_bytes = 0x20;
+  auto uniform_bytes = ExpandMessageXMD_SHA512<0x20>(msg, dst);
+  LOG(DEBUG) << util::BytesToHex(uniform_bytes.data(), uniform_bytes.size());
+
+  EXPECT_EQ(util::BytesToHex(uniform_bytes.data(), uniform_bytes.size()), "087e45a86e2939ee8b91100af1583c4938e0f5fc6c9db4b107b83346bc967f58");
+}
+
+TEST_F(DB3Test, IETF_A_1_1_1) {
+  auto sk = util::HexToBytes("5ebcea5ee37023ccb9fc2d2019f9d7737be85591ae8652ffa9ef0f4d37063b0e");
+  auto input = util::HexToBytes("00");
+  auto blind = util::HexToBytes("64d37aed22a27f5191de1c1d69fadb899d8862b58eb4220029e036ec4c1f6706");
+  auto blinded_element_expected = util::HexToBytes("609a0ae68c15a3cf6903766461307e5c8bb2f95e7e6550e1ffa2dc99e412803c");
+  std::string evaluation_element_hex = "7ec6578ae5120958eb2db1745758ff379e77cb64fe77b0b2d8cc917ea0869c7e";
+  std::string output_hex = "527759c3d9366f277d8c6020418d96bb393ba2afb20ff90df23fb7708264e2f3ab9135e3bd69955851de4b1f9fe8a0973396719b7912ba9ee8aa7d0b5e24bcf6";
+
+  // Compute blinded element
+  std::array<uint8_t, 32> blinded_element; 
+  std::array<uint8_t, PUBLIC_KEY_SIZE> elt = HashToGroup(input);
+  auto ret = crypto_scalarmult_ristretto255(blinded_element.data(), reinterpret_cast<uint8_t*>(blind.data()), elt.data());
+  EXPECT_EQ(util::BytesToHex(blinded_element.data(), PUBLIC_KEY_SIZE), "609a0ae68c15a3cf6903766461307e5c8bb2f95e7e6550e1ffa2dc99e412803c");
+
+  // send to server to evaluate
+  std::string evaluated_element;
+  int tries = 3;
+  {
+    client::Log3 log;
+    log.set_backup_id(backup_id);
+    auto b = log.mutable_req()->mutable_create();
+    b->set_max_tries(3);
+    b->set_blinded_element(util::ByteArrayToString(blinded_element));
+    std::array<uint8_t, PUBLIC_KEY_SIZE> pk{};
+    CHECK(0 == crypto_scalarmult_ristretto255_base(pk.data(), reinterpret_cast<uint8_t*>(sk.data())));
+    log.set_create_privkey(sk);
+    log.set_create_pubkey(util::ByteArrayToString(pk));
+
+    auto resp = dynamic_cast<client::Response3*>(db.Run(&ctx, log));
+    auto r = resp->create();
+    ASSERT_EQ(client::CreateResponse::OK, r.status());
+    evaluated_element = r.evaluated_element();
+    auto [ee_data, err] = util::StringToByteArray<PUBLIC_KEY_SIZE>(evaluated_element);
+    EXPECT_EQ(util::BytesToHex(ee_data.data(), ee_data.size()), evaluation_element_hex);
+  }
+}
+
+
+TEST_F(DB3Test, IETF_A_1_1_2) {
+  auto seed = util::HexToBytes("a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3");
+  auto key_info = util::HexToBytes("74657374206b6579");
+  auto sk = util::HexToBytes("5ebcea5ee37023ccb9fc2d2019f9d7737be85591ae8652ffa9ef0f4d37063b0e");
+  auto input = util::HexToBytes("5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a");
+  auto blind = util::HexToBytes("64d37aed22a27f5191de1c1d69fadb899d8862b58eb4220029e036ec4c1f6706");
+  auto blinded_element_expected = util::HexToBytes("da27ef466870f5f15296299850aa088629945a17d1f5b7f5ff043f76b3c06418");
+  auto evaluation_element_hex = "b4cbf5a4f1eeda5a63ce7b77c7d23f461db3fcab0dd28e4e17cecb5c90d02c25";
+  auto output_hex = "f4a74c9c592497375e796aa837e907b1a045d34306a749db9f34221f7e750cb4f2a6413a6bf6fa5e19ba6348eb673934a722a7ede2e7621306d18951e7cf2c73";
+
+ // Compute blinded element
+  std::array<uint8_t, 32> blinded_element; 
+  std::array<uint8_t, PUBLIC_KEY_SIZE> elt = HashToGroup(input);
+  auto ret = crypto_scalarmult_ristretto255(blinded_element.data(), reinterpret_cast<uint8_t*>(blind.data()), elt.data());
+  EXPECT_EQ(util::BytesToHex(blinded_element.data(), PUBLIC_KEY_SIZE), "da27ef466870f5f15296299850aa088629945a17d1f5b7f5ff043f76b3c06418");
+
+  // send to server to evaluate
+  std::string evaluated_element;
+  int tries = 3;
+  {
+    client::Log3 log;
+    log.set_backup_id(backup_id);
+    auto b = log.mutable_req()->mutable_create();
+    b->set_max_tries(3);
+    b->set_blinded_element(util::ByteArrayToString(blinded_element));
+    std::array<uint8_t, PUBLIC_KEY_SIZE> pk{};
+    CHECK(0 == crypto_scalarmult_ristretto255_base(pk.data(), reinterpret_cast<uint8_t*>(sk.data())));
+    log.set_create_privkey(sk);
+    log.set_create_pubkey(util::ByteArrayToString(pk));
+
+    auto resp = dynamic_cast<client::Response3*>(db.Run(&ctx, log));
+    auto r = resp->create();
+    ASSERT_EQ(client::CreateResponse::OK, r.status());
+    evaluated_element = r.evaluated_element();
+    auto [ee_data, err] = util::StringToByteArray<PUBLIC_KEY_SIZE>(evaluated_element);
+    EXPECT_EQ(util::BytesToHex(ee_data.data(), ee_data.size()), evaluation_element_hex);
+  }
+}
+
+}  // namespace svr2::db

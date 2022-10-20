@@ -1,0 +1,181 @@
+// Copyright 2023 Signal Messenger, LLC
+// SPDX-License-Identifier: AGPL-3.0-only
+
+syntax = "proto3";
+
+package svr2.control;
+option go_package = "github.com/signalapp/svr2/proto";
+option optimize_for = LITE_RUNTIME;
+
+import "error.proto";
+import "msgs.proto";
+import "enclaveconfig.proto";
+
+//
+// untrusted peer to untrusted peer messages
+//
+
+// Sequence numbers ensure that when a client and server are disconnected then reconnected, the 
+// server does not miss any previously sent messages.
+//
+// Each message exchanged between hosts is tagged with a SequenceNumber. A sequence number consists
+// of a seq that increments on each new message, and an epoch. When a message is tagged with a new
+// epoch, the recepient of the message can ignore all messages from previous epochs.
+message SequenceNumber {
+  uint32 epoch = 1;
+  uint64 seq = 2;
+}
+
+message PeerConnectionHello {
+  bytes from_peer_id = 1;
+  bytes to_peer_id = 2;
+}
+
+message PeerConnectionHelloAck {
+  SequenceNumber last_ack = 1;
+}
+
+message PeerConnectionData {
+  SequenceNumber seqno = 1;
+  PeerMessage msg = 2;
+}
+
+message PeerConnectionDataAck {
+  SequenceNumber seqno = 1;
+}
+
+message PeerConnectionMessage {
+  oneof inner {
+    PeerConnectionHello hello = 1;
+    PeerConnectionHelloAck hello_ack = 2;
+    PeerConnectionData data = 3;
+    PeerConnectionDataAck data_ack = 4;
+  }
+}
+
+//
+// control requests
+//
+
+message ControlRequest {
+  uint64 id = 1;
+  oneof data {
+    NegotiateClientRequest negotiate_client_request = 3;
+    ClientEncryptedRequest client_encrypted_request = 4;
+    GetStatusControlRequest get_status_control_request = 5;
+    ForcePeerReconnectRequest force_peer_reconnect_request = 7;
+    PeerDisconnectRequest peer_disconnect_request = 11;
+    PeerPermanentDeleteRequest peer_permanent_delete_request = 12;
+    GetMetricsControlRequest get_metrics_control_request = 9;
+    TransactionControlRequest transaction_control_request = 10;
+  }
+}
+
+message NegotiateClientRequest {
+  string enclave_name = 1;
+  bytes client_pubkey = 2;
+}
+
+enum ClientRequestType {
+  NONE = 0;
+  BACKUP = 1;
+  RESTORE = 2;
+  DELETE = 3;
+}
+
+message ClientEncryptedRequest {
+  string enclave_name = 1;
+  bytes backup_id = 4;
+  ClientRequestType request_type = 5;
+  ClientEncryptedMessage encrypted_message = 2;
+  bytes pending_request_id = 3;
+}
+
+message ClientEncryptedMessage {
+  bytes iv = 1;
+  bytes mac = 2;
+  bytes data = 3;
+}
+
+message GetStatusControlRequest {
+  bool memory_status = 1;
+}
+
+message TransactionControlRequest {
+  string enclave_name = 1;
+  oneof data {
+    DatabaseRequest database_request = 3;
+  };
+}
+
+message ForcePeerReconnectRequest {
+  string enclave_name = 1;
+  bytes peer_id = 2;
+  string address = 3;
+}
+
+message PeerDisconnectRequest {
+  string enclave_name = 1;
+  bytes peer_id = 2;
+}
+
+message PeerPermanentDeleteRequest {
+  string enclave_name = 1;
+  bytes peer_id = 2;
+}
+
+message GetMetricsControlRequest {
+}
+
+//
+// control replies
+//
+
+message ControlReply {
+  uint64 id = 1;
+  reserved 6;
+  oneof data {
+    NegotiateClientReply negotiate_client_reply = 3;
+    ClientEncryptedReply client_encrypted_reply = 4;
+    GetStatusControlReply get_status_control_reply = 5;
+    GetMetricsControlReply get_metrics_control_reply = 8;
+    TransactionControlReply transaction_control_reply = 10;
+
+    ControlErrorSignal control_error_signal = 2;
+  }
+}
+
+message NegotiateClientReply {
+  bytes server_static_pubkey = 1;
+  bytes server_ephemeral_pubkey = 2;
+  ClientEncryptedMessage encrypted_pending_request_id = 3;
+}
+
+message ClientEncryptedReply {
+  ClientEncryptedMessage encrypted_message = 1;
+}
+
+message GetStatusControlReply {
+  repeated EnclaveStatus enclaves = 1;
+}
+
+message EnclaveStatus {
+  string name = 1;
+  bytes peer_id = 2;
+  enclaveconfig.EnclaveConfig config = 3;
+  EnclaveStatus status = 4;
+}
+
+message GetMetricsControlReply {
+  string metrics_json = 1;
+}
+
+message TransactionControlReply {
+  oneof data {
+    error.Error status = 1;
+  }
+}
+
+message ControlErrorSignal {
+  string reason = 1;
+}

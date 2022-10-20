@@ -1,0 +1,4 @@
+include Makefile.base
+
+CFLAGS ?= $(HOST_CFLAGS)
+CXXFLAGS ?= $(HOST_CXXFLAGS)

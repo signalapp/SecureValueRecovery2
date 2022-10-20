@@ -1,0 +1,92 @@
+// Copyright 2023 Signal Messenger, LLC
+// SPDX-License-Identifier: AGPL-3.0-only
+
+syntax = "proto3";
+
+package svr2.enclaveconfig;
+option go_package = "github.com/signalapp/svr2/proto";
+option optimize_for = LITE_RUNTIME;
+
+// Should match <openenclave/log.h>'s oe_log_level_t
+// (https://github.com/openenclave/openenclave/blob/master/include/openenclave/log.h)
+enum EnclaveLogLevel {
+  LOG_LEVEL_NONE = 0;
+  LOG_LEVEL_FATAL = 1;
+  LOG_LEVEL_ERROR = 2;
+  LOG_LEVEL_WARNING = 3;
+  LOG_LEVEL_INFO = 4;
+  LOG_LEVEL_DEBUG = 5;
+  LOG_LEVEL_VERBOSE = 6;
+  LOG_LEVEL_MAX = 7;
+}
+
+enum DatabaseVersion {
+  DATABASE_VERSION_UNKNOWN = 0;
+  DATABASE_VERSION_SVR2 = 2;
+  DATABASE_VERSION_SVR3 = 3;
+}
+
+message RaftConfig {
+  uint32 election_ticks = 1;
+  uint32 heartbeat_ticks = 2;
+  uint32 replication_chunk_bytes = 3;
+  uint32 replica_voting_timeout_ticks = 4;
+  uint32 replica_membership_timeout_ticks = 5;
+  uint64 log_max_bytes = 6;
+  uint32 replication_pipeline = 7;
+}
+
+message EnclaveConfig {
+  RaftConfig raft = 1;
+  // Enclave-to-enclave transactions will time out after this many ticks.
+  uint32 e2e_txn_timeout_ticks = 2;
+  // Every N ticks, send our local timestamp to our peers.
+  uint32 send_timestamp_ticks = 5;
+}
+
+// RaftGroupConfig is a configuration shared by members of a Raft group.
+// It's created only once, on creation of the Raft group.  From that
+// point forward, it's shared between replicas as they're added to the
+// group, and it's not possible to modify it externally.
+message RaftGroupConfig {
+  // When creating a new group, don't fill this in; it'll be randomly generated.
+  // This will be passed to other replicas as they join.
+  fixed64 group_id = 1;
+  // This raft group will refuse to serve client request with
+  // <min_voting_replicas, and will refuse to add new voting members
+  // when max_voting_replicas has been reached.
+  uint32 min_voting_replicas = 2;
+  uint32 max_voting_replicas = 3;
+  // Anything which, in normal Raft, would require quorum() participants
+  // to push forward will instead require a majority of non-faulty nodes,
+  // which is (voting_replicas-super_majority)/2+1+super_majority.  Should
+  // there be fewer than that many total nodes in the Raft, all Raft
+  // nodes will be required.
+  uint32 super_majority = 4;
+  // The database version.
+  DatabaseVersion db_version = 5;
+  // Attestation timeout, in seconds
+  uint32 attestation_timeout = 6;
+  // Whether this is a real SGX or simulated SGX environment.
+  bool simulated = 7;
+}
+
+message InitConfig {
+  // Enclave configuration which must be provided at startup but which
+  // can also be reconfigured later via a Reconfigure call:
+  enclaveconfig.EnclaveConfig enclave_config = 1;
+
+  // The immutable raft configuration which will be used to start
+  // or join a Raft group.  This enclave will refuse to join a raft
+  // group whose config (minus the group_id) doesn't match this.
+  RaftGroupConfig group_config = 2;
+
+  // Additional fields used in enclave startup but not reconfigurable
+  // later on in the enclave's lifecycle:
+
+  // Initial timestamp.
+  uint64 initial_timestamp_unix_secs = 3;
+  // Set the log level on initiation of the enclave.  This can be overridden
+  // by calls to SetLogLevel later on.
+  EnclaveLogLevel initial_log_level = 5;
+}

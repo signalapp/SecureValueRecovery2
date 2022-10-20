@@ -1,0 +1,13 @@
+clientListenAddr: localhost:8080
+controlListenAddr: localhost:8081
+peerAddr: localhost:8082
+enclaveId: 17e1cb662572d28e0eb5a492ed8df949bc2cfcf3f2098b710e7b637759d6dcb3
+
+raft:
+  tickDuration: 1s
+  metricPollDuration: 10s
+  refreshStatusDuration: 15s
+  enclaveConcurrency: 8
+
+redis:
+  addrs: [localhost:9999]

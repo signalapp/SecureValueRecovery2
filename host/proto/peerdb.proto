@@ -1,0 +1,16 @@
+// Copyright 2023 Signal Messenger, LLC
+// SPDX-License-Identifier: AGPL-3.0-only
+
+syntax = "proto3";
+
+package svr2.peerdb;
+option go_package = "github.com/signalapp/svr2/proto";
+option optimize_for = LITE_RUNTIME;
+
+
+message PeerEntry {
+    int64 join_ts = 1;
+    int64 last_update_ts = 2;
+    string addr = 3;      // hostname:port that other nodes can use to access this peer
+    bool raft_member = 4; // if true, this peer is a raft member
+}

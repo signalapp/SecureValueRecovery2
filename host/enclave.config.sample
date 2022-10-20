@@ -1,0 +1,22 @@
+enclave_config {
+  raft {
+    election_ticks: 30
+    heartbeat_ticks: 15
+    replication_chunk_bytes: 1048576
+    replica_voting_timeout_ticks: 60
+    replica_membership_timeout_ticks: 300
+    log_max_bytes: 104857600
+    replication_pipeline: 32
+  }
+  e2e_txn_timeout_ticks: 30
+  send_timestamp_ticks: 60
+}
+initial_log_level: LOG_LEVEL_INFO
+group_config {
+  min_voting_replicas: 1
+  max_voting_replicas: 5
+  super_majority: 0
+  db_version: DATABASE_VERSION_SVR2
+  attestation_timeout: 86400
+  simulated: true
+}

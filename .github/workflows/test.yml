@@ -1,0 +1,29 @@
+name: CI
+on: [push]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: read
+      contents: read
+
+    steps:
+      - name: Checkout main project
+        uses: actions/checkout@v3
+        with:
+          submodules: true
+
+      - name: Docker cache
+        uses: ./.github/workflows/dockercache
+        with:
+          dockerdir: .
+          imagename: svr2_buildenv
+          target: builder
+          dockerfile: docker/Dockerfile
+
+      - name: Build and test
+        run: make
+
+      - name: Validate
+        run: make docker_validate

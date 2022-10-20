@@ -1,0 +1,38 @@
+// Copyright 2023 Signal Messenger, LLC
+// SPDX-License-Identifier: AGPL-3.0-only
+
+syntax = "proto3";
+
+package svr2.nitro;
+option go_package = "github.com/signalapp/svr2/proto";
+option optimize_for = LITE_RUNTIME;
+import "error.proto";
+import "enclaveconfig.proto";
+
+message InboundMessage {
+  oneof inner {
+    enclaveconfig.InitConfig init = 1;
+    MsgCallRequest msg = 2;
+  }
+}
+message OutboundMessage {
+  oneof inner {
+    InitCallResponse init = 1;
+    MsgCallResponse msg = 2;
+    bytes out = 3;
+  }
+}
+
+message InitCallResponse {
+  // there's no `status` here, because a failure to init will crash.
+  bytes peer_id = 1;
+}
+
+message MsgCallRequest {
+  uint64 id = 1;
+  bytes data = 2;  // A serialized UntrustedMessage
+}
+message MsgCallResponse {
+  uint64 id = 1;
+  error.Error status = 2;
+}

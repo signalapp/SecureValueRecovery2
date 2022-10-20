@@ -1,0 +1,76 @@
+// Copyright 2023 Signal Messenger, LLC
+// SPDX-License-Identifier: AGPL-3.0-only
+
+syntax = "proto3";
+
+package svr2.raft;
+option optimize_for = LITE_RUNTIME;
+
+message Replica {
+  bytes peer_id = 1;
+  bool voting = 2;
+}
+
+// ReplicaGroup contains information on the current configuration (set of
+// replicas) for Raft.  Importantly, for a particular raft.pb.cc instantiation,
+// it must have a deterministic serialization.  This means that, while
+// serialization might change were the underlying protobuf library version
+// to be bumped, the generated code for a static version of the protobuf
+// library should be deterministic.  In particular, `map` fields should not
+// be present in this proto or its children.  This determinism is necessary
+// since the log's hash chain is updated based on the serialization of this
+// proto.
+message ReplicaGroup {
+  repeated Replica replicas = 1;
+}
+
+message RaftMessage {
+  uint64 group = 1;
+  uint64 term = 2;
+  oneof inner {
+    VoteRequest vote_request = 3;
+    VoteResponse vote_response = 4;
+    AppendRequest append_request = 5;
+    AppendResponse append_response = 6;
+    bool timeout_now = 7;  // force an election timeout on the recipient
+  };
+}
+
+message VoteRequest {
+  uint64 last_log_idx = 1;
+  uint64 last_log_term = 2;
+}
+
+message VoteResponse {
+  bool vote_granted = 1;
+}
+
+message AppendRequest {
+  uint64 prev_log_idx = 1;
+  uint64 prev_log_term = 2;
+  uint64 leader_commit = 3;
+  repeated LogEntry entries = 4;
+  uint64 leader_promise = 5;
+}
+
+message AppendResponse {
+  bool success = 1;
+  uint64 match_idx = 2;
+  uint64 last_log_idx = 3;
+  uint64 promise_idx = 4;
+}
+
+message LogEntry {
+  uint64 term = 1;
+  oneof inner {
+    bytes data = 2;
+    ReplicaGroup membership_change = 3;
+  }
+  bytes hash_chain = 4;
+}
+
+message LogLocation {
+  uint64 term = 1;
+  uint64 idx = 2;
+  bytes hash_chain = 3;
+}

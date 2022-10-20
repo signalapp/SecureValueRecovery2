@@ -1,0 +1,26 @@
+// Copyright 2023 Signal Messenger, LLC
+// SPDX-License-Identifier: AGPL-3.0-only
+
+syntax = "proto3";
+
+package svr2.client;
+option optimize_for = LITE_RUNTIME;
+
+import "client.proto";
+import "client3.proto";
+
+// Log2 is the logged message used by the SVR2 (db2) database.
+message Log2 {
+  bytes backup_id = 1;
+  client.Request req = 2;
+}
+
+// Log3 is the logged message used by the SVR3 (db3) database.
+message Log3 {
+  bytes backup_id = 1;
+  client.Request3 req = 2;
+  // If req.create(), then we need to generate new keys.
+  // These fields will be filled in with the generated keys.
+  bytes create_privkey = 3;
+  bytes create_pubkey = 4;
+}

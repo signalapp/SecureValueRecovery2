@@ -1,0 +1,1 @@
+../protobuf/src/google/protobuf/any_lite.cc

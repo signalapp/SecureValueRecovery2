@@ -1,0 +1,4 @@
+*.zip
+protoc*
+!sha256.*
+go*

@@ -1,0 +1,18 @@
+[submodule "enclave/protobuf"]
+	path = enclave/protobuf
+	url = https://github.com/protocolbuffers/protobuf.git
+[submodule "enclave/noise-c"]
+	path = enclave/noise-c
+	url = https://github.com/rweather/noise-c.git
+[submodule "enclave/SipHash"]
+	path = enclave/SipHash
+	url = https://github.com/veorq/SipHash
+[submodule "enclave/googletest"]
+	path = enclave/googletest
+	url = https://github.com/google/googletest
+[submodule "enclave/libsodium"]
+	path = enclave/libsodium
+	url = https://github.com/jedisct1/libsodium
+[submodule "docker/aws-nitro-enclaves-nsm-api"]
+	path = docker/aws-nitro-enclaves-nsm-api
+	url = https://github.com/aws/aws-nitro-enclaves-nsm-api.git

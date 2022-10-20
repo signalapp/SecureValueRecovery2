@@ -1,0 +1,42 @@
+name: Build and push Docker image
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # This is required for requesting the JWT
+      contents: read  # This is required for actions/checkout
+    steps:
+      - name: Checkout main project
+        uses: actions/checkout@v3
+        with:
+          submodules: true
+
+      - name: Docker cache
+        uses: ./.github/workflows/dockercache
+        with:
+          dockerdir: .
+          imagename: svr2_buildenv
+          target: builder
+          dockerfile: docker/Dockerfile
+
+      - name: 'Az CLI login'
+        uses: azure/login@v1
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: 'Docker login'
+        run:
+          az acr login --name ${{ secrets.AZURE_CONTAINER_REGISTRY_NAME }}
+
+      - name: Build and push container image
+        run: |
+          make container
+          docker tag svr2_runenv:latest "${{ secrets.REGISTRY_LOGIN_SERVER }}/svr2:${GITHUB_REF_NAME}"
+          docker push "${{ secrets.REGISTRY_LOGIN_SERVER }}/svr2:${GITHUB_REF_NAME}"

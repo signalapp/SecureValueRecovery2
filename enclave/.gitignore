@@ -1,0 +1,4 @@
+build/
+.testdepends
+*.pem
+noise-c/

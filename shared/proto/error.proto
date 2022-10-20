@@ -1,0 +1,214 @@
+// Copyright 2023 Signal Messenger, LLC
+// SPDX-License-Identifier: AGPL-3.0-only
+
+syntax = "proto3";
+
+package svr2.error;
+option go_package = "github.com/signalapp/svr2/proto";
+option optimize_for = LITE_RUNTIME;
+
+// Namespaces are of size 1000 and are suffixed with "_NS". They should not be returned.
+enum Error {
+  OK = 0;
+
+  General_NS = 100;
+  General_Unimplemented = 101;
+
+  Core_NS = 200;
+  Core_ConfigProtobufParse = 201;
+  Core_ReInit = 202;
+  Core_SendSerialize = 203;
+  Core_ReceiveProtobufParse = 204;
+  Core_NoInit = 205;
+  Core_ClientNotFound = 206;
+  Core_InitClientDHState = 207;
+  Core_SerializeClientLog = 208;
+  Core_RaftState = 209;
+  Core_E2EResponseWithoutCallback = 210;
+  Core_ReceivedEmptyReplicaGroup = 211;
+  Core_VotingRequestedForNonMember = 212;
+  Core_VotingRequestedForVotingMember = 213;
+  Core_LeaderUnknown = 214;
+  Core_E2ETransactionTimeout = 215;
+  Core_NotEnoughVotingReplicas = 216;
+  Core_HostToEnclaveTransactionID = 217;
+  Core_JoinRaftWriteNotCommitted = 218;
+  Core_LogTransactionCancelled = 219;
+  Core_RemovedFromRaft = 220;
+  Core_TransactionPostconditionsInvalid = 221;
+  Core_InvalidLogLevel = 222;
+  Core_RefreshClientAttestationWithoutRaftConfig = 223;
+  Core_BackupIDSecretMismatch = 224;
+  Core_ClientSetBackupID = 225;
+  Core_DuplicateMembershipPeer = 226;
+  Core_LeaderRemovingSelf = 227;
+  Core_RemoveNonexistentMember = 228;
+  Core_ReplicatedLogSerialization = 229;
+  Core_ReplicationOutOfOrder = 230;
+  Core_LogNotFoundAtCommitIndex = 231;
+  Core_DBRRMissing = 232;
+  Core_DeserializeHostDatabaseRequest = 233;
+  Core_InvalidLogTransactionHashChain = 234;
+  Core_IncorrectE2EResponseType = 235;
+  Core_GroupConfigMismath = 236;
+  Core_RaftGroupConfigMinReplicasGreaterThanMaxReplicas = 237;
+  Core_RaftGroupConfigMinReplicasTooSmall = 238;
+  Core_DBVersionInvalid = 239;
+  Core_RaftGroupConfigAttestationTimeoutTooSmall = 240;
+
+  Env_NS = 300;
+  Env_SerializeCustomClaims = 301;
+  Env_GetEvidence = 302;
+  Env_SendMessage = 303;
+  Env_RandomBytes = 304;
+  Env_AttestationFailure = 305;
+  Env_Zero = 306;
+  Env_WrongMRENCLAVE = 307;
+  Env_CustomClaimsMissing = 308;
+  Env_CustomClaimsDeserialize = 309;
+  Env_AttestationPubkeyMissing = 310;
+  Env_AttestationPubkeyInvalidSize = 311;
+  Env_MissingMRENCLAVE = 312;
+  Env_SerializeConfigForEvidence = 313;
+  Env_MallinfoFailure = 314;
+
+  Peers_NS = 400;
+  Peers_SendBeforeConnect = 401;
+  Peers_RecvBeforeConnect = 402;
+  Peers_NewKey = 403;
+  Peers_NewKeyGenerate = 404;
+  Peers_NewKeyPublic = 405;
+  Peers_SendConnect = 406;
+  Peers_ReInit = 407;
+  Peers_NoInit = 408;
+  Peers_HandshakeState = 409;
+  Peers_CopyDHState = 410;
+  Peers_SetRemotePublicKey = 411;
+  Peers_HandshakeStart = 412;
+  Peers_ConnectWriteHandshake = 413;
+  Peers_ConnectSerializeHandshake = 414;
+  Peers_AcceptParseHandshake = 415;
+  Peers_AcceptReadHandshake = 416;
+  Peers_AcceptWriteHandshake = 417;
+  Peers_AcceptSerializeHandshake = 418;
+  Peers_AcceptIDMismatch = 419;
+  Peers_AcceptSplit = 420;
+  Peers_InvalidID = 421;
+  Peers_DataNotConnected = 422;
+  Peers_FinishParseHandshake = 423;
+  Peers_FinishReadHandshake = 424;
+  Peers_FinishSplit = 425;
+  Peers_Encrypt = 426;
+  Peers_Decrypt = 427;
+  Peers_EncryptSerialize = 428;
+  Peers_DecryptParse = 429;
+  Peers_FinishIDMismatch = 430;
+  Peers_SynAckNotConnecting = 431;
+  Peers_InvalidMsg = 432;
+  Peers_ResetMissingPeer = 433;
+  Peers_AttestationKeyChanged = 434;
+
+  Raft_NS = 500;
+  Raft_LogOutOfSpace = 501;
+  Raft_LogEntryTooLarge = 502;
+  Raft_AllEntriesBeforeLastAppliedTruncated = 503;
+  Raft_AppendEntryNotLeader = 504;
+  Raft_CancelingBeforeFirst = 505;
+  Raft_AppendWithoutTerm = 506;
+  Raft_MembershipAlreadyChanging = 507;
+  Raft_NoHashChainInAppend = 508;
+  Raft_FollowerNotFound = 509;
+  Raft_SetNextOnNonemptyLog = 510;
+
+  DB2_NS = 600;
+  DB2_ClientRequestCase = 601;
+  DB2_ClientPinSize = 602;
+  DB2_ClientTriesTooHigh = 603;
+  DB2_ClientTriesZero = 604;
+  DB2_ClientDataSize = 605;
+  DB2_ClientBackupIDSize = 606;
+  DB2_ReplicationInvalidRow = 607;
+  DB2_ReplicationOutOfOrder = 608;
+  DB2_BackupIDSize = 609;
+  DB2_LoadedRowsAlreadyInDB = 610;
+  DB2_InvalidRequestType = 611;
+  DB2_ClientTokenSize = 612;
+
+  Client_NS = 700;
+  Client_HandshakeState = 701;
+  Client_CopyDHState = 702;
+  Client_HandshakeStart = 703;
+  Client_ExtractPublicKey = 704;
+  Client_DecryptState = 705;
+  Client_EncryptState = 706;
+  Client_FinishReadHandshake = 707;
+  Client_FinishWriteHandshake = 708;
+  Client_FinishSplit = 709;
+  Client_DecryptParse = 710;
+  Client_EncryptSerialize = 711;
+  Client_TransactionCancelled = 712;
+  Client_TransactionInvalid = 713;
+  Client_AlreadyClosed = 714;
+
+  Config_NS = 800;
+  Config_ElectionTicks = 801;
+  Config_HeartbeatVsElectionTicks = 802;
+  Config_ReplicationChunk = 803;
+  Config_ReplicaTimeout = 804;
+  Config_E2ETransactionTimeout = 805;
+  Config_ChangeSimulate = 806;
+  Config_BackupIDInvalid = 807;
+  Config_LogMaxBytes = 808;
+  Config_ReplicationPipeline = 809;
+
+  Membership_NS = 900;
+  Membership_TooManyMembershipChanges = 901;
+  Membership_NoMembershipChanges = 902;
+  Membership_LeaderRemovedFromVoting = 903;
+  Membership_LeaderRemovedFromAll = 904;
+  Membership_VotingNotSubset = 905;
+  Membership_EmptySet = 906;
+  Membership_DuplicateReplicaInReplicaGroup = 907;
+  Membership_SuperMajorityLost = 908;
+
+  Replicate_NS = 1000;
+  Replicate_RaftState = 1001;
+  Replicate_GroupMismatch = 1002;
+  Replicate_LogIndexMismatch = 1003;
+  Replicate_MissingCommittedMembership = 1004;
+  Replicate_ReplicationID = 1005;
+  Replicate_ReplicationSequence = 1006;
+
+  Util_NS = 1100;
+  Util_ArrayCopyTooBig = 1101;
+
+  DB3_NS = 1200;
+  DB3_ScalarMultFailure = 1201;
+  DB3_BackupIDSize = 1202;
+  DB3_MaxTriesOutOfRange = 1203;
+  DB3_BlindedElementSize = 1204;
+  DB3_ToplevelRequestType = 1205;
+  DB3_RequestInvalid = 1206;
+  DB3_LogPrivateKeyInvalid = 1207;
+  DB3_LogPublicKeyInvalid = 1208;
+  DB3_ReplicationInvalidRow = 1209;
+  DB3_LoadedRowsAlreadyInDB = 1210;
+  DB3_ReplicationOutOfOrder = 1211;
+
+  Socket_NS = 1300;
+  Socket_ReadEOF = 1301;
+  Socket_Read = 1302;
+  Socket_Write = 1303;
+  Socket_ParseIncoming = 1304;
+  Socket_WriteTooBig = 1305;
+  Socket_ReadTooBig = 1306;
+
+  Nitro_NS = 1400;
+  Nitro_SocketCreation = 1401;
+  Nitro_SocketBind = 1402;
+  Nitro_SocketAccept = 1403;
+  Nitro_SocketListen = 1404;
+  Nitro_InboundNotInit = 1405;
+  Nitro_InboundMessageParse = 1406;
+  Nitro_InboundNotMessage = 1407;
+};

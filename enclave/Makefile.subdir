@@ -1,0 +1,41 @@
+include Makefile.$(ENV)
+
+all:
+.PHONY: all
+
+BUILD = build/$(DIR)
+$(BUILD):
+	$(QUIET) echo -e "MKDIR\t$@"
+	$(QUIET) mkdir -p $(BUILD)
+
+# We use WARNING_CFLAGS only when the file exists, is not a symlink,
+# and isn't generated code (IE: it's not in build/...)
+NO_WARNINGS=-w
+
+OBJECTS=$(patsubst %,build/%.$(ENV).o,$(wildcard $(DIR)/*.c) $(wildcard $(DIR)/*.cc)) $(patsubst %,%.$(ENV).o,$(wildcard $(BUILD)/*.c) $(wildcard $(BUILD)/*.cc))
+
+$(BUILD)/%.cc.$(ENV).d $(BUILD)/%.cc.$(ENV).o: $(BUILD)/%.cc | $(BUILD)
+	$(QUIET) echo -e "CXX\t$<.$(ENV)"
+	$(QUIET) $(CXX) -c -o $(BUILD)/$*.cc.$(ENV).o $(CXXFLAGS) -MF $(BUILD)/$*.cc.$(ENV).d -MMD $< $(NO_WARNINGS)
+
+$(BUILD)/%.c.$(ENV).d $(BUILD)/%.c.$(ENV).o: $(BUILD)/%.c | $(BUILD)
+	$(QUIET) echo -e "CC\t$<.$(ENV)"
+	$(QUIET) $(CC) -c -o $(BUILD)/$*.c.$(ENV).o $(CFLAGS) -MF $(BUILD)/$*.c.$(ENV).d -MMD $< $(NO_WARNINGS)
+
+$(BUILD)/%.cc.$(ENV).d $(BUILD)/%.cc.$(ENV).o: $(DIR)/%.cc | $(BUILD)
+	$(QUIET) echo -e "CXX\t$<.$(ENV)"
+	$(QUIET) $(CXX) -c -o $(BUILD)/$*.cc.$(ENV).o $(CXXFLAGS) -MF $(BUILD)/$*.cc.$(ENV).d -MMD $< \
+      $(shell if [ ! -L $(DIR)/$*.cc ]; then echo $(WARNING_CFLAGS); else echo $(NO_WARNINGS); fi)
+
+$(BUILD)/%.c.$(ENV).d $(BUILD)/%.c.$(ENV).o: $(DIR)/%.c | $(BUILD)
+	$(QUIET) echo -e "CC\t$<.$(ENV)"
+	$(QUIET) $(CC) -c -o $(BUILD)/$*.c.$(ENV).o $(CFLAGS) -MF $(BUILD)/$*.c.$(ENV).d -MMD $< \
+      $(shell if [ ! -L $(DIR)/$*.c ]; then echo $(WARNING_CFLAGS); else echo $(NO_WARNINGS); fi)
+
+$(BUILD)/$(ENV).a: $(OBJECTS) | $(BUILD)
+	$(QUIET) echo -e "AR\t$@"
+	$(QUIET) ar rcs $@ $^
+
+$(foreach f,$(patsubst %.o,%.d,$(OBJECTS)),$(eval include $f))
+
+all: $(BUILD)/$(ENV).a

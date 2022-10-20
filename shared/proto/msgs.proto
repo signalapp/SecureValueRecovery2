@@ -1,0 +1,210 @@
+// Copyright 2023 Signal Messenger, LLC
+// SPDX-License-Identifier: AGPL-3.0-only
+
+syntax = "proto3";
+
+package svr2;
+option go_package = "github.com/signalapp/svr2/proto";
+option optimize_for = LITE_RUNTIME;
+
+import "enclaveconfig.proto";
+import "error.proto";
+import "metrics.proto";
+
+//
+// shared types
+//
+
+//
+// UntrustedMessages are messages from the host to the enclave
+//
+message UntrustedMessage {
+  oneof inner {
+    PeerMessage peer_message = 1;
+    TimerTick timer_tick = 2;
+    EnclavePeer reset_peer = 3;
+    HostToEnclaveRequest h2e_request = 4;
+  }
+}
+
+message PeerMessage {
+  bytes peer_id = 1;
+  oneof inner {
+    bytes syn = 2;
+    bytes synack = 3;
+    bytes data = 4;
+    bool rst = 5;
+  }
+}
+
+message TimerTick {
+  fixed64 new_timestamp_unix_secs = 1;
+}
+
+message EnclavePeer {
+  bytes peer_id = 1;
+}
+
+message HashResponse {
+  bytes db_hash = 1;
+  int64 commit_idx = 2;
+  bytes commit_hash_chain = 3;
+}
+
+message HostToEnclaveRequest {
+  uint64 request_id = 1;
+  oneof inner {
+    enclaveconfig.EnclaveConfig reconfigure = 2;
+    bool get_enclave_status = 3;
+    NewClientRequest new_client = 4;
+    ExistingClientRequest existing_client = 5;
+    CloseClientRequest close_client = 6;
+    DatabaseRequest database_request = 7;
+    bool create_new_raft_group = 8;
+    JoinRaftRequest join_raft = 9;
+    EnclavePeer ping_peer = 10;
+    bool request_voting = 11;
+    bool request_metrics = 12;
+    RefreshAttestation refresh_attestation = 13;
+    enclaveconfig.EnclaveLogLevel set_log_level = 14;
+    bool relinquish_leadership = 15;
+    bool request_removal = 16;
+    bool hashes = 17;
+  }
+}
+
+message HostToEnclaveResponse {
+  uint64 request_id = 1;  // corresponds to a HostToEnclaveRequest request_id
+  oneof inner {
+    error.Error status = 2;  // status returnable from any transaction.  OK==success, otherwise failure
+    EnclaveReplicaStatus get_enclave_status_reply = 3;
+    NewClientReply new_client_reply = 4;
+    ExistingClientReply existing_client_reply = 5;
+    metrics.MetricsPB metrics_reply = 6;
+    HashResponse hashes = 7;
+  }
+}
+
+//
+// Enclave status top-level messages
+//
+message EnclaveReplicaStatus {
+  repeated EnclavePeerStatus peers = 1;
+  RaftState raft_state = 2;
+}
+
+//
+// Client messages
+//
+message NewClientRequest {
+  bytes client_authenticated_id = 1;
+}
+
+message ClientHandshakeStart { 
+  // Public key associated with this server's enclave. For use in test-only
+  // contexts where attestation is not available
+  bytes test_only_pubkey = 1;
+
+  // Remote-attestation evidence associated with the public key
+  bytes evidence = 2;
+
+  // Endorsements of remote-attestation evidence.
+  bytes endorsement = 3;
+}
+
+message NewClientReply {
+  uint64 client_id = 1;
+  ClientHandshakeStart handshake_start = 2;
+}
+
+message ExistingClientRequest {
+  uint64 client_id = 1;
+  bytes data = 2;
+}
+message ExistingClientReply {
+  bytes data = 1;
+  bool fin = 2;  // if true, close client (success) after sending data.
+}
+
+message CloseClientRequest {
+  uint64 client_id = 1;
+}
+
+//
+// HostToEnclaveRequest control messages
+//
+message DatabaseRequest {
+  bytes authenticated_id = 1;
+  bytes request = 2;
+}
+
+message JoinRaftRequest {
+  bytes peer_id = 1;
+}
+
+message RefreshAttestation {
+  bool rotate_client_key = 1;
+}
+
+//
+// enclave messages - messages from the enclave to the host in response to an
+// incoming UntrustedMessage. If inner is a PeerMessage it will be forwarded. If it
+// is a HostToEnclaveResponse it will be processed by the host.
+//
+message EnclaveMessage {
+  oneof inner {
+    PeerMessage peer_message = 1;
+    HostToEnclaveResponse h2e_response = 2;
+  }
+}
+
+enum PeerState {
+  PEER_DISCONNECTED = 0;
+  PEER_CONNECTING = 1;
+  PEER_CONNECTED = 2;
+}
+
+//
+// enclave status submessages
+//
+enum RaftState {
+  // In NO_STATE, there is no raft_, log_, or db_.  We're not sure whether
+  // we're going to create a new raft group, or join an existing one.
+  RAFTSTATE_NO_STATE = 0;
+  // In WAITING_FOR_FIRST_CONNECTION, we're waiting for our first peer connection
+  // to a Raft replica.
+  RAFTSTATE_WAITING_FOR_FIRST_CONNECTION = 1;
+  // In LOADING, we're replicating logs and db.
+  RAFTSTATE_LOADING = 2;
+  // In LOADED_REQUESTING_MEMBERSHIP, we have received a full state
+  // from an existing replica, and we're now trying to join the group.
+  // We're ready to process incoming RaftMessage messages, and we're
+  // watching our log to see when we become a full member (by watching
+  // for a ReplicaGroup in the log with our peer ID in it)
+  RAFTSTATE_LOADED_REQUESTING_MEMBERSHIP = 3;
+  // In LOADING_PART_OF_GROUP, we're now a full-fledged member of a Raft group.
+  // We may or may not have voting rights.
+  RAFTSTATE_LOADED_PART_OF_GROUP = 4;
+}
+
+message ConnectionStatus {
+  PeerState state = 1;
+  uint64 last_attestation_unix_secs = 2;
+}
+
+message EnclavePeerStatus {
+  bytes peer_id = 1;
+  EnclavePeerReplicationStatus replication_status = 2;
+  bool in_raft = 3;
+  bool is_leader = 4;
+  bool is_voting = 5;
+  bool me = 6;
+  ConnectionStatus connection_status = 7;
+}
+
+message EnclavePeerReplicationStatus {
+  uint64 next_index = 1;
+  uint64 match_index = 2;
+  uint64 inflight_index = 3;
+  bool probing = 4;
+}

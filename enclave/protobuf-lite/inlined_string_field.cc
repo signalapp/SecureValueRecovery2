@@ -1,0 +1,1 @@
+../protobuf/src/google/protobuf/inlined_string_field.cc

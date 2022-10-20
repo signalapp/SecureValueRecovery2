@@ -1,0 +1,19 @@
+// Copyright 2023 Signal Messenger, LLC
+// SPDX-License-Identifier: AGPL-3.0-only
+
+syntax = "proto3";
+
+package svr2.metrics;
+option go_package = "github.com/signalapp/svr2/proto";
+option optimize_for = LITE_RUNTIME;
+
+message U64PB {
+  string name = 1;
+  map<string, string> tags = 2;
+  uint64 v = 3;
+}
+
+message MetricsPB {
+  repeated U64PB counters = 1;
+  repeated U64PB gauges = 2;
+}

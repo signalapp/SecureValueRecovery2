@@ -1,0 +1,47 @@
+enclave {
+  from "openenclave/edl/syscall.edl" import *;
+  from "openenclave/edl/logging.edl" import *;
+  from "platform.edl" import *;
+
+  trusted {
+    // svr2_init initiates the enclave.
+    //
+    // Args:
+    //   enclave_id:  Unique identifier for this enclave (will be passed out
+    //       in svr2_output_message calls to differentiate calls from multiple
+    //       enclaves.
+    //   config{,_size}:  Serialized EnclaveConfig protobuf.
+    //   peer_id{,32}: The peer_id is the public key of anenclave generated 
+    //                 key pair and is generated internally
+    // Returns:  error::Error as int.
+    public int svr2_init(
+        size_t config_size,
+        [in, size=config_size] unsigned char* config,
+        [out, size=32] unsigned char* peer_id);
+
+    // svr2_input_message sends a message from host->enclave.
+    // Should not be called concurrently.  The enclave won't care, but
+    // the caller won't know which svr2_output_message is associated with
+    // which input message, as enclave-side locking will be opaque.
+    //
+    // Args:
+    //   msg{,_size}:  Serialized HostToEnclaveMessage.
+    // Returns:  error::Error as int.
+    public int svr2_input_message(
+        size_t msg_size,
+        [in, size=msg_size] unsigned char* msg);
+  };
+
+  untrusted {
+    // svr2_output_message sends a message from enclave->host.
+    // It will only be called during a call to svr2_input_message.
+    //
+    // Args:
+    //   msg{,_size}:  Serialized EnclaveToHostMessage.
+    void svr2_output_message(
+        size_t msg_size,
+        [in, size=msg_size] unsigned char* msg);
+  };
+};
+
+

@@ -1,0 +1,4 @@
+include Makefile.base
+
+CFLAGS ?= $(NSM_CFLAGS)
+CXXFLAGS ?= $(NSM_CXXFLAGS)

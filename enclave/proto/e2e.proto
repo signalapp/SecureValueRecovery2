@@ -1,0 +1,156 @@
+// Copyright 2023 Signal Messenger, LLC
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// Contains messages for enclave-to-enclave (e2e) communication over a peer connection.
+syntax = "proto3";
+
+package svr2.e2e;
+option optimize_for = LITE_RUNTIME;
+
+import "msgs.proto";
+import "raft.proto";
+import "error.proto";
+import "enclaveconfig.proto";
+
+//
+// transactions
+//
+
+//
+// enclave-to-enclave requests
+//
+
+message Attestation {
+  bytes evidence = 1;
+  bytes endorsements = 2;
+}
+
+//
+// replica to replica
+//
+
+message EnclaveToEnclaveMessage {
+  oneof inner {
+    bool connected = 1;
+    raft.RaftMessage raft_message = 2;
+    // attestation_update messages are sent within an EnclaveToEnclaveMessage
+    // regularly across peer-to-peer links, to keep the remote party happy that the
+    // local party is still able to attest.  It's up to the local party to send these
+    // regularly; not doing so can shut down a connection.
+    Attestation attestation_update = 3;
+
+    // Enclave-to-enclave transactions, requests and repsonses
+    TransactionRequest transaction_request = 4;
+    TransactionResponse transaction_response = 5;
+  };
+}
+
+message ConnectRequest {
+  Attestation attestation = 1;
+  bytes handshake = 2;
+}
+
+message TransactionRequest {
+  uint64 request_id = 1;
+  oneof inner {
+    bool ping = 2;  // should return status=OK
+    bool get_raft = 3;
+    ReplicateStateRequest replicate_state = 4;
+    ReplicateStatePush replicate_state_push = 5;
+    bool raft_membership_request = 6;
+    bool raft_voting_request = 7;
+    bytes raft_write = 8;
+    uint64 new_timestamp_unix_secs = 9;
+    bool raft_removal_request = 10;
+  }
+}
+
+message TransactionResponse {
+  uint64 request_id = 1;
+  oneof inner {
+    error.Error status = 2;
+    GetRaftResponse get_raft = 3;
+    raft.LogLocation raft_membership_response = 4;
+    raft.LogLocation raft_voting_response = 5;
+    raft.LogLocation raft_write = 6;
+  }
+}
+
+message GetRaftResponse {
+  enclaveconfig.RaftGroupConfig group_config = 1;
+  raft.ReplicaGroup replica_group = 2;
+}
+
+message DB2RowState {
+  bytes backup_id = 1;
+  uint32 tries = 2;
+  bytes data = 3;
+  bytes pin = 4;
+  enum State {
+    UNINITIATED = 0;
+    POPULATED = 1;
+    AVAILABLE = 2;
+  }
+  State state = 5;
+}
+
+message DB3RowState {
+  bytes backup_id = 1;
+  bytes priv = 2;
+  uint32 tries = 3;
+}
+
+// --- Replication of State ---
+//
+// ReplicateStateRequest and ReplicateStatePush allow a new and not-yet-part-of-Raft
+// replica to get state from an existing, part-of-Raft replica.  By sending a number of
+// ..Requests and getting associated ..Responses, the requester will get its Raft log and
+// database to a state up to the responder's last committed index.  It can then join the
+// Raft group with this log/db and become a contributing member.
+//
+// Requesters move chunk by chunk through the Raft log and the db simultaneously. To do 
+// this, requesters track cursos pointing to their current location in the raft log 
+// and db (both initially unset) and provide them on every request. 
+//
+// Responders must ensure
+// 1. No uncommitted log entries are returned
+// 2. Returned rows will be in the range (req.db_from_key_exclusive, rows[-1]], 
+//    and must reflect the state of the db in that range at the time of the last
+//    returned log index (resp.entries[-1])
+//
+// If a responder has many committed log entries that have already been applied to their db,
+// they may have to return no db rows in a response in order to ensure property 2 is met. 
+//
+//  Request{} ->
+//  <- Push{first=oldest responder has, entries=[...], rows=[]}
+//  <- Push{first=logs_from_idx_inclusive, entries=[...]}
+//  ... the pusher reaches their commit index, and can now return DB state
+//  <- Push{first=logs_from_idx_inclusive, entries=[...], rows=[...]}
+//  <- Push{first=logs_from_idx_inclusive, entries=[...], rows=[...]}
+//  ...
+//  <- Push{first=logs_from_idx_inclusive, entries=[...], rows=[...], db_to_end=true}
+//  <- status=OK
+//
+// At this time, the requester has all database and log state and may request
+// entry into the Raft group.
+message ReplicateStateRequest {
+  uint64 group_id = 1;
+  uint64 replication_id = 2;
+}
+message ReplicateStatePush {
+  uint64 replication_id = 1;
+  uint64 replication_sequence = 2;
+
+  // Log replication, only committed logs will be returned.
+  uint64 first_log_idx = 3;
+  repeated raft.LogEntry entries = 4;
+
+  // Database replication (all rows as of commitment of last row in [entries])
+  bool db_to_end = 5;      // true if the database range is ..., end_of_db]
+  repeated bytes rows = 6; // Rows are serialized protos in a database-specific format.
+
+  // Raft membership at the commit index of the source.
+  // This may be set even if this response doesn't contain
+  // logs up to the point of the commit idx.
+  raft.ReplicaGroup committed_membership = 7;
+}

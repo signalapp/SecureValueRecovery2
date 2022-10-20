@@ -1,0 +1,164 @@
+SHELL=/bin/bash -o pipefail  # needed for pipefail
+CXX=clang++-11
+CC=clang-11
+OE_DIR ?= /opt/openenclave
+OE_EDGER8R = $(OE_DIR)/bin/oeedger8r
+ADDITIONAL_CFLAGS ?= 
+ifeq ($(V),)
+	QUIET=@
+	QUIET_OUT=&>/dev/null
+else
+	QUIET=
+	QUIET_OUT=
+endif
+
+SECURITY_CFLAGS = \
+  -fstack-protector-strong \
+  -fstack-clash-protection \
+  -mshstk \
+  -D_FORTIFY_SOURCE=3 \
+  -fsanitize=bounds \
+  -fsanitize-undefined-trap-on-error \
+## SECURITY_CFLAGS
+BASE_CFLAGS = \
+  -fPIC \
+  -iquote $(CURDIR) \
+  -iquote $(CURDIR)/build \
+  -g \
+  -DOE_API_VERSION=2 \
+  -Wthread-safety \
+  -O2 \
+  $(SECURITY_CFLAGS) \
+  $(ADDITIONAL_CFLAGS) \
+## BASE_CFLAGS
+BASE_CXXFLAGS = \
+  $(BASE_CFLAGS) \
+  -std=c++17 \
+## BASE_CXXFLAGS
+
+BASE_LDFLAGS = \
+  -Wl,-wrap=noise_rand_bytes \
+  -Wl,-z,relro \
+  -Wl,-z,now \
+  -Wl,-z,noexecstack \
+  -Wl,-z,separate-code \
+## BASE_LDFLAGS
+
+LIBRARY_CFLAGS = \
+  -I$(CURDIR)/protobuf/src \
+  -I$(CURDIR)/noise-c/include \
+  -I$(CURDIR)/googletest/googletest/include \
+  -I$(CURDIR)/libsodium/src/libsodium/include \
+## LIBRARY_CFLAGS
+
+TEST_CFLAGS ?= \
+  $(BASE_CFLAGS) \
+  $(LIBRARY_CFLAGS) \
+  -DIS_TEST \
+## TEST_CFLAGS
+TEST_CXXFLAGS ?= \
+  $(BASE_CXXFLAGS) \
+  $(LIBRARY_CFLAGS) \
+  -DIS_TEST \
+## TEST_CXXFLAGS
+TEST_LDFLAGS ?= \
+  $(BASE_LDFLAGS) \
+  -lpthread \
+## TEST_LDFLAGS
+
+OE_CFLAGS ?= $(shell pkg-config oeenclave-clang --cflags)
+SGX_CFLAGS ?= \
+  $(BASE_CFLAGS) \
+  $(OE_CFLAGS) \
+  $(LIBRARY_CFLAGS) \
+## SGX_CFLAGS
+OE_CXXFLAGS ?= $(shell pkg-config oeenclave-clang++ --cflags)
+SGX_CXXFLAGS ?= \
+  $(BASE_CXXFLAGS) \
+  $(OE_CXXFLAGS) \
+  $(LIBRARY_CFLAGS) \
+## SGX_CXXFLAGS
+OE_LDFLAGS ?= $(shell pkg-config oeenclave-clang++ --libs)
+OE_MBEDTLS_LDFLAGS ?= $(shell pkg-config oeenclave-clang++ --variable=mbedtlslibs)
+SGX_LDFLAGS ?= \
+  $(BASE_LDFLAGS) \
+  $(OE_LDFLAGS) \
+  $(OE_MBEDTLS_LDFLAGS) \
+## SGX_LDFLAGS
+
+NSM_CFLAGS ?= \
+  $(BASE_CFLAGS) \
+  $(LIBRARY_CFLAGS) \
+  -I/opt/nsm \
+  -mllvm -x86-speculative-load-hardening \
+## NSM_CFLAGS
+NSM_CXXFLAGS ?= \
+  $(BASE_CXXFLAGS) \
+  $(LIBRARY_CFLAGS) \
+  -I/opt/nsm \
+## NSM_CXXFLAGS
+NSM_LDFLAGS ?= \
+  $(BASE_LDFLAGS) \
+  /opt/nsm/libnsm.a \
+  -lpthread \
+  -lrt \
+  -ldl \
+## NSM_LDFLAGS
+
+OE_INCDIR = $(shell pkg-config oeenclave-clang++ --variable=includedir)
+
+OE_HOST_CFLAGS ?= $(shell pkg-config oehost-clang --cflags)
+OE_HOST_CXXFLAGS ?= $(shell pkg-config oehost-clang++ --cflags)
+OE_HOST_LDFLAGS ?= $(shell pkg-config oehost-clang++ --libs)
+OE_HOST_MBEDTLS_LDFLAGS ?= $(shell pkg-config oehost-clang++ --variable=mbedtlslibs)
+HOST_CFLAGS ?= \
+  $(BASE_CFLAGS) \
+  $(OE_HOST_CFLAGS) \
+  $(LIBRARY_CFLAGS) \
+## HOST_CFLAGS
+HOST_CXXFLAGS ?= \
+  $(BASE_CXXFLAGS) \
+  $(OE_HOST_CXXFLAGS) \
+  $(LIBRARY_CFLAGS) \
+## HOST_CXXFLAGS
+HOST_LDFLAGS ?= \
+  $(BASE_LDFLAGS) \
+  $(OE_HOST_LDFLAGS) \
+  $(OE_HOST_MBEDTLS_LDFLAGS) \
+## HOST_LDFLAGS
+
+WARNING_CFLAGS ?= \
+  -Werror \
+  -Wall \
+  -Wextra \
+  -Wpedantic \
+  -Walloca \
+  -Wcast-qual \
+  -Wformat=2 \
+  -Wformat-security \
+  -Wnull-dereference \
+  -Wstack-protector \
+  -Wvla \
+  -Warray-bounds \
+  -Warray-bounds-pointer-arithmetic \
+  -Wassign-enum \
+  -Wbad-function-cast \
+  -Wfloat-equal \
+  -Wformat-type-confusion \
+  -Widiomatic-parentheses \
+  -Wimplicit-fallthrough \
+  -Wloop-analysis \
+  -Wpointer-arith \
+  -Wshift-sign-overflow \
+  -Wtautological-constant-in-range-compare \
+  -Wunreachable-code-aggressive \
+  -Wthread-safety \
+  -Wthread-safety-beta \
+  -Wcomma \
+  -Wno-unused-parameter \
+  -Wno-bitwise-op-parentheses \
+  -Wno-shift-op-parentheses \
+  -Wno-c++20-designator \
+  -Wno-zero-length-array \
+  -Wno-c99-extensions \
+##WARNING_CFLAGS
