@@ -15,7 +15,7 @@ The host interface includes a number of administrative commands (create or join
 a replica group, get enclave status, tick the Raft timer, etc.). It also has 
 commands to forward wrapped peer or client requests.
 
-The peer interface includes Raft protocol messages, attestation updates, and as
+The peer interface includes Raft protocol messages, attestation updates, and
 a number of other "Enclave to Enclave [E2E] transactions" used to get 
 information about a replica group, transfer database state, and join a replica
 group.
@@ -39,7 +39,7 @@ important implementation details as follows:
   that *all* client requests are sent this way.
 * `HostToEnclaveRequest`s are further subdivided into administrative requests
   and requests on behalf of clients. Client requests may be Noise encrypted
-  (backup, restore, delete) or unencrypted (create new client, create backup).
+  (backup, restore, delete) or unencrypted (create new client).
   Encrypted client messages are defined in 
   ([shared/proto/msgs.proto](../../shared/proto/msgs.proto)). Unencrypted ones
   are defined as submessages of `HostToEnclaveRequest` in
@@ -89,7 +89,7 @@ that must be handled asynchronously. These are all sent as a
    target raft group be up and running. Raft joining is a
    multi-step process described in detail in [Healing.md](./Healing.md). In
    this process there will be an enclave-to-enclave call that creates a new
-   Raft configuration. This change must requires consensus of the existing
+   Raft configuration. This change requires consensus of the existing
    voting members. If successful the enclave will be a non-voting, 
    up-to-date member of the specified Raft.
 1. **PingPeer** (`EnclavePeer`) Tells an enclave to check connectivity with 

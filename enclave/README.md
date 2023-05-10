@@ -1,8 +1,13 @@
 # SVR2 Enclave Code
 
-SVR2 uses C++ as its language for building an in-enclave binary, with the
-OpenEnclave (hereafter 'OE') SDK.  The binary, `enclave.bin` is then signed via
-OE's `oesign`, which doesn't matter to us because we don't trust the signature,
+SVR2 uses C++ as its language for building an in-enclave binary. The details
+of the build process and the host-enclave interaction depend on the platform.
+Since SVR2 is deployed on Intel SGX, this document will describe SGX-specific
+implementation details. 
+
+For SGX, the enclave binary is built with the OpenEnclave (hereafter 'OE') 
+SDK.  The binary, `enclave.bin` is then signed via OE's `oesign`, which 
+doesn't matter to us because we don't trust the signature,
 just the unique ID (SGX "mrenclave") of the resulting signed config.  However,
 the `oesign` process does one important thing:  it binds a config (either
 `svr2_test.conf` or `svr2.conf` to the resulting object.  Once this process
@@ -11,44 +16,13 @@ DCAP-based SGX enclave.
 
 # Host/enclave communication
 
-Most (all?) host/enclave communication happens through a single ocall/ecall
-combination, defined in `../shared/svr2.edl`:
+After initialization, all host/enclave communication happens through a single 
+ocall/ecall combination, defined in `../shared/svr2.edl`:
 
 - `svr2_input_message`:  Enclave receives a message (a serialized
   `HostToEnclaveMessage` protobuf) from the host.
 - `svr2_output_message`:  Enclave sends a message (a serialized
   `EnclaveToHostMessage` protobuf) to the host.
-
-The enclave expects (and enforces, via locking) that the `svr2_input_message`
-function is called sequentially.  It also guarantees that it will call the
-`svr2_output_message` function only during such a call, and sequentially.
-
-Thus, you might get the following control flow:
-
-```
-svr2_input_message(HostToEnclaveMessage1)
-  svr2_output_message(EnclaveToHostMessage1.1)
-  svr2_output_message(EnclaveToHostMessage1.2)
-  svr2_output_message(EnclaveToHostMessage1.3)
-svr2_input_message(HostToEnclaveMessage2)
-  svr2_output_message(EnclaveToHostMessage2.1)
-  svr2_output_message(EnclaveToHostMessage2.2)
-svr2_input_message(HostToEnclaveMessage3)
-svr2_input_message(HostToEnclaveMessage4)
-  svr2_output_message(HostToEnclaveMessage4.1)
-```
-
-In such a flow, we can reason that input message 1 has output messages
-1.1, 1.2, and 1.3, etc.  Note that each input can have an arbitrary number of
-outputs, including zero (e.g. message 3).  In other words, the enclave can
-be treated as a function:
-
-```
-func CallEnclave(HostToEnclaveMessage) []EnclaveToHostMessage
-```
-
-taking in a single HostToEnclaveMessage and returning a list of zero or more
-EnclaveToHostMessages.
 
 Certain messages are 'transactions', or messages with a `Request` that want
 a specific `Reply`.  It is important to note that if a request is

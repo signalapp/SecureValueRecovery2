@@ -7,15 +7,31 @@ the following sub-problems:
 - Remove old nodes when they're unable to serve (rebooted, etc)
 - Add new nodes to replace removed nodes
 
-Removing of nodes is currently unimplemented, more on that later.
+## Removing Nodes
+An SVR2 node that fails or otherwise becomes disconnected from its replica
+group will eventually be removed from the group without intervention. This is
+a two step process. First, if the leader has not received a message from a follower for
+`replica_voting_timeout_ticks` ticks (configured in the `RaftConfig`), it will 
+propose a membership change to the group that demotes this replica to non-voting
+status. If a total of `replica_membership_timeout_ticks` ticks elapses without
+receiving a message from a replica, then the leader will propose a membership change
+to the group that removes this replica. When these changes happen, if other non-voting
+replicas are available and needed, the leader will propose to promote them to voting
+status.
+
+This process works for unexpected interruptions but is slow. When an SVR2 node needs
+to be shut down quickly in a controlled manner this can be done by sending a
+`relinquish_leadership` command (if the node is a leader), then a `request_removal`
+command. This process happens automatically when the host gets a SIGTERM.
 
 ## Adding new nodes
 
 A new SVR2 node that wants to become a replica within the Raft cluster
 currently goes through the following state transitions to get it to a
 serving state.  These are currently driven by host-side requests, but
-in near-future we hope to make the decision to promote replicas to
-voting status an in-enclave decision.
+the decision to promote replicas to voting status is also made in-enclave
+when loaded non-voting replicas are available and more voting members are
+allowed.
 
 In short, a node starts up without any Raft state.  It then decides
 to follow one of two paths:
@@ -45,7 +61,7 @@ transactions (protos in `enclave/proto/e2e.proto`).
 
 ### Host join request
 
-The host starts the join by sending a `HostToEnclaveRuequst.join_raft` call
+The host starts the join by sending a `HostToEnclaveRequest.join_raft` call
 to the enclave, with a PeerID it knows about that's part of the existing group.
 
 ### Get information about Raft group
@@ -86,13 +102,21 @@ act as such.
 
 ### Request vote
 
-This is another mechanism that's currently driven by the host, but should
-probably become an automatic enclave function.  After an enclave becomes
+This is another mechanism that can driven by the host, but is also handled
+automatically by the enclave in some situations.  After an enclave becomes
 a non-voting member of the Raft group, the host can send a
-`HostToEnclaveRuequst.request_voting` request to the enclave.  This
+`HostToEnclaveRequest.request_voting` request to the enclave.  This
 instructs the enclave to send an `e2e::TransactionRequest.request_raft_voting`
 call to its current leader.  On success, the leader switches the replica's
 voting status from non-voting to voting by writing a new ReplicaGroup with
 the associated changes to its log.  The requesting node (and all other
-nodes in the Raft group) hear about this change via normal mechanisms for
+nodes in the Raft group) hears about this change via normal mechanisms for
 ReplicaGroup change.
+
+It is possible to configure an SVR2 replica group without using host-driven
+calls to request voting. As long as the number of voting members in a group
+is less than the `max_voting_replicas` value in the `RaftConfig` for the group,
+the leader will promote the most recently seen non-voting member of the group.
+This means that if an administrator adds `max_voting_replicas-1` members to a 
+group using the `request_raft_membership` command, they will all eventually 
+become voting members without further commands from the host.
