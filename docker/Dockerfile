@@ -56,8 +56,6 @@ WORKDIR /build
 RUN set -eux; \
     (cd nsm-lib && cargo build --release --locked)
 RUN ar mD target/release/libnsm.a $(ar t target/release/libnsm.a | env -u LANG LC_ALL=C sort)
-COPY docker/check_hash.sh docker/sha256.* ./
-RUN ./check_hash.sh target/release/libnsm.a
 
 FROM base AS builder
 
@@ -123,6 +121,8 @@ CMD ["/bin/bash"]
 
 FROM builder AS build
 
+COPY docker/check_hash.sh docker/sha256.* ./
+RUN ./check_hash.sh /opt/nsm/libnsm.a
 COPY . /src
 RUN cd /src && make clean && make -j16 all enclave_releaser
 
