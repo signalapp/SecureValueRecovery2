@@ -65,6 +65,7 @@ error::Error Socket::ReadPB(context::Context* ctx, google::protobuf::MessageLite
   if (to_read > INT32_MAX) {
     return COUNTED_ERROR(Socket_ReadTooBig);
   }
+  LOG(VERBOSE) << "Reading " << to_read << " byte proto";
   if (read_buf_.size() < to_read) {
     read_buf_.resize(to_read);
   }
@@ -84,6 +85,7 @@ error::Error Socket::WritePB(context::Context* ctx, const google::protobuf::Mess
   write_buf_.resize(size);
   uint8_t* end = pb.SerializeWithCachedSizesToArray(write_buf_.data());
   size = end - write_buf_.data();
+  LOG(VERBOSE) << "Writing " << size << " byte proto";
 
   uint8_t uint32_buf[4] = {0};
   util::BigEndian32Bytes(size, uint32_buf);

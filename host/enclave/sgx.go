@@ -201,6 +201,7 @@ func (s *SGX) SendMessage(msgPB *pb.UntrustedMessage) error {
 
 // Close terminates and releases resources for the enclave.
 func (s *SGX) Close() {
+	logger.Errorf("Closing SGX")
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	C.oe_terminate_enclave(s.ptr)

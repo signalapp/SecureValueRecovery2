@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 #include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #include <linux/vm_sockets.h>
 #include <pthread.h>
 #include <errno.h>
 #include <unistd.h>
+#include <cstdlib>
 
 #include "env/env.h"
 #include "core/core.h"
@@ -20,8 +23,8 @@
 
 namespace svr2 {
 
-#define RETURN_ERRNO_ERROR_IF(x, err) do { \
-  if ((x)) { \
+#define RETURN_ERRNO_ERROR_UNLESS(x, err) do { \
+  if (!(x)) { \
     int e = errno; \
     LOG(ERROR) << "(" << #x << ") evaluated to false, errno(" << e << "): " << strerror(e); \
     return COUNTED_ERROR(err); \
@@ -33,35 +36,63 @@ namespace svr2 {
 // file descriptor, closing the listener.  We know that if this
 // socket dies, we stop serving, so there's no need to create an
 // accept loop.
-error::Error AcceptSocket(int* afd) {
+error::Error AcceptSocket(bool simulated, int port, int* afd) {
   int fd;
-  RETURN_ERRNO_ERROR_IF(
-      0 >= (fd = socket(AF_VSOCK, SOCK_STREAM, 0)),
+  RETURN_ERRNO_ERROR_UNLESS(
+      0 < (fd = socket(simulated ? AF_INET : AF_VSOCK, SOCK_STREAM, 0)),
       Nitro_SocketCreation);
 
-  struct sockaddr_vm my_addr;
-  memset(&my_addr, 0, sizeof(my_addr));
-  my_addr.svm_family = AF_VSOCK;
-  my_addr.svm_port = VMADDR_PORT_ANY;
-  my_addr.svm_cid = VMADDR_CID_ANY;
-  RETURN_ERRNO_ERROR_IF(
-      0 != bind(fd, (struct sockaddr *) &my_addr, sizeof(my_addr)),
+  struct sockaddr* addr;
+  socklen_t addr_size;
+
+  struct sockaddr_vm vm_addr;
+  struct sockaddr_in in_addr;
+  if (simulated) {
+    memset(&in_addr, 0, sizeof(in_addr));
+    in_addr.sin_family = AF_INET;
+    in_addr.sin_port = htons(port);
+    in_addr.sin_addr.s_addr = INADDR_ANY;
+    addr = reinterpret_cast<struct sockaddr*>(&in_addr);
+    addr_size = sizeof(in_addr);
+  } else {
+    memset(&vm_addr, 0, sizeof(vm_addr));
+    vm_addr.svm_family = AF_VSOCK;
+    vm_addr.svm_port = port;
+    vm_addr.svm_cid = VMADDR_CID_ANY;
+    addr = reinterpret_cast<struct sockaddr*>(&vm_addr);
+    addr_size = sizeof(vm_addr);
+  }
+  LOG(INFO) << "Binding to port " << port;
+  RETURN_ERRNO_ERROR_UNLESS(
+      0 == bind(fd, addr, addr_size),
       Nitro_SocketBind);
-  RETURN_ERRNO_ERROR_IF(
-      0 != listen(fd, 2),
+  RETURN_ERRNO_ERROR_UNLESS(
+      0 == listen(fd, 10),
       Nitro_SocketListen);
 
   *afd = 0;
+  socklen_t initial_size = addr_size;
   while (*afd <= 0) {
-    struct sockaddr_vm remote_addr;
-    socklen_t remote_len = sizeof(remote_addr);
-    *afd = accept4(fd, reinterpret_cast<struct sockaddr*>(&remote_addr), &remote_len, SOCK_CLOEXEC);
-    RETURN_ERRNO_ERROR_IF(
-        *afd <= 0 && errno != EINTR && errno != ECONNABORTED,
+    LOG(INFO) << "Accepting...";
+    addr_size = initial_size;
+    memset(addr, 0, addr_size);
+    *afd = accept4(fd, addr, &addr_size, SOCK_CLOEXEC);
+    RETURN_ERRNO_ERROR_UNLESS(
+        *afd > 0 || errno == EINTR || errno == ECONNABORTED,
         Nitro_SocketAccept);
+    uint8_t buf[1];
+    auto got = recv(*afd, buf, sizeof(buf), MSG_PEEK);
+    if (got == 0) {
+      LOG(INFO) << "Socket opened then closed without any data being sent, assuming a health check";
+      close(*afd);
+      *afd = 0;
+    } else {
+      RETURN_ERRNO_ERROR_UNLESS(got == 1, Nitro_SocketAccept);
+    }
   }
   shutdown(fd, SHUT_RDWR);
   close(fd);
+  LOG(INFO) << "Sucessfully accepted connection on FD=" << *afd;
   return error::OK;
 }
 
@@ -87,37 +118,48 @@ error::Error RunServerThread(core::Core* core, socketwrap::Socket* sock) {
 }
 
 // Read an init message from a socket and use it to create a new core object.
-std::pair<std::unique_ptr<core::Core>, error::Error> InitCore(socketwrap::Socket* sock) {
+std::pair<std::unique_ptr<core::Core>, error::Error> InitCore(socketwrap::Socket* sock, bool simulated) {
   context::Context ctx;
-  auto init = ctx.Protobuf<nitro::InboundMessage>();
-  if (error::Error err = sock->ReadPB(&ctx, init); err != error::OK) {
+  auto pb = ctx.Protobuf<nitro::InboundMessage>();
+  LOG(INFO) << "Reading init message";
+  if (error::Error err = sock->ReadPB(&ctx, pb); err != error::OK) {
     return std::make_pair(nullptr, err);
   }
-  if (init->inner_case() != nitro::InboundMessage::kInit) {
+  if (pb->inner_case() != nitro::InboundMessage::kInit) {
     return std::make_pair(nullptr, COUNTED_ERROR(Nitro_InboundNotInit));
   }
+  auto init = pb->init();
+  if (init.initial_log_level() != enclaveconfig::LOG_LEVEL_NONE) {
+    util::SetLogLevel(init.initial_log_level());
+  }
+  CHECK(init.group_config().simulated() == simulated);
+  env::Init(init.group_config().simulated());
+  LOG(INFO) << "Creating core";
   auto [core_ptr, err] = core::Core::Create(
       &ctx,
-      init->init());
+      init);
   if (err == error::OK) {
+    LOG(INFO) << "Writing init message";
     auto out = ctx.Protobuf<nitro::OutboundMessage>();
     core_ptr->ID().ToString(out->mutable_init()->mutable_peer_id());
     err = sock->WritePB(&ctx, *out);
   }
+  LOG(INFO) << "Core creation: " << err;
   return std::make_pair(std::move(core_ptr), err);
 }
 
 // Run a server, returning an error when it dies.
-error::Error RunServer() {
+error::Error RunServer(bool simulated, int port) {
   int fd;
-  RETURN_IF_ERROR(AcceptSocket(&fd));
+  RETURN_IF_ERROR(AcceptSocket(simulated, port, &fd));
   socketwrap::Socket sock(fd);
   auto sockp = &sock;
   std::vector<std::thread> threads;
   threads.emplace_back([sockp]{
+    LOG(INFO) << "Starting thread to send NSM messages";
     LOG(FATAL) << env::nsm::SendNsmMessages(sockp);
   });
-  auto [c, err] = InitCore(&sock);
+  auto [c, err] = InitCore(&sock, simulated);
   RETURN_IF_ERROR(err);
   auto cp = c.get();
   for (size_t i = 0; i < 32 /* chosen by random dice roll */; i++) {
@@ -131,14 +173,28 @@ error::Error RunServer() {
   return error::OK;  // unreachable
 }
 
-error::Error Run() {
-  env::Init();
-  return RunServer();
-}
-
 }  // namespace svr2
 
 int main(int argc, char** argv) {
-  LOG(FATAL) << svr2::Run();
+  bool simulated = false;
+  int port = 27427;
+  for (int i = 1; i < argc; i++) {
+    std::string arg(argv[i]);
+    if (arg == "--simulated") {
+      simulated = true;
+      LOG(INFO) << "Running in simulated mode";
+      continue;
+    } else if (arg.rfind("--port=", 0) == 0) {
+      port = atoi(arg.data() + strlen("--port="));
+      if (port > 0 && port < 65536) {
+        continue;
+      }
+    }
+    LOG(FATAL) << "Usage: " << argv[0]
+        << " [--simulated]";
+  }
+  LOG(INFO) << "Running on port " << port << " with simulated=" << simulated;
+  auto err = svr2::RunServer(simulated, port);
+  LOG(FATAL) << err;
   return -1;
 }

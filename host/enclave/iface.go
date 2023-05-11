@@ -13,5 +13,4 @@ type Enclave interface {
 	PID() peerid.PeerID
 	OutputMessages() <-chan *pb.EnclaveMessage
 	SendMessage(msgPB *pb.UntrustedMessage) error
-	Close()
 }

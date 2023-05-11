@@ -27,7 +27,7 @@ class HashInts : public Hasher {
 class HasherTest : public ::testing::Test {
  protected:
   static void SetUpTestSuite() {
-    env::Init();
+    env::Init(env::SIMULATED);
   }
 };
 

@@ -7,12 +7,19 @@ import (
 	"context"
 	"encoding/base64"
 	"flag"
+	"fmt"
+	"io"
+	"log"
+	"net"
 	"os"
+	"os/exec"
 	"os/signal"
+	"time"
 
 	"github.com/armon/go-metrics/datadog"
 	"github.com/signalapp/svr2/auth"
 	"github.com/signalapp/svr2/config"
+	"github.com/signalapp/svr2/enclave"
 	"github.com/signalapp/svr2/logger"
 	"github.com/signalapp/svr2/service"
 	"google.golang.org/protobuf/encoding/prototext"
@@ -24,10 +31,43 @@ import (
 )
 
 var (
-	enclavePath = flag.String("enclave_path", "", "Path to binary holding the enclave")
+	sgxPath     = flag.String("sgx_path", "", "Path to binary holding the sgx enclave")
 	econfigPath = flag.String("econfig_path", "", "Path to enclave configuration prototext file")
 	hconfigPath = flag.String("hconfig_path", "", "Path to host configuration yaml file")
+	enclaveType = flag.String("enclave_type", "sgx", "one of {sgx, nitro}")
+	nitroPort   = flag.Int("nitro_port", 27427, "Nitro port if --enclave_type=nitro")
+	nitroPath   = flag.String("nitro_path", "", "Path to nitro binary for if enclave is simulated")
+	nitroCID    = flag.Int("nitro_cid", 16, "Nitro CID")
 )
+
+func runSimulatedNitro(ctx context.Context) {
+	cmd := exec.CommandContext(ctx, *nitroPath, "--simulated", fmt.Sprintf("--port=%d", *nitroPort))
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		logger.Fatalf("getting stdout of simulated nitro: %v", err)
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		logger.Fatalf("getting stderr of simulated nitro: %v", err)
+	}
+	go io.Copy(os.Stdout, stdout)
+	go io.Copy(os.Stderr, stderr)
+	cmd.Start()
+	go func() {
+		logger.Fatalf("Nitro simulated command finished: %v", cmd.Wait())
+	}()
+	for start := time.Now(); time.Now().Before(start.Add(time.Second * 30)); time.Sleep(time.Second / 10) {
+		conn, err := net.Dial("tcp", fmt.Sprintf("localhost:%d", *nitroPort))
+		if err != nil {
+			log.Printf("Waiting for nitro port %d: %v", *nitroPort, err)
+		} else {
+			log.Printf("Successfully connected to nitro port %d", *nitroPort)
+			conn.Close()
+			return
+		}
+	}
+	log.Fatalf("Unable to connect to nitro port after 30 seconds")
+}
 
 func main() {
 	flag.Parse()
@@ -92,6 +132,30 @@ func main() {
 		}
 	}()
 
-	err = service.Start(ctx, &econfig, hconfig, *enclavePath, authenticator)
+	var enc enclave.Enclave
+	logger.Infof("creating enclave")
+	switch *enclaveType {
+	case "sgx":
+		sgx := enclave.SGXEnclave()
+		if err := sgx.Init(*sgxPath, &econfig); err != nil {
+			logger.Fatalf("creating sgx enclave: %v", err)
+		}
+		defer sgx.Close()
+		enc = sgx
+	case "nitro":
+		if econfig.GroupConfig.Simulated {
+			runSimulatedNitro(ctx)
+		}
+		nitro, err := enclave.NewNitro(&econfig, *nitroPort, *nitroCID)
+		if err != nil {
+			logger.Fatalf("creating nitro connection: %v", err)
+		}
+		defer nitro.Close()
+		enc = nitro
+	default:
+		logger.Fatalf("invalid enclave type %q", *enclaveType)
+	}
+
+	err = service.Start(ctx, hconfig, authenticator, enc)
 	logger.Fatalw("Shutting down", "error", err)
 }

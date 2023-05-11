@@ -17,7 +17,7 @@
 namespace svr2::env {
 
 TEST(EnvTest, Random) {
-  Init();
+  Init(SIMULATED);
   uint8_t got[260];
   ASSERT_EQ(error::OK, environment->RandomBytes(got, sizeof(got)));
   LOG(INFO) << "Bytes: " << util::BytesToHex(got, 8);

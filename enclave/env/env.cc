@@ -5,6 +5,7 @@
 #include "util/macros.h"
 #include <sodium/core.h>
 #include <sodium/randombytes.h>
+#include <stdio.h>
 
 namespace svr2::env {
 
@@ -40,7 +41,8 @@ class UnsetEnvironment : public Environment {
   }
 
   virtual void Log(int level, const std::string& msg) const {
-    CHECK(nullptr == "env::Init not called, environment not initiated");
+    // We allow logging to be called before Init.
+    fprintf(stderr, "Pre-env::Init LOG(%d): %s\n", level, msg.c_str());
   }
 
   virtual error::Error UpdateEnvStats() const {

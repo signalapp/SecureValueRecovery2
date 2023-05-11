@@ -31,11 +31,14 @@ class Log {
 };
 
 extern ::svr2::enclaveconfig::EnclaveLogLevel log_level_to_write;
+extern std::hash<std::thread::id> thread_id_hasher;
 
 void SetLogLevel(::svr2::enclaveconfig::EnclaveLogLevel level);
 
+uint64_t TimestampMicros();
+
 }  // namespace svr2::util
 
-#define LOG(x) if (::svr2::enclaveconfig::LOG_LEVEL_##x <= ::svr2::util::log_level_to_write) ::svr2::util::Log(::svr2::enclaveconfig::LOG_LEVEL_##x) << #x << "\t" << __FILE__ << ":" << __LINE__ << "(" << __FUNCTION__ << ") T=" << std::this_thread::get_id() << " - "
+#define LOG(x) if (::svr2::enclaveconfig::LOG_LEVEL_##x <= ::svr2::util::log_level_to_write) ::svr2::util::Log(::svr2::enclaveconfig::LOG_LEVEL_##x) << #x << "\t" << __FILE__ << ":" << __LINE__ << "(" << __FUNCTION__ << ") @ " << ::svr2::util::TimestampMicros() << " T=" << (::svr2::util::thread_id_hasher(std::this_thread::get_id()) % 10000) << " - "
 
 #endif  // __SVR2_UTIL_LOG_H__

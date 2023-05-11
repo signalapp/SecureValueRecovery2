@@ -9,38 +9,31 @@ import (
 	"io"
 	"log"
 	"net"
-	"os"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
+	"github.com/mdlayher/vsock"
+	"github.com/signalapp/svr2/logger"
 	"github.com/signalapp/svr2/peerid"
 	"google.golang.org/protobuf/proto"
 
 	pb "github.com/signalapp/svr2/proto"
 )
 
-// #include <sys/socket.h>
-// #include <linux/vm_sockets.h>
-import "C"
-
-func vSock() (net.Conn, error) {
-	fd, err := syscall.Socket(C.AF_VSOCK, syscall.SOCK_STREAM, 0)
-	if err != nil {
-		return nil, err
+func vSock(port, cid int, simulated bool) (_ net.Conn, returnedErr error) {
+	if simulated {
+		return net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 	}
-	// TODO: `connect` this socket.
-	f := os.NewFile(uintptr(fd), "vsock")
-	return net.FileConn(f)
+	return vsock.Dial(uint32(cid), uint32(port), nil)
 }
 
 type Nitro struct {
 	c   chan *pb.EnclaveMessage
 	pid peerid.PeerID
 
-	rMu, wMu sync.Mutex
-	sock     net.Conn
+	wMu  sync.Mutex
+	sock net.Conn
 
 	msgIDGen uint64
 	callMu   sync.Mutex
@@ -68,8 +61,6 @@ func (n *Nitro) send(pb proto.Message) error {
 }
 
 func (n *Nitro) recv(pb proto.Message) error {
-	n.rMu.Lock()
-	defer n.rMu.Unlock()
 	var sizeBuf [4]byte
 	if _, err := io.ReadFull(n.sock, sizeBuf[:]); err != nil {
 		return fmt.Errorf("reading size: %w", err)
@@ -84,18 +75,19 @@ func (n *Nitro) recv(pb proto.Message) error {
 	return nil
 }
 
-func NewNitro(config *pb.InitConfig) (_ *Nitro, returnedErr error) {
-	sock, err := vSock()
+func NewNitro(config *pb.InitConfig, port, cid int) (_ *Nitro, returnedErr error) {
+	sock, err := vSock(port, cid, config.GroupConfig.Simulated)
 	if err != nil {
-		return nil, fmt.Errorf("creating vsock: %w", err)
+		return nil, fmt.Errorf("creating nitro socket: %w", err)
 	}
 	n := &Nitro{
-		c:    make(chan *pb.EnclaveMessage, 100),
-		sock: sock,
+		c:     make(chan *pb.EnclaveMessage, 100),
+		sock:  sock,
+		calls: map[uint64]chan<- error{},
 	}
 	defer func() {
 		if returnedErr != nil {
-			n.sock.Close()
+			n.Close()
 		}
 	}()
 	config.InitialTimestampUnixSecs = uint64(time.Now().Unix())
@@ -149,7 +141,11 @@ func (n *Nitro) receivedResponse(m *pb.MsgCallResponse) error {
 		return fmt.Errorf("received response to msg %d which isn't an active call", m.Id)
 	}
 	delete(n.calls, m.Id)
-	done <- m.Status // should not block, since done is a buffered channel
+	if m.Status != pb.Error_OK {
+		done <- m.Status // should not block, since done is a buffered channel
+	} else {
+		done <- nil
+	}
 	return nil
 }
 
@@ -159,7 +155,7 @@ func (n *Nitro) readOutputs() {
 		err = n.readNextOutput()
 	}
 	log.Printf("nitro readOutputs failure: %v", err)
-	n.sock.Close()
+	n.Close()
 	close(n.c)
 }
 
@@ -193,12 +189,13 @@ func (n *Nitro) SendMessage(msgPB *pb.UntrustedMessage) error {
 		n.callMu.Lock()
 		delete(n.calls, id)
 		n.callMu.Unlock()
-		n.sock.Close() // a failure to send is a permanent failure
+		n.Close() // a failure to send is a permanent failure
 		return fmt.Errorf("sending: %w", err)
 	}
 	return <-done
 }
 
 func (n *Nitro) Close() {
+	logger.Errorf("Closing Nitro")
 	n.sock.Close()
 }

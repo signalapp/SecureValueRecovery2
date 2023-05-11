@@ -30,7 +30,7 @@ namespace svr2::db {
 class DB3Test : public ::testing::Test {
  protected:
   static void SetUpTestCase() {
-    env::Init();
+    env::Init(env::SIMULATED);
   }
 
   context::Context ctx;

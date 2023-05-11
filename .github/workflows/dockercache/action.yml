@@ -39,3 +39,10 @@ runs:
       if: steps.cached-docker.outputs.cache-hit != 'true'
       run: docker save --output dockerimage-${{ hashFiles(inputs.dockerfile) }}.tar ${{ inputs.imagename }}:latest $(docker history -q ${{ inputs.imagename }}:latest | grep -v missing)
       shell: bash
+
+    - name: Always save cache
+      uses: actions/cache/save@v3
+      if: steps.cached-docker.outputs.cache-hit != 'true'
+      with:
+        path: dockerimage-${{ hashFiles(inputs.dockerfile) }}.tar
+        key: ${{ runner.os }}-dockerimagetar-${{ hashFiles(inputs.dockerfile) }}

@@ -37,7 +37,7 @@ import (
 
 // Start starts all SVR components and only returns when a component has encountered an
 // unrecoverable error or the provided context has been cancelled.
-func Start(ctx context.Context, econfig *pb.InitConfig, hconfig *config.Config, enclavePath string, authenticator auth.Auth) error {
+func Start(ctx context.Context, hconfig *config.Config, authenticator auth.Auth, enc enclave.Enclave) error {
 	g, ctx := errgroup.WithContext(ctx)
 
 	// Start up the control server immediately, for debugging and liveness checking.
@@ -52,20 +52,14 @@ func Start(ctx context.Context, econfig *pb.InitConfig, hconfig *config.Config, 
 		return http.ListenAndServe(hconfig.ControlListenAddr, controlMux)
 	})
 
-	sgx := enclave.SGXEnclave()
-	logger.Infof("creating enclave")
-	if err := sgx.Init(enclavePath, econfig); err != nil {
-		logger.Fatalf("creating enclave: %v", err)
-	}
-	defer sgx.Close()
-	c, nodeID := sgx.OutputMessages(), sgx.PID()
+	c, nodeID := enc.OutputMessages(), enc.PID()
 
 	logger.WithGlobal(zap.String("me", nodeID.String()))
 	logger.Infow("created enclave")
 
 	txGen := &util.TxGenerator{}
 
-	dispatcher := dispatch.New(hconfig.Raft, txGen, sgx, c)
+	dispatcher := dispatch.New(hconfig.Raft, txGen, enc, c)
 
 	// listen for peer network requests
 	ln, err := net.Listen("tcp", hconfig.PeerAddr)

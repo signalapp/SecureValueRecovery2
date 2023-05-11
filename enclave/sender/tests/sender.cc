@@ -21,7 +21,7 @@
 namespace svr2::sender {
 
 TEST(SenderTest, SendViaTestEnv) {
-  env::Init();
+  env::Init(env::SIMULATED);
   EnclaveMessage m;
   m.mutable_peer_message()->set_syn("abc");
   Send(m);

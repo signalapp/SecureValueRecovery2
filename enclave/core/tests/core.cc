@@ -107,7 +107,7 @@ enum class CoreRole {
 class CoreTest : public ::testing::Test {
  protected:
   static void SetUpTestCase() {
-    env::Init();
+    env::Init(env::SIMULATED);
   }
   
   HostToEnclaveResponse Response(std::vector<EnclaveMessage> msgs) {

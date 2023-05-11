@@ -4,9 +4,6 @@ all: validate host enclave control
 
 MAKE_ARGS ?= --keep-going
 
-enclave_testbin: | git
-	$(MAKE) $(MAKE_ARGS) -C enclave build/enclave.test
-
 validate:
 	$(MAKE) $(MAKE_ARGS) -C enclave validate
 	$(MAKE) $(MAKE_ARGS) -C host validate
@@ -16,16 +13,16 @@ git:
 	git submodule init || true
 	git submodule update || true
 
-enclave: enclave_testbin
+enclave: | git
 	$(MAKE) $(MAKE_ARGS) -C enclave all
 
-enclave_test:
+enclave_test: | git
 	$(MAKE) $(MAKE_ARGS) -C enclave test
 
-host: enclave_testbin
+host: enclave | git
 	$(MAKE) $(MAKE_ARGS) -C host all
 
-control:
+control: | git
 	$(MAKE) $(MAKE_ARGS) -C host control
 
 clean:

@@ -43,7 +43,9 @@ class Environment {
 
 extern std::unique_ptr<Environment> environment;
 
-void Init(bool is_simulated = true);
+static const bool SIMULATED = true;
+static const bool NOT_SIMULATED = false;
+void Init(bool is_simulated);
 
 }  // namespace svr2::env
 

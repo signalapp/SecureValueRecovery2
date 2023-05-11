@@ -284,8 +284,9 @@ func (d *Dispatcher) forwardToEnclave(toEnclave *toEnclave) error {
 
 	d.setReceiver(txid(request.H2ERequest.RequestId), toEnclave.recv)
 	if err := d.enclave.SendMessage(toEnclave.message); err != nil {
-		d.deleteReceiver(txid(request.H2ERequest.RequestId))
-		close(toEnclave.recv)
+		if c := d.deleteReceiver(txid(request.H2ERequest.RequestId)); c != nil {
+			close(c)
+		}
 		return err
 	}
 	return nil
@@ -296,12 +297,11 @@ func (d *Dispatcher) forwardToHost(peerSender PeerSender, message *pb.EnclaveMes
 	case *pb.EnclaveMessage_H2EResponse:
 		metrics.IncrCounterWithLabels(processMessageCounterName, 1, []metrics.Label{{Name: "destination", Value: "host"}})
 		id := txid(v.H2EResponse.RequestId)
-		recv, ok := d.getReceiver(id)
-		if !ok {
+		recv := d.deleteReceiver(id)
+		if recv == nil {
 			return fmt.Errorf("response %v has no associated request", message)
 		}
 		recv <- message
-		d.deleteReceiver(id)
 		close(recv)
 	case *pb.EnclaveMessage_PeerMessage:
 		metrics.IncrCounterWithLabels(processMessageCounterName, 1, []metrics.Label{{Name: "destination", Value: "peer"}})
@@ -343,8 +343,10 @@ func (d *Dispatcher) setReceiver(id txid, recv chan *pb.EnclaveMessage) {
 	d.receivers[id] = recv
 }
 
-func (d *Dispatcher) deleteReceiver(id txid) {
+func (d *Dispatcher) deleteReceiver(id txid) chan *pb.EnclaveMessage {
 	d.receiversMu.Lock()
 	defer d.receiversMu.Unlock()
+	out := d.receivers[id]
 	delete(d.receivers, id)
+	return out
 }

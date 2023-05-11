@@ -25,6 +25,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/signalapp/svr2/auth"
 	"github.com/signalapp/svr2/config"
+	"github.com/signalapp/svr2/enclave"
 	"github.com/signalapp/svr2/logger"
 	"github.com/signalapp/svr2/servicetest"
 	"github.com/signalapp/svr2/web/client"
@@ -144,8 +145,20 @@ func startService(t *testing.T) *config.Config {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-	go func() { Start(ctx, &econfig, hconfig, "../../enclave/build/enclave.test", auth.AlwaysAllow) }()
+	t.Cleanup(func() {
+		logger.Errorf("Finishing (canceling) test")
+		cancel()
+	})
+
+	sgx := enclave.SGXEnclave()
+	if err := sgx.Init("../../enclave/build/enclave.test", &econfig); err != nil {
+		logger.Fatalf("creating sgx enclave: %v", err)
+	}
+	logger.Infof("Starting SGX service")
+	go func() {
+		defer sgx.Close()
+		Start(ctx, hconfig, auth.AlwaysAllow, sgx)
+	}()
 	waitForReady(t, hconfig.ControlListenAddr, time.Minute)
 	return hconfig
 }

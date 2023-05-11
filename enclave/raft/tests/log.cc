@@ -25,7 +25,7 @@ namespace svr2::raft {
 class LogTest : public ::testing::Test {
  protected:
   static void SetUpTestCase() {
-    env::Init();
+    env::Init(env::SIMULATED);
   }
 };
 

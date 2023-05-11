@@ -24,7 +24,7 @@ namespace svr2::groupclock {
 class ClockTest : public ::testing::Test {
  protected:
   static void SetUpTestCase() {
-    env::Init();
+    env::Init(env::SIMULATED);
   }
   context::Context ctx;
 };

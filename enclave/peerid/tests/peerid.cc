@@ -27,7 +27,7 @@ namespace svr2::peerid {
 class PeerIDTest : public ::testing::Test {
  protected:
   static void SetUpTestCase() {
-    env::Init();
+    env::Init(env::SIMULATED);
   }
 };
 

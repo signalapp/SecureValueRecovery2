@@ -4,6 +4,7 @@
 #include "util/log.h"
 #include "env/env.h"
 #include "util/macros.h"
+#include <sys/time.h>
 
 namespace svr2::util {
 
@@ -14,6 +15,8 @@ namespace svr2::util {
   enclaveconfig::LOG_LEVEL_INFO;
 #endif
 
+std::hash<std::thread::id> thread_id_hasher;
+
 Log::Log(::svr2::enclaveconfig::EnclaveLogLevel lvl) : lvl_(lvl) {}
 
 Log::~Log() {
@@ -23,6 +26,12 @@ Log::~Log() {
 
 void SetLogLevel(::svr2::enclaveconfig::EnclaveLogLevel level) {
   log_level_to_write = level;
+}
+
+uint64_t TimestampMicros() {
+  struct timeval tv;
+  if (0 != gettimeofday(&tv, NULL)) return -1;
+  return tv.tv_usec + (1000000 * tv.tv_sec);
 }
 
 }  // namespace svr2::util

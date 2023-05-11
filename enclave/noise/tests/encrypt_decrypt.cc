@@ -27,7 +27,7 @@ namespace svr2::noise {
 class CipherStateTest : public ::testing::Test {
  protected:
   static void SetUpTestCase() {
-    env::Init();
+    env::Init(env::SIMULATED);
   }
 
   void EncryptDecrypt(const std::string& plaintext, std::string* ciphertext_out, int type) {

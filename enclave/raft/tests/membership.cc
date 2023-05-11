@@ -27,7 +27,7 @@ namespace svr2::raft {
 class MembershipTest : public ::testing::Test {
  protected:
   static void SetUpTestCase() {
-    env::Init();
+    env::Init(env::SIMULATED);
   }
 
   error::Error ValidProgression(const ReplicaGroup& g1, const ReplicaGroup& g2, const std::string& leader, size_t supermajority) {

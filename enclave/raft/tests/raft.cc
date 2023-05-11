@@ -30,7 +30,7 @@ namespace svr2::raft {
 class RaftTest : public ::testing::Test {
  protected:
   static void SetUpTestCase() {
-    env::Init();
+    env::Init(env::SIMULATED);
   }
 
   enclaveconfig::RaftConfig DefaultConfig() {

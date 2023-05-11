@@ -33,7 +33,7 @@ namespace svr2::peers {
 class PeerManagerTest : public ::testing::Test {
  protected:
   static void SetUpTestCase() {
-    env::Init();
+    env::Init(env::SIMULATED);
   }
 
   e2e::Attestation attestation;

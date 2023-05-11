@@ -22,7 +22,7 @@
 namespace svr2 {
 
 TEST(NoiseWrap, RandomnessIsWrappedDeterministically) {
-  svr2::env::Init();
+  svr2::env::Init(env::SIMULATED);
   std::array<uint8_t, 8> out;
   ASSERT_EQ(NOISE_ERROR_NONE, noise_randstate_generate_simple(out.data(), out.size()));
   LOG(INFO) << "RAND: " << util::ToHex(out);

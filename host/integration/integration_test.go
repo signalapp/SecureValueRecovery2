@@ -33,7 +33,8 @@ import (
 // a compiled host binary to function, which can be explicitly provided via CLI flag
 
 var (
-	enclavePath = flag.String("enclave_path", "../../enclave/build/enclave.test", "Path to binary holding the enclave")
+	sgxPath     = flag.String("sgx_path", "../../enclave/build/enclave.test", "Path to binary holding the enclave")
+	nitroPath   = flag.String("nitro_path", "../../enclave/build/enclave.nsm", "Path to nitro binary")
 	hostPath    = flag.String("host_path", "../main", "Path to go host binary")
 	econfigPath = flag.String("econfig_path", "testdata/enclave.config", "Path to enclave configuration")
 	numNodes    = flag.Int("num_nodes", 3, "Number of nodes in the raft group")
@@ -41,6 +42,11 @@ var (
 	svrGroup   group
 	authSecret = "123456"
 	data       = []byte("some test data. must be at least 16 bytes")
+)
+
+const (
+	enclaveSGX   = "sgx"
+	enclaveNitro = "nitro"
 )
 
 func userName(i int) string {
@@ -182,11 +188,14 @@ func restore(t *testing.T, tc *servicetest.TestClient, pin []byte) {
 	}
 }
 
-func initializeAndRun(m *testing.M) int {
-	svrGroup = start()
-	defer svrGroup.stop()
+func run(m *testing.M, enclaveType string) int {
+	group := start(enclaveType)
+	defer group.stop()
 	return m.Run()
+}
 
+func initializeAndRun(m *testing.M) int {
+	return run(m, enclaveSGX) + run(m, enclaveNitro)
 }
 
 func TestMain(m *testing.M) {
@@ -210,6 +219,7 @@ const (
 	controlType addrType = iota
 	clientType
 	peerType
+	nitroType
 )
 
 func port(typ addrType, portOffset int) int {
@@ -220,6 +230,8 @@ func port(typ addrType, portOffset int) int {
 		return 8080 + portOffset
 	case peerType:
 		return 9000 + portOffset
+	case nitroType:
+		return 10000 + portOffset
 	}
 	return 0
 }
@@ -230,7 +242,7 @@ peerAddr: localhost:%v
 clientListenAddr: localhost:%v
 controlListenAddr: localhost:%v
 raft:
-  tickDuration: 100ms
+  tickDuration: 250ms
 redis:
   addrs: [%v]`,
 		port(peerType, portOffset),
@@ -257,7 +269,7 @@ func waitForReady() error {
 	return nil
 }
 
-func start() group {
+func start(enclaveType string) group {
 	ctx, cancel := context.WithCancel(context.Background())
 	eg, ctx := errgroup.WithContext(ctx)
 
@@ -283,12 +295,25 @@ func start() group {
 		}
 		f.Close()
 
+		args := []string{
+			"-hconfig_path", f.Name(),
+			"-econfig_path", *econfigPath,
+		}
+		switch enclaveType {
+		case enclaveSGX:
+			args = append(args,
+				"-enclave_type", enclaveSGX,
+				"-sgx_path", *sgxPath)
+		case enclaveNitro:
+			args = append(args,
+				"-enclave_type", enclaveNitro,
+				"-nitro_path", *nitroPath,
+				"-nitro_port", fmt.Sprintf("%d", port(nitroType, i)))
+		}
 		cmd := exec.CommandContext(
 			ctx,
 			*hostPath,
-			"-hconfig_path", f.Name(),
-			"-econfig_path", *econfigPath,
-			"-enclave_path", *enclavePath)
+			args...)
 		cmd.Env = append(cmd.Env, "AUTH_SECRET="+base64.StdEncoding.EncodeToString([]byte(authSecret)))
 
 		stderr, err := cmd.StderrPipe()
