@@ -139,6 +139,7 @@ func (p *PeerClient) Send(msg *pb.PeerMessage) error {
 func (p *PeerClient) getOrCreateSender(msg *pb.PeerMessage, peerID peerid.PeerID) (*peerSender, error) {
 	p.sendersMu.Lock()
 	defer p.sendersMu.Unlock()
+	metrics.SetGauge(activeConnectionsGauge, float32(len(p.senders)))
 	sender, ok := p.senders[peerID]
 	if ok {
 		return sender, nil
