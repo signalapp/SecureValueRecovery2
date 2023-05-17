@@ -7,6 +7,7 @@
 
 #include "env/env.h"
 #include "util/log.h"
+#include "util/hex.h"
 #include "metrics/metrics.h"
 
 namespace svr2::client {
@@ -179,6 +180,11 @@ error::Error ClientManager::RotateKeyAndRefreshAttestation(context::Context* ctx
     COUNTER(client, key_rotate_failure)->Increment();
     return err;
   }
+
+  LOG(DEBUG) << "New client attestation: "
+      << "evidence:'" << util::ToHex(attestation.evidence()) << "' "
+      << "endorsements:'" << util::ToHex(attestation.endorsements()) << "'";
+
   ACQUIRE_LOCK(mu_, ctx, lock_clientmanager);
   dhstate_.swap(dhstate);
   attestation_.CopyFrom(attestation);
@@ -193,6 +199,11 @@ error::Error ClientManager::RefreshAttestation(context::Context* ctx, const encl
     COUNTER(client, attestation_refresh_failure)->Increment();
     return err;
   }
+
+  LOG(DEBUG) << "New client attestation: "
+      << "evidence:'" << util::ToHex(attestation.evidence()) << "' "
+      << "endorsements:'" << util::ToHex(attestation.endorsements()) << "'";
+
   ACQUIRE_LOCK(mu_, ctx, lock_clientmanager);
   attestation_.CopyFrom(attestation);
   // There's a chance that a RotateKeyAndRefreshAttestation call
