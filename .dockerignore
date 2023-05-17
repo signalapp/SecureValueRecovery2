@@ -3,3 +3,4 @@
 .git
 enclave/build
 enclave/core.*
+docker/Dockerfile

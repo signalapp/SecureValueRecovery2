@@ -138,7 +138,6 @@ COPY --from=build /src/host/cmd/control/control /bin/svr2control
 
 ENTRYPOINT ["/bin/svr2"]
 
-# Alpine 3.17.3
-FROM alpine@sha256:124c7d2707904eea7431fffe91522a01e5a861a624ee31d03372cc1d138a3126 AS nsmrun
+FROM public.ecr.aws/amazonlinux/amazonlinux@sha256:94e7183b0739140dbd5b639fb7600f0a2299cec5df8780c26d9cb409da5315a9 AS nsmrun
 COPY --from=build /src/enclave/build/enclave.nsm /bin/svr2
 ENTRYPOINT ["/bin/svr2"]
