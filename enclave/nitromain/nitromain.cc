@@ -80,14 +80,19 @@ error::Error AcceptSocket(bool simulated, int port, int* afd) {
     RETURN_ERRNO_ERROR_UNLESS(
         *afd > 0 || errno == EINTR || errno == ECONNABORTED,
         Nitro_SocketAccept);
-    uint8_t buf[1];
-    auto got = recv(*afd, buf, sizeof(buf), MSG_PEEK);
+    uint8_t buf[1] = {0};
+    auto got = recv(*afd, buf, 1, 0);
     if (got == 0) {
       LOG(INFO) << "Socket opened then closed without any data being sent, assuming a health check";
       close(*afd);
       *afd = 0;
     } else {
       RETURN_ERRNO_ERROR_UNLESS(got == 1, Nitro_SocketAccept);
+      if (buf[0] != 'N') {
+        LOG(ERROR) << "Missing nitro hello byte";
+        return COUNTED_ERROR(Nitro_SocketAccept);
+      }
+      break;
     }
   }
   shutdown(fd, SHUT_RDWR);

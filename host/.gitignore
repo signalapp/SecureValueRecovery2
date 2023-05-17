@@ -4,3 +4,4 @@ enclave/c
 enclave/enclave.test
 cmd/control/control
 cmd/svr2client/svr2client
+miniredis/miniredis

@@ -80,6 +80,9 @@ func NewNitro(config *pb.InitConfig, port, cid int) (_ *Nitro, returnedErr error
 	if err != nil {
 		return nil, fmt.Errorf("creating nitro socket: %w", err)
 	}
+	if _, err := sock.Write([]byte{'N'}); err != nil {
+		return nil, fmt.Errorf("writing nitro hello byte: %w", err)
+	}
 	n := &Nitro{
 		c:     make(chan *pb.EnclaveMessage, 100),
 		sock:  sock,

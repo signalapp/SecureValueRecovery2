@@ -115,6 +115,7 @@ func Default() *Config {
 			Name:             "test",
 			MinSleepDuration: time.Second,
 			MaxSleepDuration: time.Second * 30,
+			Addrs:            []string{"localhost:6379"},
 		},
 		Limit: RateLimitConfig{
 			BucketSize:       10,
