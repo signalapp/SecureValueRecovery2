@@ -1655,7 +1655,7 @@ void Core::SendE2ETransaction(
   e2e->mutable_transaction_request()->set_request_id(tx);
   error::Error err = peer_manager_->SendToPeer(ctx, to, *e2e);
   if (err != error::OK) {
-    IDLOG(VERBOSE) << "failed to start transaction " << tx << " to " << to << ": " << err;
+    IDLOG(DEBUG) << "failed to start transaction " << tx << " to " << to << ": " << err;
     lock.unlock();
     // This is a problematic codepath right now, as we call the callback inline.
     // Sometimes, the callback has to acquire a lock that's already acquired
@@ -1664,7 +1664,7 @@ void Core::SendE2ETransaction(
     callback(ctx, err, nullptr);
     return;
   }
-  LOG(VERBOSE) << "successfully started transaction " << tx << " to " << to;
+  IDLOG(DEBUG) << "successfully started transaction " << tx << " to " << to;
   timeout::Cancel tc;
   if (with_timeout) {
     tc = timeout_.SetTimeout(ctx, enclave_config(ctx)->e2e_txn_timeout_ticks(),
@@ -1672,7 +1672,7 @@ void Core::SendE2ETransaction(
           ACQUIRE_NAMED_LOCK(lock, e2e_txn_mu_, ctx, lock_core_e2e_txns);
           auto f = outstanding_e2e_transactions_.find(tx);
           if (f == outstanding_e2e_transactions_.end()) return;
-          LOG(INFO) << "e2e transaction " << tx << "to " << to << " timed out";
+          IDLOG(DEBUG) << "e2e transaction " << tx << " to " << to << " timed out";
           E2ECallback cb = std::move(f->second.callback);
           outstanding_e2e_transactions_.erase(f);
           lock.unlock();

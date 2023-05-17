@@ -246,7 +246,9 @@ func (p *peerSender) run(ctx context.Context) error {
 	peerAddr, err := p.lookupPeerAddr(ctx)
 	if err != nil {
 		// this peer has gone away
-		logger.Warnw("could not lookup peer: %v, giving up", err)
+		logger.Warnw("could not lookup peer, giving up",
+			"peerID", p.remote,
+			"err", err)
 		return errAbandonPeer
 	}
 

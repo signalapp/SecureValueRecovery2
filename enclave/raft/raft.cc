@@ -708,11 +708,11 @@ void Raft::HandleAppendRequest(context::Context* ctx, const TermId& msg_term, co
       !log_ok)) {
     LogIdx our_last_idx = log_->last_idx();
     if (msg_term < current_term_) {
-      LOG(INFO) << "ignored message with " << msg_term << " < current " << current_term_;
+      LOG(INFO) << "ignored message with term " << msg_term << " < current " << current_term_;
     } else if (our_prev_log_term > 0) {
-      LOG(WARNING) << "rejected append from " << from << " with " << prev_log_idx << " at " << msg_prev_log_term << ", we have " << our_prev_log_term;
+      LOG(WARNING) << "rejected append from " << from << " with idx " << prev_log_idx << " at term " << msg_prev_log_term << ", we have " << our_prev_log_term;
     } else {
-      LOG(INFO) << "rejected append from " << from << " with " << prev_log_idx << ", we are behind at " << our_last_idx;
+      LOG(INFO) << "rejected append from " << from << " with idx " << prev_log_idx << ", we are behind at " << our_last_idx;
     }
 
     //                /\ Reply([
