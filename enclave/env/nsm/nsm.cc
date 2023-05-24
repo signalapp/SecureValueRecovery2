@@ -9,6 +9,7 @@
 
 #include "env/env.h"
 #include "util/macros.h"
+#include "util/constant.h"
 #include "context/context.h"
 #include "socketwrap/socket.h"
 #include "proto/nitro.pb.h"
@@ -85,8 +86,7 @@ class Environment : public ::svr2::env::Environment {
         // Verify the evidence certificate chain and signature.
         error::OK != (err = attestation::nitro::Verify(attestation_doc, cose_sign_1, now)) ||
         // Verify that PCRs of remote match our own.
-        attestation_doc.pcrs.size() != pcrs_.size() ||
-        !std::equal(pcrs_.begin(), pcrs_.end(), attestation_doc.pcrs.begin())) {
+        !PCRsMatch(attestation_doc.pcrs)) {
       return std::make_pair(out, COUNTED_ERROR(Env_AttestationFailure));
     }
     std::copy(attestation_doc.public_key.begin(), attestation_doc.public_key.end(), out.begin());
@@ -148,6 +148,25 @@ class Environment : public ::svr2::env::Environment {
   }
 
  private:
+  uint8_t PCRMatches(int index, const std::map<int, attestation::nitro::ByteString>& remotes) const {
+    auto local = pcrs_.find(index);
+    if (local == pcrs_.cend()) return false;
+    auto remote = remotes.find(index);
+    if (remote == remotes.cend()) return false;
+    return util::ConstantTimeEquals(local->second, remote->second);
+  }
+  // Checks that security-relevant PCRs match locally and remotely.
+  bool PCRsMatch(const std::map<int, attestation::nitro::ByteString>& remotes) const {
+    // See discussion of PCRs at
+    // https://docs.aws.amazon.com/enclaves/latest/user/set-up-attestation.html
+    // We only care about:
+    //   0: Enclave image file - A contiguous measure of the contents of the image file, without the section data.
+    //   1: Linux kernel and bootstrap - A contiguous measurement of the kernel and boot ramfs data.
+    //   2: Application - A contiguous, in-order measurement of the user applications, without the boot ramfs.
+    // We use & rather than && so that all three are processed without preemption.
+    return PCRMatches(0, remotes) & PCRMatches(1, remotes) & PCRMatches(2, remotes);
+  }
+
   int32_t nsm_fd_;
   bool simulated_;
   std::map<int, attestation::nitro::ByteString> pcrs_;
