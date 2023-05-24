@@ -101,12 +101,22 @@ func NewNitro(config *pb.InitConfig, port, cid int) (_ *Nitro, returnedErr error
 		return nil, err
 	}
 	var initResp pb.OutboundMessage
-	if err := n.recv(&initResp); err != nil {
-		return nil, fmt.Errorf("init recv: %w", err)
-	} else if inner, ok := initResp.Inner.(*pb.OutboundMessage_Init); !ok {
-		return nil, fmt.Errorf("init response was not type InitCallResponse")
-	} else if n.pid, err = peerid.Make(inner.Init.PeerId); err != nil {
-		return nil, fmt.Errorf("init received peerid: %w", err)
+loop:
+	for {
+		if err := n.recv(&initResp); err != nil {
+			return nil, fmt.Errorf("init recv: %w", err)
+		}
+		switch v := initResp.Inner.(type) {
+		case *pb.OutboundMessage_Init:
+			if n.pid, err = peerid.Make(v.Init.PeerId); err != nil {
+				return nil, fmt.Errorf("init received peerid: %w", err)
+			}
+			break loop
+		case *pb.OutboundMessage_Log:
+			n.handleLog(v.Log)
+		default:
+			return nil, fmt.Errorf("init response %T was not type InitCallResponse", v)
+		}
 	}
 	go n.readOutputs()
 	return n, nil
@@ -130,10 +140,27 @@ func (n *Nitro) readNextOutput() error {
 			return fmt.Errorf("unmarshal of EnclaveMessage: %w", err)
 		}
 		n.c <- &emsg
+	case *pb.OutboundMessage_Log:
+		n.handleLog(v.Log)
 	default:
 		return fmt.Errorf("unexpected inner type %T", out.Inner)
 	}
 	return nil
+}
+
+func (n *Nitro) handleLog(log *pb.NitroLog) {
+	switch log.Level {
+	case pb.EnclaveLogLevel_LOG_LEVEL_FATAL, pb.EnclaveLogLevel_LOG_LEVEL_ERROR:
+		logger.Errorw(log.Log)
+	case pb.EnclaveLogLevel_LOG_LEVEL_WARNING:
+		logger.Warnw(log.Log)
+	case pb.EnclaveLogLevel_LOG_LEVEL_INFO:
+		logger.Infow(log.Log)
+	case pb.EnclaveLogLevel_LOG_LEVEL_DEBUG, pb.EnclaveLogLevel_LOG_LEVEL_VERBOSE, pb.EnclaveLogLevel_LOG_LEVEL_MAX:
+		logger.Debugw(log.Log)
+	default:
+		// Do nothing
+	}
 }
 
 func (n *Nitro) receivedResponse(m *pb.MsgCallResponse) error {

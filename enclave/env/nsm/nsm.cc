@@ -6,6 +6,7 @@
 #include <deque>
 #include <stdio.h>
 #include <sys/random.h>
+#include <sstream>
 
 #include "env/env.h"
 #include "util/macros.h"
@@ -15,13 +16,15 @@
 #include "proto/nitro.pb.h"
 #include "queue/queue.h"
 #include "util/bytes.h"
+#include "util/hex.h"
 #include "attestation/nitro/nitro.h"
+#include "util/mutex.h"
 
 namespace svr2::env {
 namespace nsm {
 namespace {
 
-static queue::Queue<std::string> output_messages(100);
+static queue::Queue<nitro::OutboundMessage> output_messages(100);
 static const char* SIMULATED_REPORT_PREFIX = "NITRO_SIMULATED_REPORT:";
 
 class Environment : public ::svr2::env::Environment {
@@ -118,12 +121,18 @@ class Environment : public ::svr2::env::Environment {
   }
 
   virtual error::Error SendMessage(const std::string& msg) const {
-    output_messages.Push(msg);
+    nitro::OutboundMessage out;
+    out.set_out(msg);
+    output_messages.Push(std::move(out));
     return error::OK;
   }
 
   virtual void Log(int level, const std::string& msg) const {
     fprintf(stderr, "env::NSM LOG(%d): %s\n", level, msg.c_str());
+    nitro::OutboundMessage out;
+    out.mutable_log()->set_log(msg);
+    out.mutable_log()->set_level((::svr2::enclaveconfig::EnclaveLogLevel) level);
+    output_messages.Push(std::move(out));
   }
 
   virtual error::Error UpdateEnvStats() const {
@@ -145,6 +154,11 @@ class Environment : public ::svr2::env::Environment {
     CHECK(error::OK == attestation_doc.ParseFromBytes(cose_sign_1.payload.data(), cose_sign_1.payload.size()));
     // Pull out the PCRs and store them.
     pcrs_ = std::move(attestation_doc.pcrs);
+    for (auto iter = pcrs_.cbegin(); iter != pcrs_.cend(); ++iter) {
+      std::stringstream ss;
+      ss << "PCR" << iter->first << ": " << util::ToHex(iter->second);
+      Log(enclaveconfig::LOG_LEVEL_INFO, ss.str());
+    }
   }
 
  private:
@@ -178,9 +192,8 @@ error::Error SendNsmMessages(socketwrap::Socket* sock) {
   while (true) {
     context::Context ctx;
     for (int i = 0; i < 100; i++) {
-      auto out = ctx.Protobuf<nitro::OutboundMessage>();
-      *out->mutable_out() = output_messages.Pop();
-      RETURN_IF_ERROR(sock->WritePB(&ctx, *out));
+      auto out = output_messages.Pop();
+      RETURN_IF_ERROR(sock->WritePB(&ctx, out));
     }
   }
 }

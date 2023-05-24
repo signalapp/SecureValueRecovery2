@@ -9,6 +9,11 @@ option optimize_for = LITE_RUNTIME;
 import "error.proto";
 import "enclaveconfig.proto";
 
+message NitroLog {
+  enclaveconfig.EnclaveLogLevel level = 1;
+  string log = 2;
+}
+
 message InboundMessage {
   oneof inner {
     enclaveconfig.InitConfig init = 1;
@@ -20,6 +25,7 @@ message OutboundMessage {
     InitCallResponse init = 1;
     MsgCallResponse msg = 2;
     bytes out = 3;
+    NitroLog log = 4;
   }
 }
 
