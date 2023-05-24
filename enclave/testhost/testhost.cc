@@ -20,7 +20,7 @@
 #include "proto/msgs.pb.h"
 #include "util/constant.h"
 #include "util/macros.h"
-#include "attestation/attestation.h"
+#include "attestation/oe/attestation.h"
 
 // OCALL implementation
 static std::deque<::svr2::EnclaveMessage> out_msgs;

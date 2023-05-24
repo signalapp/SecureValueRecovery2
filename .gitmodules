@@ -16,3 +16,9 @@
 [submodule "docker/aws-nitro-enclaves-nsm-api"]
 	path = docker/aws-nitro-enclaves-nsm-api
 	url = https://github.com/aws/aws-nitro-enclaves-nsm-api.git
+[submodule "enclave/boringssl"]
+	path = enclave/boringssl
+	url = https://boringssl.googlesource.com/boringssl
+[submodule "enclave/tinycbor"]
+	path = enclave/tinycbor
+	url = https://github.com/intel/tinycbor

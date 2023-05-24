@@ -1,12 +1,11 @@
 // Copyright 2023 Signal Messenger, LLC
 // SPDX-License-Identifier: AGPL-3.0-only
 
-#include "attestation/attestation.h"
+#include "attestation/oe/attestation.h"
 
 #include <openenclave/attestation/custom_claims.h>
 #include <openenclave/attestation/verifier.h>
 #include <openenclave/attestation/sgx/evidence.h>
-
 
 #include <array>
 

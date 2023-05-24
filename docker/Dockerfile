@@ -75,7 +75,8 @@ RUN mkdir /src && \
       unzip \
       git \
       gcc \
-      libgtest-dev
+      libgtest-dev \
+      cmake
 
 COPY docker/check_hash.sh docker/sha256.* ./
 

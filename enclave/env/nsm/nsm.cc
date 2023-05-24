@@ -14,6 +14,7 @@
 #include "proto/nitro.pb.h"
 #include "queue/queue.h"
 #include "util/bytes.h"
+#include "attestation/nitro/nitro.h"
 
 namespace svr2::env {
 namespace nsm {
@@ -72,7 +73,24 @@ class Environment : public ::svr2::env::Environment {
       memcpy(out.data(), evidence.data() + strlen(SIMULATED_REPORT_PREFIX), out.size());
       return std::make_pair(out, error::OK);
     }
-    return std::make_pair(out, error::General_Unimplemented);
+    attestation::nitro::CoseSign1 cose_sign_1;
+    attestation::nitro::AttestationDoc attestation_doc;
+
+    error::Error err = error::OK;
+    if (// Parse the evidence.
+        error::OK != (err = cose_sign_1.ParseFromBytes(reinterpret_cast<const uint8_t*>(evidence.data()), evidence.size())) ||
+        error::OK != (err = attestation_doc.ParseFromBytes(cose_sign_1.payload.data(), cose_sign_1.payload.size())) ||
+        // Valiate the attestation doc.
+        attestation_doc.public_key.size() != out.size() ||
+        // Verify the evidence certificate chain and signature.
+        error::OK != (err = attestation::nitro::Verify(attestation_doc, cose_sign_1, now)) ||
+        // Verify that PCRs of remote match our own.
+        attestation_doc.pcrs.size() != pcrs_.size() ||
+        !std::equal(pcrs_.begin(), pcrs_.end(), attestation_doc.pcrs.begin())) {
+      return std::make_pair(out, COUNTED_ERROR(Env_AttestationFailure));
+    }
+    std::copy(attestation_doc.public_key.begin(), attestation_doc.public_key.end(), out.begin());
+    return std::make_pair(out, error::OK);
   }
 
   // Given a string of size N, rewrite all bytes in that string with
@@ -112,9 +130,27 @@ class Environment : public ::svr2::env::Environment {
     return error::General_Unimplemented;
   }
 
+  virtual void Init() {
+    ::svr2::env::Environment::Init();
+    if (simulated_) return;
+    // Get an initial set of evidence to pull our PCRs from.
+    PublicKey k;
+    enclaveconfig::RaftGroupConfig config;
+    auto [att, err] = Evidence(k, config);
+    CHECK(error::OK == err);
+    // Parse evidence into an attestation doc.
+    attestation::nitro::CoseSign1 cose_sign_1;
+    CHECK(error::OK == cose_sign_1.ParseFromBytes(reinterpret_cast<const uint8_t*>(att.evidence().data()), att.evidence().size()));
+    attestation::nitro::AttestationDoc attestation_doc;
+    CHECK(error::OK == attestation_doc.ParseFromBytes(cose_sign_1.payload.data(), cose_sign_1.payload.size()));
+    // Pull out the PCRs and store them.
+    pcrs_ = std::move(attestation_doc.pcrs);
+  }
+
  private:
   int32_t nsm_fd_;
   bool simulated_;
+  std::map<int, attestation::nitro::ByteString> pcrs_;
 };
 
 }  // namespace
@@ -134,6 +170,7 @@ error::Error SendNsmMessages(socketwrap::Socket* sock) {
 
 void Init(bool is_simulated) {
   environment = std::make_unique<::svr2::env::nsm::Environment>(is_simulated);
+  environment->Init();
 }
 
 }  // namespace svr2::env

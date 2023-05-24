@@ -211,4 +211,16 @@ enum Error {
   Nitro_InboundNotInit = 1405;
   Nitro_InboundMessageParse = 1406;
   Nitro_InboundNotMessage = 1407;
+
+  AttestationNitro_NS = 1500;
+  AttestationNitro_CborError = 1501;
+  AttestationNitro_CoseFormat = 1502;
+  AttestationNitro_CoseSignatureEncode = 1503;
+  AttestationNitro_AttestationParse = 1504;
+  AttestationNitro_CertificateDecode = 1505;
+  AttestationNitro_CryptoAllocate = 1506;
+  AttestationNitro_CryptoStoreInit = 1507;
+  AttestationNitro_CertificateChainVerify = 1508;
+  AttestationNitro_CryptoMessageDigest = 1509;
+  AttestationNitro_CoseSignatureVerify = 1510;
 };

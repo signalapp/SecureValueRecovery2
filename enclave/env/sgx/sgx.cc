@@ -11,7 +11,7 @@
 
 #include <memory>
 
-#include "attestation/attestation.h"
+#include "attestation/oe/attestation.h"
 #include "env/env.h"
 #include "metrics/metrics.h"
 #include "svr2/svr2_t.h"

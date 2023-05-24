@@ -65,6 +65,32 @@ build/noise-c/NSM.a: build/libsodium/NSM.a | build/noise-c/SGX.a
 	$(QUIET) cp noise-c/src/protocol/libnoiseprotocol.a $@
 	$(QUIET) echo -e "BUILT\t$@"
 
+build/boringssl/TEST.a:
+	$(QUIET) echo -e "BUILD\t$@"
+	$(QUIET) mkdir -p $(@D) $(QUIET_OUT)
+	$(QUIET) (cd boringssl && rm -rf build && mkdir build && cd build && CC=$(CC) CXX=$(CXX) CFLAGS="$(TEST_CFLAGS)" CXXFLAGS="$(TEST_CXXFLAGS)" LDFLAGS="$(TEST_LDFLAGS)" cmake .. && $(MAKE) crypto) $(QUIET_OUT)
+	$(QUIET) cp -v boringssl/build/crypto/libcrypto.a $@ $(QUIET_OUT)
+	$(QUIET) echo -e "BUILT\t$@"
+build/boringssl/NSM.a: | build/boringssl/TEST.a
+	$(QUIET) echo -e "BUILD\t$@"
+	$(QUIET) mkdir -p $(@D) $(QUIET_OUT)
+	$(QUIET) (cd boringssl && rm -rf build && mkdir build && cd build && CC=$(CC) CXX=$(CXX) CFLAGS="$(NSM_CFLAGS)" CXXFLAGS="$(NSM_CXXFLAGS)" LDFLAGS="$(NSM_LDFLAGS)" cmake .. && $(MAKE) crypto) $(QUIET_OUT)
+	$(QUIET) cp -v boringssl/build/crypto/libcrypto.a $@ $(QUIET_OUT)
+	$(QUIET) echo -e "BUILT\t$@"
+
+build/tinycbor/TEST.a:
+	$(QUIET) echo -e "BUILD\t$@"
+	$(QUIET) mkdir -p $(@D) $(QUIET_OUT)
+	$(QUIET) (cd tinycbor && $(MAKE) clean && $(MAKE) CC=$(CC) CXX=$(CXX) CFLAGS="$(TEST_CFLAGS)" CXXFLAGS="$(TEST_CXXFLAGS)" LDFLAGS="$(TEST_LDFLAGS)") $(QUIET_OUT)
+	$(QUIET) cp -v tinycbor/lib/libtinycbor.a $@ $(QUIET_OUT)
+	$(QUIET) echo -e "BUILT\t$@"
+build/tinycbor/NSM.a: | build/tinycbor/TEST.a
+	$(QUIET) echo -e "BUILD\t$@"
+	$(QUIET) mkdir -p $(@D) $(QUIET_OUT)
+	$(QUIET) (cd tinycbor && $(MAKE) clean && $(MAKE) CC=$(CC) CXX=$(CXX) CFLAGS="$(NSM_CFLAGS)" CXXFLAGS="$(NSM_CXXFLAGS)" LDFLAGS="$(NSM_LDFLAGS)") $(QUIET_OUT)
+	$(QUIET) cp -v tinycbor/lib/libtinycbor.a $@ $(QUIET_OUT)
+	$(QUIET) echo -e "BUILT\t$@"
+
 # libsodium's ./configure script incorrectly detects that mmap, mlock, madvise, mprotect,
 # and raise are all available, when in fact they are not in the enclave.  This set of flags
 # allows us to undo that.
@@ -142,7 +168,7 @@ SGX_LIBRARIES = \
   env \
   env/sgx \
   sip \
-  attestation \
+  attestation/oe \
   metrics \
   proto \
   protobuf-lite \
@@ -185,11 +211,14 @@ NSM_LIBRARIES = \
   env/nsm \
   sip \
   socketwrap \
+  attestation/nitro \
   context \
   metrics \
   proto \
   protobuf-lite \
   libsodium \
+  tinycbor \
+  boringssl \
 ## NSM_LIBRARIES
 
 build/enclave.nsm: $(patsubst %,build/%/NSM.a,$(NSM_LIBRARIES))
@@ -200,6 +229,7 @@ clean:
 	$(QUIET) (cd protobuf ; make clean ; git clean -fx ; true) $(QUIET_OUT)
 	$(QUIET) (cd noise-c ; make clean ; git clean -fx ; true) $(QUIET_OUT)
 	$(QUIET) (cd SipHash ; make clean ; git clean -fx ; true) $(QUIET_OUT)
+	$(QUIET) (cd boringssl ; make clean ; git clean -fx ; true) $(QUIET_OUT)
 	$(QUIET) rm -vfr build $(QUIET_OUT)
 	$(QUIET) rm -vf .testdepends $(QUIET_OUT)
 

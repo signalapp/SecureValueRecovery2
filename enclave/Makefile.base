@@ -49,6 +49,8 @@ LIBRARY_CFLAGS = \
   -I$(CURDIR)/noise-c/include \
   -I$(CURDIR)/googletest/googletest/include \
   -I$(CURDIR)/libsodium/src/libsodium/include \
+  -I$(CURDIR)/tinycbor/src \
+  -I$(CURDIR)/boringssl/include \
 ## LIBRARY_CFLAGS
 
 TEST_CFLAGS ?= \
@@ -90,7 +92,6 @@ NSM_CFLAGS ?= \
   $(BASE_CFLAGS) \
   $(LIBRARY_CFLAGS) \
   -I/opt/nsm \
-  -mllvm -x86-speculative-load-hardening \
 ## NSM_CFLAGS
 NSM_CXXFLAGS ?= \
   $(BASE_CXXFLAGS) \
@@ -161,4 +162,6 @@ WARNING_CFLAGS ?= \
   -Wno-c++20-designator \
   -Wno-zero-length-array \
   -Wno-c99-extensions \
+  -Wno-gnu-anonymous-struct \
+  -Wno-nested-anon-types \
 ##WARNING_CFLAGS

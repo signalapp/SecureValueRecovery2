@@ -3,17 +3,17 @@ CC=clang-11
 GO_TEST_FLAGS ?=
 
 all: build test
-.PHONY: all clean protos build test ../enclave/build/enclave.test validate
+.PHONY: all clean protos build test validate enclave_binaries
 
 build: generated
 	go build main.go
 
-../enclave/build/enclave.test:
-	$(MAKE) -C ../enclave build/enclave.test
+enclave_binaries:
+	$(MAKE) -C ../enclave build/enclave.test build/enclave.nsm
 
 # -count=1 forces this test to run un-cached, since enclave.test may have changed
 # even though Go code has not, and tests may depend on it.
-test: build | ../enclave/build/enclave.test
+test: build enclave_binaries
 	go test $(GO_TEST_FLAGS) -count=1 ./...
 
 EDGER8R_FILES=enclave/c/svr2_u.c enclave/c/svr2_u.h enclave/c/svr2_args.h

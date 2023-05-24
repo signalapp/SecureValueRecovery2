@@ -32,7 +32,7 @@ clean:
 dockerbase: | git
 	docker build -f docker/Dockerfile -t svr2_buildenv --target=builder .
 
-PARALLEL ?= $(shell cat /proc/cpuinfo | grep '^cpu cores' | awk '{ sum += $$4 } END { print sum }')
+PARALLEL ?= $(shell cat /proc/cpuinfo | grep '^cpu cores' | awk 'BEGIN { sum = 1 } { sum += $$4 } END { print sum }')
 DOCKER_MAKE_ARGS ?= -j$(PARALLEL) MAKE_ARGS="$(MAKE_ARGS)"
 ARCH ?= $(shell arch)
 ifeq ($(ARCH),arm64)
