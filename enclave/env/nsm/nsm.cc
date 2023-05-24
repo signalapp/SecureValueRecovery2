@@ -128,7 +128,11 @@ class Environment : public ::svr2::env::Environment {
   }
 
   virtual void Log(int level, const std::string& msg) const {
-    fprintf(stderr, "env::NSM LOG(%d): %s\n", level, msg.c_str());
+    if (simulated_) {
+      // A non-simulated Nitro enclave has a console you can't get to,
+      // so no reason to print stuff to it.
+      fprintf(stderr, "env::NSM LOG(%d): %s\n", level, msg.c_str());
+    }
     nitro::OutboundMessage out;
     out.mutable_log()->set_log(msg);
     out.mutable_log()->set_level((::svr2::enclaveconfig::EnclaveLogLevel) level);
