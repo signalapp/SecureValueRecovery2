@@ -109,6 +109,9 @@ func Start(ctx context.Context, hconfig *config.Config, authenticator auth.Auth,
 		return http.ListenAndServe(hconfig.ClientListenAddr, clientMux)
 	})
 
+	// The enclave is up and the servers are serving, mark live.
+	live.Set(nil)
+
 	// wait until we successfully create a raft group or join an existing one
 	raftManager := raftmanager.New(nodeID, dispatcher, peerDB, hconfig)
 	joinCtx, joinCancel := context.WithTimeout(ctx, time.Minute)
@@ -117,7 +120,7 @@ func Start(ctx context.Context, hconfig *config.Config, authenticator auth.Auth,
 	}
 	joinCancel()
 
-	// successfully joined raft, periodically refresh our peerdb status
+	// Successfully joined raft, periodically refresh our peerdb status
 	g.Go(func() error {
 		return raftManager.RunRefresher(ctx, func(innerCtx context.Context) error {
 			timeoutCtx, cancel := context.WithTimeout(innerCtx, time.Minute)
@@ -126,8 +129,7 @@ func Start(ctx context.Context, hconfig *config.Config, authenticator auth.Auth,
 		})
 	})
 
-	// fully capable of servicing user requests, mark ready
-	live.Set(nil)
+	// Fully capable of servicing user requests, mark ready.
 	ready.Set(nil)
 
 	sigtermC := make(chan os.Signal, 1)
