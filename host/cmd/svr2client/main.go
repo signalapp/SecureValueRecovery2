@@ -164,13 +164,12 @@ func runLoadTest(parallel, count int) error {
 				u := atomic.AddInt32(&countU32, -1)
 				if u < 0 {
 					return
+				} else if u%1000 == 0 {
+					log.Printf("running %d/%d", count-int(u), count)
 				}
 				user := toUser(fmt.Sprintf("%s_%d", user, u))
 				if err := runBackup(user); err != nil {
 					log.Printf("user %d failed backup: %v", u, err)
-				}
-				if err := runExpose(user); err != nil {
-					log.Printf("user %d failed expose: %v", u, err)
 				}
 			}
 		}()
