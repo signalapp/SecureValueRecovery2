@@ -37,6 +37,6 @@ jobs:
 
       - name: Build and push container image
         run: |
-          make container
+          make sgx_container
           docker tag svr2_runenv:latest "${{ secrets.REGISTRY_LOGIN_SERVER }}/svr2:${GITHUB_REF_NAME}"
           docker push "${{ secrets.REGISTRY_LOGIN_SERVER }}/svr2:${GITHUB_REF_NAME}"

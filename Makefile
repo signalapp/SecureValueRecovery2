@@ -54,8 +54,8 @@ dockersh: dockerbase
 	  $(DOCKER_ARGS) \
 	  svr2_buildenv
 
-container: dockerbase
-	docker build -f docker/Dockerfile -t svr2_runenv .
+sgx_container: dockerbase
+	docker build -f docker/Dockerfile -t svr2_runenv --target=runner .
 
 enclave_release: docker_enclave_releaser
 enclave_releaser: enclave host  # depends on 'host' so its tests will run
