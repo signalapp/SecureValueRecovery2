@@ -6,6 +6,7 @@
 
 #include <mutex>
 #include "proto/error.pb.h"
+#include "proto/msgs.pb.h"
 #include "proto/e2e.pb.h"
 #include "noise/noise.h"
 #include "sip/hasher.h"

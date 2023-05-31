@@ -7,7 +7,6 @@ syntax = "proto3";
 package svr2.e2e;
 option optimize_for = LITE_RUNTIME;
 
-import "msgs.proto";
 import "raft.proto";
 import "error.proto";
 import "enclaveconfig.proto";
