@@ -6,7 +6,7 @@ include Makefile.base
 
 .PHONY: all build sign clean sign protos validate generatem
 
-build: build/enclave.bin build/enclave.nsm
+build: build/enclave.bin build/enclave.nsm build/enclave.sev
 
 sign: build/enclave.signed build/enclave.test build/enclave.small
 
@@ -53,13 +53,13 @@ build/noise-c/SGX.a: build/libsodium/SGX.a | build/noise-c/TEST.a
 	 $(MAKE)) $(QUIET_OUT)
 	$(QUIET) cp noise-c/src/protocol/libnoiseprotocol.a $@
 	$(QUIET) echo -e "BUILT\t$@"
-build/noise-c/NSM.a: build/libsodium/NSM.a | build/noise-c/SGX.a
+build/noise-c/X86.a: build/libsodium/X86.a | build/noise-c/SGX.a
 	$(QUIET) echo -e "BUILD\t$@"
 	$(QUIET) mkdir -p $(@D)
 	$(QUIET) (cd noise-c && \
 	 ./autogen.sh && \
-   libsodium_CFLAGS=-I$$PWD/../build/libsodium/NSM.a.dir/include/ libsodium_LIBS=$$PWD/../build/libsodium/NSM.a \
-	 CC=$(CC) CFLAGS="$(NSM_CFLAGS) -I$(shell ./find_header.sh $(CC) immintrin.h)" ./configure --with-libsodium && \
+   libsodium_CFLAGS=-I$$PWD/../build/libsodium/X86.a.dir/include/ libsodium_LIBS=$$PWD/../build/libsodium/X86.a \
+	 CC=$(CC) CFLAGS="$(X86_CFLAGS) -I$(shell ./find_header.sh $(CC) immintrin.h)" ./configure --with-libsodium && \
    $(MAKE) clean && \
 	 $(MAKE)) $(QUIET_OUT)
 	$(QUIET) cp noise-c/src/protocol/libnoiseprotocol.a $@
@@ -71,10 +71,10 @@ build/boringssl/TEST.a:
 	$(QUIET) (cd boringssl && rm -rf build && mkdir build && cd build && CC=$(CC) CXX=$(CXX) CFLAGS="$(TEST_CFLAGS)" CXXFLAGS="$(TEST_CXXFLAGS)" LDFLAGS="$(TEST_LDFLAGS)" cmake .. && $(MAKE) crypto) $(QUIET_OUT)
 	$(QUIET) cp -v boringssl/build/crypto/libcrypto.a $@ $(QUIET_OUT)
 	$(QUIET) echo -e "BUILT\t$@"
-build/boringssl/NSM.a: | build/boringssl/TEST.a
+build/boringssl/X86.a: | build/boringssl/TEST.a
 	$(QUIET) echo -e "BUILD\t$@"
 	$(QUIET) mkdir -p $(@D) $(QUIET_OUT)
-	$(QUIET) (cd boringssl && rm -rf build && mkdir build && cd build && CC=$(CC) CXX=$(CXX) CFLAGS="$(NSM_CFLAGS)" CXXFLAGS="$(NSM_CXXFLAGS)" LDFLAGS="$(NSM_LDFLAGS)" cmake .. && $(MAKE) crypto) $(QUIET_OUT)
+	$(QUIET) (cd boringssl && rm -rf build && mkdir build && cd build && CC=$(CC) CXX=$(CXX) CFLAGS="$(X86_CFLAGS)" CXXFLAGS="$(X86_CXXFLAGS)" LDFLAGS="$(X86_LDFLAGS)" cmake .. && $(MAKE) crypto) $(QUIET_OUT)
 	$(QUIET) cp -v boringssl/build/crypto/libcrypto.a $@ $(QUIET_OUT)
 	$(QUIET) echo -e "BUILT\t$@"
 
@@ -84,10 +84,10 @@ build/tinycbor/TEST.a:
 	$(QUIET) (cd tinycbor && $(MAKE) clean && $(MAKE) CC=$(CC) CXX=$(CXX) CFLAGS="$(TEST_CFLAGS)" CXXFLAGS="$(TEST_CXXFLAGS)" LDFLAGS="$(TEST_LDFLAGS)") $(QUIET_OUT)
 	$(QUIET) cp -v tinycbor/lib/libtinycbor.a $@ $(QUIET_OUT)
 	$(QUIET) echo -e "BUILT\t$@"
-build/tinycbor/NSM.a: | build/tinycbor/TEST.a
+build/tinycbor/X86.a: | build/tinycbor/TEST.a
 	$(QUIET) echo -e "BUILD\t$@"
 	$(QUIET) mkdir -p $(@D) $(QUIET_OUT)
-	$(QUIET) (cd tinycbor && $(MAKE) clean && $(MAKE) CC=$(CC) CXX=$(CXX) CFLAGS="$(NSM_CFLAGS)" CXXFLAGS="$(NSM_CXXFLAGS)" LDFLAGS="$(NSM_LDFLAGS)") $(QUIET_OUT)
+	$(QUIET) (cd tinycbor && $(MAKE) clean && $(MAKE) CC=$(CC) CXX=$(CXX) CFLAGS="$(X86_CFLAGS)" CXXFLAGS="$(X86_CXXFLAGS)" LDFLAGS="$(X86_LDFLAGS)") $(QUIET_OUT)
 	$(QUIET) cp -v tinycbor/lib/libtinycbor.a $@ $(QUIET_OUT)
 	$(QUIET) echo -e "BUILT\t$@"
 
@@ -114,12 +114,12 @@ build/libsodium/SGX.a: | build/libsodium/TEST.a
   CC=$(CC) CXX=$(CXX) --prefix=$$PWD/../$@.dir && $(MAKE) clean && $(MAKE) install) $(QUIET_OUT)
 	$(QUIET) ln -s $$PWD/$@.dir/lib/libsodium.a $@
 	$(QUIET) echo -e "BUILT\t$@"
-build/libsodium/NSM.a: | build/libsodium/SGX.a
+build/libsodium/X86.a: | build/libsodium/SGX.a
 	$(QUIET) echo -e "BUILD\t$@"
 	$(QUIET) mkdir -p $@.dir $(@D)
 	$(QUIET) (cd libsodium && (git clean -fx || true) && ./configure \
-  CFLAGS="$(NSM_CFLAGS) $(LIBSODIUM_UNDEFS)" \
-  CXXFLAGS="$(NSM_CXXFLAGS) $(LIBSODIUM_UNDEFS)" \
+  CFLAGS="$(X86_CFLAGS) $(LIBSODIUM_UNDEFS)" \
+  CXXFLAGS="$(X86_CXXFLAGS) $(LIBSODIUM_UNDEFS)" \
   CC=$(CC) CXX=$(CXX) --prefix=$$PWD/../$@.dir && $(MAKE) clean && $(MAKE) install) $(QUIET_OUT)
 	$(QUIET) ln -s $$PWD/$@.dir/lib/libsodium.a $@
 	$(QUIET) echo -e "BUILT\t$@"
@@ -138,18 +138,15 @@ $(firstword $(EDGER8R_FILES)): ../shared/svr2.edl
 generated: $(EDGER8R_FILES) $(PROTO_FILES)
 build/%/SGX.a: generated
 	$(QUIET) $(MAKE) -f Makefile.subdir DIR=$* ENV=SGX $(MAKEFILTER)
-build/%/NSM.a: generated
-	$(QUIET) $(MAKE) -f Makefile.subdir DIR=$* ENV=NSM $(MAKEFILTER)
+build/%/X86.a: generated
+	$(QUIET) $(MAKE) -f Makefile.subdir DIR=$* ENV=X86 $(MAKEFILTER)
 build/%/TEST.a: generated
 	$(QUIET) $(MAKE) -f Makefile.subdir DIR=$* ENV=TEST $(MAKEFILTER)
 build/%/HOST.a: generated
 	$(QUIET) $(MAKE) -f Makefile.subdir DIR=$* ENV=HOST $(MAKEFILTER)
-.PHONY: build/%/SGX.a build/%/TEST.a build/%/HOST.a build/%/NSM.a
+.PHONY: build/%/SGX.a build/%/TEST.a build/%/HOST.a build/%/X86.a
 
-# All libraries which will become part of enclave.bin.  If A depends on B, then A should be added before B.
-SGX_LIBRARIES = \
-  svr2 \
-  ecalls \
+CORE_LIBRARIES_PRE_ENV = \
   core \
   timeout \
   client \
@@ -166,18 +163,28 @@ SGX_LIBRARIES = \
   noise-c \
   noisewrap \
   env \
-  env/sgx \
+## CORE_LIBRARIES_PRE_ENV
+CORE_LIBRARIES_POST_ENV = \
   sip \
-  attestation/oe \
   metrics \
   proto \
   protobuf-lite \
   libsodium \
+## CORE_LIBRARIES_POST_ENV
+
+# All libraries which will become part of enclave.bin.  If A depends on B, then A should be added before B.
+SGX_LIBRARIES = \
+  svr2 \
+  ecalls \
+  $(CORE_LIBRARIES_PRE_ENV) \
+  env/sgx \
+  attestation/oe \
+  $(CORE_LIBRARIES_POST_ENV) \
 ## SGX_LIBRARIES
 
 build/enclave.bin: $(patsubst %,build/%/SGX.a,$(SGX_LIBRARIES))
 	$(QUIET) echo -e "BUILD\t$@"
-	$(QUIET) $(CXX) -o $@ $(SGX_LDFLAGS) $^ $(SGX_LDFLAGS)
+	$(QUIET) $(CXX) -o $@ $(SGX_LDFLAGS) -Wl,--start-group $^ -Wl,--end-group $(SGX_LDFLAGS)
 
 build/enclave.signed: build/enclave.bin build/public.pem build/private.pem svr2.conf
 	$(QUIET) echo -e "SIGN\t$@"
@@ -192,38 +199,50 @@ build/enclave.test: build/enclave.bin build/public.pem build/private.pem svr2_te
 	$(QUIET) $(OE_DIR)/bin/oesign sign -e $< -c svr2_test.conf -k build/private.pem -o $@ $(QUIET_OUT)
 
 NSM_LIBRARIES = \
-  nitromain \
-  core \
-  timeout \
-  client \
-  db \
-  raft \
-  groupclock \
-  peers \
-  peerid \
-  sender \
-  util \
-  hmac \
-  noise \
-  noise-c \
-  noisewrap \
-  env \
+  socketmain \
+  $(CORE_LIBRARIES_PRE_ENV) \
   env/nsm \
-  sip \
-  socketwrap \
   attestation/nitro \
-  context \
-  metrics \
-  proto \
-  protobuf-lite \
-  libsodium \
+  env/socket \
+  socketwrap \
+  $(CORE_LIBRARIES_POST_ENV) \
   tinycbor \
   boringssl \
 ## NSM_LIBRARIES
 
-build/enclave.nsm: $(patsubst %,build/%/NSM.a,$(NSM_LIBRARIES))
+build/enclave.nsm: $(patsubst %,build/%/X86.a,$(NSM_LIBRARIES))
 	$(QUIET) echo -e "BUILD\t$@"
-	$(QUIET) $(CXX) -o $@ $(NSM_LDFLAGS) $^ $(NSM_LDFLAGS)
+	$(QUIET) $(CXX) -o $@ $(X86_LDFLAGS) -Wl,--start-group $^ -Wl,--end-group $(X86_LDFLAGS)
+
+SEV_LIBRARIES = \
+  socketmain \
+  $(CORE_LIBRARIES_PRE_ENV) \
+  env/sev \
+  env/socket \
+  attestation/sev \
+  socketwrap \
+  $(CORE_LIBRARIES_POST_ENV) \
+## SEV_LIBRARIES
+
+build/enclave.sev: $(patsubst %,build/%/X86.a,$(SEV_LIBRARIES))
+	$(QUIET) echo -e "BUILD\t$@"
+	$(QUIET) $(CXX) -o $@ $(X86_LDFLAGS) -Wl,--start-group $^ -Wl,--end-group $(X86_LDFLAGS)
+
+SEVATTEST_LIBRARIES = \
+  initmain \
+  env \
+  env/sev \
+  env/socket \
+  attestation/sev \
+  socketwrap \
+  context \
+  util \
+  $(CORE_LIBRARIES_POST_ENV) \
+## SEVATTEST_LIBRARIES
+
+build/attest.sev: $(patsubst %,build/%/X86.a,$(SEVATTEST_LIBRARIES))
+	$(QUIET) echo -e "BUILD\t$@"
+	$(QUIET) $(CXX) -o $@ $(X86_LDFLAGS) -Wl,--start-group $^ -Wl,--end-group $(X86_LDFLAGS)
 
 clean:
 	$(QUIET) (cd protobuf ; make clean ; git clean -fx ; true) $(QUIET_OUT)

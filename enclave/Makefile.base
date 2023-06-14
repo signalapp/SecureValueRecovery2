@@ -88,23 +88,25 @@ SGX_LDFLAGS ?= \
   $(OE_MBEDTLS_LDFLAGS) \
 ## SGX_LDFLAGS
 
-NSM_CFLAGS ?= \
+X86_CFLAGS ?= \
   $(BASE_CFLAGS) \
   $(LIBRARY_CFLAGS) \
   -I/opt/nsm \
-## NSM_CFLAGS
-NSM_CXXFLAGS ?= \
+  -mrdrnd \
+## X86_CFLAGS
+X86_CXXFLAGS ?= \
   $(BASE_CXXFLAGS) \
   $(LIBRARY_CFLAGS) \
   -I/opt/nsm \
-## NSM_CXXFLAGS
-NSM_LDFLAGS ?= \
+  -mrdrnd \
+## X86_CXXFLAGS
+X86_LDFLAGS ?= \
   $(BASE_LDFLAGS) \
   /opt/nsm/libnsm.a \
   -lpthread \
   -lrt \
   -ldl \
-## NSM_LDFLAGS
+## X86_LDFLAGS
 
 OE_INCDIR = $(shell pkg-config oeenclave-clang++ --variable=includedir)
 

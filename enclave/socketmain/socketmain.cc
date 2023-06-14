@@ -16,9 +16,9 @@
 #include "proto/enclaveconfig.pb.h"
 #include "util/log.h"
 #include "util/bytes.h"
-#include "proto/nitro.pb.h"
+#include "proto/socketmain.pb.h"
 #include "socketwrap/socket.h"
-#include "env/nsm/nsm.h"
+#include "env/socket/socket.h"
 #include "queue/queue.h"
 
 namespace svr2 {
@@ -36,39 +36,44 @@ namespace svr2 {
 // file descriptor, closing the listener.  We know that if this
 // socket dies, we stop serving, so there's no need to create an
 // accept loop.
-error::Error AcceptSocket(bool simulated, int port, int* afd) {
+error::Error AcceptSocket(int sock_type, int port, int* afd) {
   int fd;
   RETURN_ERRNO_ERROR_UNLESS(
-      0 < (fd = socket(simulated ? AF_INET : AF_VSOCK, SOCK_STREAM, 0)),
-      Nitro_SocketCreation);
+      0 < (fd = socket(sock_type, SOCK_STREAM, 0)),
+      SocketMain_SocketCreation);
 
   struct sockaddr* addr;
   socklen_t addr_size;
 
   struct sockaddr_vm vm_addr;
   struct sockaddr_in in_addr;
-  if (simulated) {
-    memset(&in_addr, 0, sizeof(in_addr));
-    in_addr.sin_family = AF_INET;
-    in_addr.sin_port = htons(port);
-    in_addr.sin_addr.s_addr = INADDR_ANY;
-    addr = reinterpret_cast<struct sockaddr*>(&in_addr);
-    addr_size = sizeof(in_addr);
-  } else {
-    memset(&vm_addr, 0, sizeof(vm_addr));
-    vm_addr.svm_family = AF_VSOCK;
-    vm_addr.svm_port = port;
-    vm_addr.svm_cid = VMADDR_CID_ANY;
-    addr = reinterpret_cast<struct sockaddr*>(&vm_addr);
-    addr_size = sizeof(vm_addr);
+  switch (sock_type) {
+    case AF_INET:
+      memset(&in_addr, 0, sizeof(in_addr));
+      in_addr.sin_family = AF_INET;
+      in_addr.sin_port = htons(port);
+      in_addr.sin_addr.s_addr = INADDR_ANY;
+      addr = reinterpret_cast<struct sockaddr*>(&in_addr);
+      addr_size = sizeof(in_addr);
+      break;
+    case AF_VSOCK:
+      memset(&vm_addr, 0, sizeof(vm_addr));
+      vm_addr.svm_family = AF_VSOCK;
+      vm_addr.svm_port = port;
+      vm_addr.svm_cid = VMADDR_CID_ANY;
+      addr = reinterpret_cast<struct sockaddr*>(&vm_addr);
+      addr_size = sizeof(vm_addr);
+      break;
+    default:
+      return COUNTED_ERROR(SocketMain_UnsupportedSockType);
   }
   LOG(INFO) << "Binding to port " << port;
   RETURN_ERRNO_ERROR_UNLESS(
       0 == bind(fd, addr, addr_size),
-      Nitro_SocketBind);
+      SocketMain_SocketBind);
   RETURN_ERRNO_ERROR_UNLESS(
       0 == listen(fd, 10),
-      Nitro_SocketListen);
+      SocketMain_SocketListen);
 
   *afd = 0;
   socklen_t initial_size = addr_size;
@@ -79,7 +84,7 @@ error::Error AcceptSocket(bool simulated, int port, int* afd) {
     *afd = accept4(fd, addr, &addr_size, SOCK_CLOEXEC);
     RETURN_ERRNO_ERROR_UNLESS(
         *afd > 0 || errno == EINTR || errno == ECONNABORTED,
-        Nitro_SocketAccept);
+        SocketMain_SocketAccept);
     uint8_t buf[1] = {0};
     auto got = recv(*afd, buf, 1, 0);
     if (got == 0) {
@@ -87,10 +92,10 @@ error::Error AcceptSocket(bool simulated, int port, int* afd) {
       close(*afd);
       *afd = 0;
     } else {
-      RETURN_ERRNO_ERROR_UNLESS(got == 1, Nitro_SocketAccept);
+      RETURN_ERRNO_ERROR_UNLESS(got == 1, SocketMain_SocketAccept);
       if (buf[0] != 'N') {
-        LOG(ERROR) << "Missing nitro hello byte";
-        return COUNTED_ERROR(Nitro_SocketAccept);
+        LOG(ERROR) << "Missing socketmain hello byte";
+        return COUNTED_ERROR(SocketMain_SocketAccept);
       }
       break;
     }
@@ -104,17 +109,17 @@ error::Error AcceptSocket(bool simulated, int port, int* afd) {
 error::Error RunServerThread(core::Core* core, socketwrap::Socket* sock) {
   while (true) {
     context::Context ctx;
-    auto in = ctx.Protobuf<nitro::InboundMessage>();
+    auto in = ctx.Protobuf<socketmain::InboundMessage>();
     RETURN_IF_ERROR(sock->ReadPB(&ctx, in));
-    if (in->inner_case() != nitro::InboundMessage::kMsg) {
-      return COUNTED_ERROR(Nitro_InboundNotMessage);
+    if (in->inner_case() != socketmain::InboundMessage::kMsg) {
+      return COUNTED_ERROR(SocketMain_InboundNotMessage);
     }
     auto msg = ctx.Protobuf<UntrustedMessage>();
     if (!msg->ParseFromString(in->mutable_msg()->data())) {
-      return COUNTED_ERROR(Nitro_InboundMessageParse);
+      return COUNTED_ERROR(SocketMain_InboundMessageParse);
     }
     auto status = core->Receive(&ctx, *msg);
-    auto out = ctx.Protobuf<nitro::OutboundMessage>();
+    auto out = ctx.Protobuf<socketmain::OutboundMessage>();
     auto out_msg = out->mutable_msg();
     out_msg->set_id(in->msg().id());
     out_msg->set_status(status);
@@ -123,21 +128,20 @@ error::Error RunServerThread(core::Core* core, socketwrap::Socket* sock) {
 }
 
 // Read an init message from a socket and use it to create a new core object.
-std::pair<std::unique_ptr<core::Core>, error::Error> InitCore(socketwrap::Socket* sock, bool simulated) {
+std::pair<std::unique_ptr<core::Core>, error::Error> InitCore(socketwrap::Socket* sock) {
   context::Context ctx;
-  auto pb = ctx.Protobuf<nitro::InboundMessage>();
+  auto pb = ctx.Protobuf<socketmain::InboundMessage>();
   LOG(INFO) << "Reading init message";
   if (error::Error err = sock->ReadPB(&ctx, pb); err != error::OK) {
     return std::make_pair(nullptr, err);
   }
-  if (pb->inner_case() != nitro::InboundMessage::kInit) {
-    return std::make_pair(nullptr, COUNTED_ERROR(Nitro_InboundNotInit));
+  if (pb->inner_case() != socketmain::InboundMessage::kInit) {
+    return std::make_pair(nullptr, COUNTED_ERROR(SocketMain_InboundNotInit));
   }
   auto init = pb->init();
   if (init.initial_log_level() != enclaveconfig::LOG_LEVEL_NONE) {
     util::SetLogLevel(init.initial_log_level());
   }
-  CHECK(init.group_config().simulated() == simulated);
   env::Init(init.group_config().simulated());
   LOG(INFO) << "Creating core";
   auto [core_ptr, err] = core::Core::Create(
@@ -145,7 +149,7 @@ std::pair<std::unique_ptr<core::Core>, error::Error> InitCore(socketwrap::Socket
       init);
   if (err == error::OK) {
     LOG(INFO) << "Writing init message";
-    auto out = ctx.Protobuf<nitro::OutboundMessage>();
+    auto out = ctx.Protobuf<socketmain::OutboundMessage>();
     core_ptr->ID().ToString(out->mutable_init()->mutable_peer_id());
     err = sock->WritePB(&ctx, *out);
   }
@@ -154,17 +158,17 @@ std::pair<std::unique_ptr<core::Core>, error::Error> InitCore(socketwrap::Socket
 }
 
 // Run a server, returning an error when it dies.
-error::Error RunServer(bool simulated, int port) {
+error::Error RunServer(int port, int sock_type) {
   int fd;
-  RETURN_IF_ERROR(AcceptSocket(simulated, port, &fd));
+  RETURN_IF_ERROR(AcceptSocket(sock_type, port, &fd));
   socketwrap::Socket sock(fd);
   auto sockp = &sock;
   std::vector<std::thread> threads;
   threads.emplace_back([sockp]{
     LOG(INFO) << "Starting thread to send NSM messages";
-    LOG(FATAL) << env::nsm::SendNsmMessages(sockp);
+    LOG(FATAL) << env::socket::SendSocketMessages(sockp);
   });
-  auto [c, err] = InitCore(&sock, simulated);
+  auto [c, err] = InitCore(&sock);
   RETURN_IF_ERROR(err);
   auto cp = c.get();
   for (size_t i = 0; i < 32 /* chosen by random dice roll */; i++) {
@@ -181,25 +185,32 @@ error::Error RunServer(bool simulated, int port) {
 }  // namespace svr2
 
 int main(int argc, char** argv) {
-  bool simulated = false;
   int port = 27427;
+  int sock_type = 0;
   for (int i = 1; i < argc; i++) {
     std::string arg(argv[i]);
-    if (arg == "--simulated") {
-      simulated = true;
-      LOG(INFO) << "Running in simulated mode";
-      continue;
-    } else if (arg.rfind("--port=", 0) == 0) {
+    if (arg.rfind("--port=", 0) == 0) {
       port = atoi(arg.data() + strlen("--port="));
       if (port > 0 && port < 65536) {
+        LOG(INFO) << "Running on port " << port;
         continue;
       }
+    } else if (arg == "--sock_type=af_inet") {
+      LOG(INFO) << "Using socket type 'af_inet'";
+      sock_type = AF_INET;
+      continue;
+    } else if (arg == "--sock_type=af_vsock") {
+      LOG(INFO) << "Using socket type 'af_vsock'";
+      sock_type = AF_VSOCK;
+      continue;
     }
     LOG(FATAL) << "Usage: " << argv[0]
-        << " [--simulated]";
+        << " --sock_type={af_inet,af_vsock} [--port=###]";
   }
-  LOG(INFO) << "Running on port " << port << " with simulated=" << simulated;
-  auto err = svr2::RunServer(simulated, port);
+  if (sock_type == 0) {
+    LOG(FATAL) << "socket type not set, use --sock_type=xxx";
+  }
+  auto err = svr2::RunServer(port, sock_type);
   LOG(FATAL) << err;
   return -1;
 }

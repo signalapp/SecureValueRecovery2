@@ -24,6 +24,11 @@ std::string ToHex(const T& in) {
   return PrefixToHex(in, in.size());
 }
 
+template <class T>
+std::string ValueToHex(const T& in) {
+  return BytesToHex(reinterpret_cast<const uint8_t*>(&in), sizeof(in));
+}
+
 }  // namespace svr2::util
 
 #endif  // __SVR2_UTIL_HEX_H__

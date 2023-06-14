@@ -141,4 +141,9 @@ ENTRYPOINT ["/bin/svr2"]
 
 FROM public.ecr.aws/amazonlinux/amazonlinux@sha256:94e7183b0739140dbd5b639fb7600f0a2299cec5df8780c26d9cb409da5315a9 AS nsmrun
 COPY --from=build /src/enclave/build/enclave.nsm /bin/svr2
-ENTRYPOINT ["/bin/svr2"]
+ENTRYPOINT ["/bin/svr2", "--sock_type=af_vsock"]
+
+FROM alpine@sha256:ff6bdca1701f3a8a67e328815ff2346b0e4067d32ec36b7992c1fdc001dc8517 AS sevrun
+COPY --from=build /src/enclave/build/enclave.sev /bin/svr2
+EXPOSE 27427
+ENTRYPOINT ["/bin/svr2", "--sock_type=af_inet"]

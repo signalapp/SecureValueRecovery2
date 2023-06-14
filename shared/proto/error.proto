@@ -203,14 +203,15 @@ enum Error {
   Socket_WriteTooBig = 1305;
   Socket_ReadTooBig = 1306;
 
-  Nitro_NS = 1400;
-  Nitro_SocketCreation = 1401;
-  Nitro_SocketBind = 1402;
-  Nitro_SocketAccept = 1403;
-  Nitro_SocketListen = 1404;
-  Nitro_InboundNotInit = 1405;
-  Nitro_InboundMessageParse = 1406;
-  Nitro_InboundNotMessage = 1407;
+  SocketMain_NS = 1400;
+  SocketMain_SocketCreation = 1401;
+  SocketMain_SocketBind = 1402;
+  SocketMain_SocketAccept = 1403;
+  SocketMain_SocketListen = 1404;
+  SocketMain_InboundNotInit = 1405;
+  SocketMain_InboundMessageParse = 1406;
+  SocketMain_InboundNotMessage = 1407;
+  SocketMain_UnsupportedSockType = 1408;
 
   AttestationNitro_NS = 1500;
   AttestationNitro_CborError = 1501;
@@ -223,4 +224,13 @@ enum Error {
   AttestationNitro_CertificateChainVerify = 1508;
   AttestationNitro_CryptoMessageDigest = 1509;
   AttestationNitro_CoseSignatureVerify = 1510;
+
+  Sev_NS = 1600;
+  Sev_ReportIOCTLFailure = 1601;
+  Sev_FirmwareError = 1602;
+  Sev_ReportSizeMismatch = 1603;
+
+  SevAttest_NS = 1700;
+  SevAttest_CertsTableEntryTooLarge = 1701;
+  SevAttest_CertsTableCertTooLarge = 1702;
 };

@@ -1,19 +1,18 @@
 // Copyright 2023 Signal Messenger, LLC
 // SPDX-License-Identifier: AGPL-3.0-only
 
-#include <sodium/core.h>
 #include <nsm.h>
-#include <deque>
 #include <stdio.h>
 #include <sys/random.h>
 #include <sstream>
 
 #include "env/env.h"
+#include "env/socket/socket.h"
 #include "util/macros.h"
 #include "util/constant.h"
 #include "context/context.h"
 #include "socketwrap/socket.h"
-#include "proto/nitro.pb.h"
+#include "proto/socketmain.pb.h"
 #include "queue/queue.h"
 #include "util/bytes.h"
 #include "util/hex.h"
@@ -24,13 +23,12 @@ namespace svr2::env {
 namespace nsm {
 namespace {
 
-static queue::Queue<nitro::OutboundMessage> output_messages(100);
 static const char* SIMULATED_REPORT_PREFIX = "NITRO_SIMULATED_REPORT:";
 
-class Environment : public ::svr2::env::Environment {
+class Environment : public ::svr2::env::socket::Environment {
  public:
   DELETE_COPY_AND_ASSIGN(Environment);
-  Environment(bool simulated) : simulated_(simulated) {
+  Environment(bool simulated) : nsm_fd_(0), simulated_(simulated) {
     nsm_fd_ = nsm_lib_init();
   }
   virtual ~Environment() {
@@ -120,31 +118,12 @@ class Environment : public ::svr2::env::Environment {
     return error::OK;
   }
 
-  virtual error::Error SendMessage(const std::string& msg) const {
-    nitro::OutboundMessage out;
-    out.set_out(msg);
-    output_messages.Push(std::move(out));
-    return error::OK;
-  }
-
-  virtual void Log(int level, const std::string& msg) const {
-    if (simulated_) {
-      // A non-simulated Nitro enclave has a console you can't get to,
-      // so no reason to print stuff to it.
-      fprintf(stderr, "env::NSM LOG(%d): %s\n", level, msg.c_str());
-    }
-    nitro::OutboundMessage out;
-    out.mutable_log()->set_log(msg);
-    out.mutable_log()->set_level((::svr2::enclaveconfig::EnclaveLogLevel) level);
-    output_messages.Push(std::move(out));
-  }
-
   virtual error::Error UpdateEnvStats() const {
     return error::General_Unimplemented;
   }
 
   virtual void Init() {
-    ::svr2::env::Environment::Init();
+    ::svr2::env::socket::Environment::Init();
     if (simulated_) return;
     // Get an initial set of evidence to pull our PCRs from.
     PublicKey k;
@@ -191,17 +170,6 @@ class Environment : public ::svr2::env::Environment {
 };
 
 }  // namespace
-
-error::Error SendNsmMessages(socketwrap::Socket* sock) {
-  while (true) {
-    context::Context ctx;
-    for (int i = 0; i < 100; i++) {
-      auto out = output_messages.Pop();
-      RETURN_IF_ERROR(sock->WritePB(&ctx, out));
-    }
-  }
-}
-
 }  // namespace nsm
 
 void Init(bool is_simulated) {

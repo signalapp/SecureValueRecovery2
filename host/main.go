@@ -41,7 +41,7 @@ var (
 )
 
 func runSimulatedNitro(ctx context.Context) {
-	cmd := exec.CommandContext(ctx, *nitroPath, "--simulated", fmt.Sprintf("--port=%d", *nitroPort))
+	cmd := exec.CommandContext(ctx, *nitroPath, "--sock_type=af_inet", fmt.Sprintf("--port=%d", *nitroPort))
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		logger.Fatalf("getting stdout of simulated nitro: %v", err)

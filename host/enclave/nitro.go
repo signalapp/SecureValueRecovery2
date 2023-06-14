@@ -148,7 +148,7 @@ func (n *Nitro) readNextOutput() error {
 	return nil
 }
 
-func (n *Nitro) handleLog(log *pb.NitroLog) {
+func (n *Nitro) handleLog(log *pb.Log) {
 	switch log.Level {
 	case pb.EnclaveLogLevel_LOG_LEVEL_FATAL, pb.EnclaveLogLevel_LOG_LEVEL_ERROR:
 		logger.Errorw(log.Log)

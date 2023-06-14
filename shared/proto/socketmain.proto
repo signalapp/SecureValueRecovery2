@@ -3,13 +3,13 @@
 
 syntax = "proto3";
 
-package svr2.nitro;
+package svr2.socketmain;
 option go_package = "github.com/signalapp/svr2/proto";
 option optimize_for = LITE_RUNTIME;
 import "error.proto";
 import "enclaveconfig.proto";
 
-message NitroLog {
+message Log {
   enclaveconfig.EnclaveLogLevel level = 1;
   string log = 2;
 }
@@ -25,7 +25,7 @@ message OutboundMessage {
     InitCallResponse init = 1;
     MsgCallResponse msg = 2;
     bytes out = 3;
-    NitroLog log = 4;
+    Log log = 4;
   }
 }
 

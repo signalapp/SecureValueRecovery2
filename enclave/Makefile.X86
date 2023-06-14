@@ -1,0 +1,4 @@
+include Makefile.base
+
+CFLAGS ?= $(X86_CFLAGS)
+CXXFLAGS ?= $(X86_CXXFLAGS)
