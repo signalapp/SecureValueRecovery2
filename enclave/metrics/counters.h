@@ -106,6 +106,10 @@ CREATE_COUNTER(context, cpu_env_evidence, cpu, ({{"in", "env"}, {"action", "evid
 CREATE_COUNTER(context, cpu_env_sendmessage, cpu, ({{"in", "env"}, {"action", "sendmessage"}}))
 CREATE_COUNTER(context, cpu_sender_serialize, cpu, ({{"in", "sender"}, {"action", "serialize"}}))
 CREATE_COUNTER(context, cpu_sender_send, cpu, ({{"in", "sender"}, {"action", "send"}}))
+CREATE_COUNTER(context, cpu_socket_read_recv, cpu, ({{"in", "socket"}, {"action", "read_recv"}}))
+CREATE_COUNTER(context, cpu_socket_read_parse, cpu, ({{"in", "socket"}, {"action", "read_parse"}}))
+CREATE_COUNTER(context, cpu_socket_write_serialize, cpu, ({{"in", "socket"}, {"action", "write_serialize"}}))
+CREATE_COUNTER(context, cpu_socket_write_send, cpu, ({{"in", "socket"}, {"action", "write_send"}}))
 
 CREATE_COUNTER(context, lock_core_raft, cpu, ({{"in", "core"}, {"action", "lock"}, {"lock", "core_raft"}}))
 CREATE_COUNTER(context, lock_core_log_txns, cpu, ({{"in", "core"}, {"action", "lock"}, {"lock", "core_log_txns"}}))
