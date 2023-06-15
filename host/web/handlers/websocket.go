@@ -76,8 +76,8 @@ func (h *websocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var wsErr *websocket.CloseError
 	if errors.As(err, &wsErr) {
 		logger.Debugw("client close error", "err", wsErr)
-		labels := [1]metrics.Label{metrics.Label{Name: "code", Value: fmt.Sprintf("%d", wsErr.Code)}}
-		metrics.IncrCounterWithLabels(websocketClosureCounterName, 1, labels[:])
+		labels := append(util.ParseTags(r.UserAgent()), metrics.Label{Name: "code", Value: fmt.Sprintf("%d", wsErr.Code)})
+		metrics.IncrCounterWithLabels(websocketClosureCounterName, 1, labels)
 		return
 	}
 
@@ -99,21 +99,23 @@ const (
 // closeMessage builds a websocket closeMessage from an error. If the underlying error
 // came from the enclave, it will be marshalled to the appropriate application error.
 func closeMessage(r *http.Request, err error) []byte {
+	labels := util.ParseTags(r.UserAgent())
 	if err == nil {
+		metrics.IncrCounterWithLabels(enclaveErrorCounterName, 1, append(labels, metrics.Label{Name: "err", Value: "OK"}))
 		return websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")
 	}
 
 	var enclaveErr pb.Error
 	if !errors.As(err, &enclaveErr) {
 		logger.Warnw("error processing client request", "err", err)
+		metrics.IncrCounterWithLabels(enclaveErrorCounterName, 1, append(labels, metrics.Label{Name: "err", Value: "non-enclave-err"}))
 		return websocket.FormatCloseMessage(WSInternalError, "")
 	}
 
 	// err might have supplemental error information. Only return enclaveErr in the
 	// close frame which only contains static enclave error codes
 	msg := enclaveErr.String()
-	labels := append(util.ParseTags(r.UserAgent()), metrics.Label{Name: "err", Value: msg})
-	metrics.IncrCounterWithLabels(enclaveErrorCounterName, 1, labels)
+	metrics.IncrCounterWithLabels(enclaveErrorCounterName, 1, append(labels, metrics.Label{Name: "err", Value: msg}))
 
 	logger.Infow("error processing client request", "err", msg)
 
