@@ -20,7 +20,8 @@ class Environment : public ::svr2::env::Environment {
   DELETE_COPY_AND_ASSIGN(Environment);
   Environment() : ::svr2::env::Environment() {}
   virtual ~Environment() {}
-  virtual std::pair<e2e::Attestation, error::Error> Evidence(const PublicKey& key, const enclaveconfig::RaftGroupConfig& config) const {
+  virtual std::pair<e2e::Attestation, error::Error> Evidence(context::Context* ctx, const PublicKey& key, const enclaveconfig::RaftGroupConfig& config) const {
+    MEASURE_CPU(ctx, cpu_env_evidence);
     e2e::Attestation attestation;
     attestation.set_evidence(evidence_prefix + std::string(reinterpret_cast<const char*>(key.data()), key.size()));
     return std::make_pair(attestation, error::OK);
@@ -40,22 +41,24 @@ class Environment : public ::svr2::env::Environment {
   }
 
   virtual std::pair<PublicKey, error::Error> Attest(
+      context::Context* ctx,
       util::UnixSecs now,
-      const std::string& evidence,
-      const std::string& endorsements) const {
+      const e2e::Attestation& attestation) const {
+    MEASURE_CPU(ctx, cpu_env_attest);
     PublicKey out = {0};
-    if (evidence.size() != strlen(evidence_prefix) + out.size()
-        || evidence.substr(0, strlen(evidence_prefix)) != evidence_prefix) {
-      return std::make_pair(out, error::Env_AttestationFailure);
+    if (attestation.evidence().size() != strlen(evidence_prefix) + out.size()
+        || attestation.evidence().substr(0, strlen(evidence_prefix)) != evidence_prefix) {
+      return std::make_pair(out, COUNTED_ERROR(Env_AttestationFailure));
     }
-    memcpy(out.data(), evidence.data() + strlen(evidence_prefix), out.size());
+    memcpy(out.data(), attestation.evidence().data() + strlen(evidence_prefix), out.size());
     return std::make_pair(out, error::OK);
   }
 
-  virtual error::Error SendMessage(const std::string& msg) const {
-    util::unique_lock ul(mu_);
+  virtual error::Error SendMessage(context::Context* ctx, const std::string& msg) const {
     EnclaveMessage m;
+    MEASURE_CPU(ctx, cpu_env_sendmessage);
     CHECK(m.ParseFromString(msg));
+    ACQUIRE_LOCK(mu_, ctx, lock_testenv_sendmessage);
     sent_messages_.push_back(std::move(m));
     return error::OK;
   }

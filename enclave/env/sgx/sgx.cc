@@ -43,7 +43,10 @@ class Environment : public ::svr2::env::Environment {
   }
 
   virtual std::pair<e2e::Attestation, error::Error> Evidence(
-      const PublicKey& key, const enclaveconfig::RaftGroupConfig& config) const {
+      context::Context* ctx,
+      const PublicKey& key,
+      const enclaveconfig::RaftGroupConfig& config) const {
+    MEASURE_CPU(ctx, cpu_env_evidence);
     e2e::Attestation attestation;
     if (simulated_) {
       attestation.set_evidence(
@@ -114,25 +117,26 @@ class Environment : public ::svr2::env::Environment {
   }
 
   virtual std::pair<PublicKey, error::Error> Attest(
+      context::Context* ctx,
       util::UnixSecs now,
-      const std::string& evidence,
-      const std::string& endorsements) const {
+      const e2e::Attestation& attestation) const {
+    MEASURE_CPU(ctx, cpu_env_attest);
     PublicKey out = {0};
 
     if (simulated_) {
-      if (evidence.size() != strlen(unattested_evidence_prefix) + out.size() ||
-          evidence.substr(0, strlen(unattested_evidence_prefix)) !=
+      if (attestation.evidence().size() != strlen(unattested_evidence_prefix) + out.size() ||
+          attestation.evidence().substr(0, strlen(unattested_evidence_prefix)) !=
               unattested_evidence_prefix) {
         return std::make_pair(out, error::Env_AttestationFailure);
       }
-      memcpy(out.data(), evidence.data() + strlen(unattested_evidence_prefix),
+      memcpy(out.data(), attestation.evidence().data() + strlen(unattested_evidence_prefix),
              out.size());
       return std::make_pair(out, error::OK);
     }
     const uint8_t* evidence_data =
-        reinterpret_cast<const uint8_t*>(evidence.data());
+        reinterpret_cast<const uint8_t*>(attestation.evidence().data());
     const uint8_t* endorsements_data =
-        reinterpret_cast<const uint8_t*>(endorsements.data());
+        reinterpret_cast<const uint8_t*>(attestation.endorsements().data());
 
     oe_claim_t* claims = nullptr;
     size_t claims_length = 0;
@@ -145,8 +149,10 @@ class Environment : public ::svr2::env::Environment {
       .policy_size = sizeof(now_datetime),
     };
     auto verify_err = oe_verify_evidence(
-        &attestation::sgx_remote_uuid, evidence_data, evidence.size(), endorsements_data,
-        endorsements.size(), &policy, 1, &claims, &claims_length);
+        &attestation::sgx_remote_uuid,
+        evidence_data, attestation.evidence().size(),
+        endorsements_data, attestation.endorsements().size(),
+        &policy, 1, &claims, &claims_length);
     if (OE_OK != verify_err) {
       LOG(ERROR) << "oe_verify_evidence failed with code " << verify_err;
       return std::make_pair(out, error::Env_AttestationFailure);
@@ -169,7 +175,8 @@ class Environment : public ::svr2::env::Environment {
     return std::make_pair(out, err);
   }
 
-  virtual error::Error SendMessage(const std::string& msg) const {
+  virtual error::Error SendMessage(context::Context* ctx, const std::string& msg) const {
+    MEASURE_CPU(ctx, cpu_env_sendmessage);
     if (OE_OK !=
         svr2_output_message(
             msg.size(), const_cast<uint8_t*>(
@@ -198,7 +205,8 @@ class Environment : public ::svr2::env::Environment {
   bool simulated_;
   std::string expected_mrenclave_;
   error::Error GetMRENCLAVE() {
-    auto [attestation, err] = Evidence(PublicKey{0}, enclaveconfig::RaftGroupConfig());
+    context::Context ctx;
+    auto [attestation, err] = Evidence(&ctx, PublicKey{0}, enclaveconfig::RaftGroupConfig());
     if (err != error::OK) {
       return err;
     }

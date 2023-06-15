@@ -132,7 +132,7 @@ class Peer {
       const noise::DHState& priv,
       int noise_role) REQUIRES(mu_);
 
-  error::Error CheckNextAttestation(const e2e::Attestation& a) REQUIRES(mu_);
+  error::Error CheckNextAttestation(context::Context* ctx, const e2e::Attestation& a) REQUIRES(mu_);
 
   const peerid::PeerID id_;
   mutable util::mutex mu_;

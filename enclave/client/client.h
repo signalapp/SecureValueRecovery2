@@ -73,7 +73,7 @@ class ClientManager {
 
  private:
   noise::DHState DHState(context::Context* ctx) const EXCLUDES(mu_);
-  static std::pair<e2e::Attestation, error::Error> GetAttestation(const noise::DHState& dhstate, const enclaveconfig::RaftGroupConfig& config);
+  static std::pair<e2e::Attestation, error::Error> GetAttestation(context::Context* ctx, const noise::DHState& dhstate, const enclaveconfig::RaftGroupConfig& config);
   
   mutable util::mutex mu_;
   noise::DHState dhstate_ GUARDED_BY(mu_);

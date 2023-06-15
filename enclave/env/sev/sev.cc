@@ -50,7 +50,11 @@ class Environment : public ::svr2::env::socket::Environment {
   // Attestation evidence is the extended evidence provided to the VM
   // by SNP_SET_EXT_CONFIG, which should be the certificate chain for
   // this report.
-  virtual std::pair<e2e::Attestation, error::Error> Evidence(const PublicKey& key, const enclaveconfig::RaftGroupConfig& config) const {
+  virtual std::pair<e2e::Attestation, error::Error> Evidence(
+      context::Context* ctx,
+      const PublicKey& key,
+      const enclaveconfig::RaftGroupConfig& config) const {
+    MEASURE_CPU(ctx, cpu_env_evidence);
     e2e::Attestation out;
     if (simulated_) {
       out.set_evidence(SIMULATED_REPORT_PREFIX + util::ByteArrayToString(key));
@@ -140,15 +144,16 @@ class Environment : public ::svr2::env::socket::Environment {
 
   // Given evidence and endorsements, extract the key.
   virtual std::pair<PublicKey, error::Error> Attest(
+      context::Context* ctx,
       util::UnixSecs now,
-      const std::string& evidence,
-      const std::string& endorsements) const {
+      const e2e::Attestation& attestation) const {
+    MEASURE_CPU(ctx, cpu_env_attest);
     std::array<uint8_t, 32> out = {0};
     if (simulated_) {
-      if (evidence.rfind(SIMULATED_REPORT_PREFIX, 0) != 0) {
+      if (attestation.evidence().rfind(SIMULATED_REPORT_PREFIX, 0) != 0) {
         return std::make_pair(out, error::Env_AttestationFailure);
       }
-      memcpy(out.data(), evidence.data() + strlen(SIMULATED_REPORT_PREFIX), out.size());
+      memcpy(out.data(), attestation.evidence().data() + strlen(SIMULATED_REPORT_PREFIX), out.size());
       return std::make_pair(out, error::OK);
     }
     return std::make_pair(out, error::General_Unimplemented);
@@ -198,7 +203,8 @@ class Environment : public ::svr2::env::socket::Environment {
     if (simulated_) return;
     PublicKey k = {'i', 'n', 'i', 't', 0};
     enclaveconfig::RaftGroupConfig c;
-    auto [attest, err] = Evidence(k, c);
+    context::Context ctx;
+    auto [attest, err] = Evidence(&ctx, k, c);
     std::stringstream sst;
     sst << "Evidence_err=" << err;
     Log(enclaveconfig::LOG_LEVEL_INFO, sst.str());

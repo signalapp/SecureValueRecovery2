@@ -6,11 +6,12 @@
 
 #include "proto/msgs.pb.h"
 #include "proto/error.pb.h"
+#include "context/context.h"
 
 namespace svr2::sender {
 
 // Send a message to the host.
-void Send(const EnclaveMessage& msg);
+void Send(context::Context* ctx, const EnclaveMessage& msg);
 
 }  // namespace svr2::sender
 

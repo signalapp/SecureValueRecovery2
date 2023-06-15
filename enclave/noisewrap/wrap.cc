@@ -4,6 +4,7 @@
 #include "env/env.h"
 #include "proto/error.pb.h"
 #include "util/macros.h"
+#include "context/context.h"
 
 extern "C" {
 

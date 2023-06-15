@@ -15,7 +15,7 @@ class Environment : public ::svr2::env::Environment {
   DELETE_COPY_AND_ASSIGN(Environment);
   Environment();
   virtual ~Environment();
-  virtual error::Error SendMessage(const std::string& msg) const;
+  virtual error::Error SendMessage(context::Context* ctx, const std::string& msg) const;
   virtual void Log(int level, const std::string& msg) const;
 };
 

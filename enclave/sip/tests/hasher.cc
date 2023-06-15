@@ -6,6 +6,8 @@
 //TESTDEP env/test
 //TESTDEP gtest
 //TESTDEP proto
+//TESTDEP context
+//TESTDEP metrics
 //TESTDEP protobuf-lite
 //TESTDEP libsodium
 

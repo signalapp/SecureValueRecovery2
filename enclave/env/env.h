@@ -11,6 +11,7 @@
 #include "proto/msgs.pb.h"
 #include "util/macros.h"
 #include "util/ticks.h"
+#include "context/context.h"
 
 namespace svr2::env {
 
@@ -23,18 +24,23 @@ class Environment {
   virtual ~Environment() {}
   virtual void Init();
   // Given a 32-byte key, return evidence of that key (an OpenEnclave report).
-  virtual std::pair<e2e::Attestation, error::Error> Evidence(const PublicKey& key, const enclaveconfig::RaftGroupConfig& config) const = 0;
+  virtual std::pair<e2e::Attestation, error::Error> Evidence(
+      context::Context* ctx,
+      const PublicKey& key,
+      const enclaveconfig::RaftGroupConfig& config) const = 0;
   // Given evidence and endorsements, extract the key.
   virtual std::pair<PublicKey, error::Error> Attest(
+      context::Context* ctx,
       util::UnixSecs now,
-      const std::string& evidence,
-      const std::string& endorsements) const = 0;
+      const e2e::Attestation& attestation) const = 0;
   // Given a string of size N, rewrite all bytes in that string with
   // random bytes.
-  virtual error::Error RandomBytes(void* bytes, size_t size) const = 0;
+  virtual error::Error RandomBytes(
+      void* bytes,
+      size_t size) const = 0;
   // Send a message from enclave to host.  [msg] should be a serialized
   // EnclaveMessage.
-  virtual error::Error SendMessage(const std::string& msg) const = 0;
+  virtual error::Error SendMessage(context::Context* ctx, const std::string& msg) const = 0;
   // Log a message to a logging framework.
   virtual void Log(int level, const std::string& msg) const = 0;
   // Update env-specific statistics.

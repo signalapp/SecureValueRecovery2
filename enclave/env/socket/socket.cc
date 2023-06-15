@@ -23,7 +23,8 @@ Environment::Environment() {}
 
 Environment::~Environment() {}
 
-error::Error Environment::SendMessage(const std::string& msg) const {
+error::Error Environment::SendMessage(context::Context* ctx, const std::string& msg) const {
+  MEASURE_CPU(ctx, cpu_env_sendmessage);
   socketmain::OutboundMessage out;
   out.set_out(msg);
   output_messages.Push(std::move(out));

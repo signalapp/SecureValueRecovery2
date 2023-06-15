@@ -4,6 +4,7 @@
 //TESTDEP gtest
 //TESTDEP env
 //TESTDEP env/test
+//TESTDEP context
 //TESTDEP metrics
 //TESTDEP proto
 //TESTDEP protobuf-lite
@@ -24,9 +25,10 @@ TEST(SenderTest, SendViaTestEnv) {
   env::Init(env::SIMULATED);
   EnclaveMessage m;
   m.mutable_peer_message()->set_syn("abc");
-  Send(m);
-  Send(m);
-  Send(m);
+  context::Context ctx;
+  Send(&ctx, m);
+  Send(&ctx, m);
+  Send(&ctx, m);
   std::vector<EnclaveMessage> got = env::test::SentMessages();
   ASSERT_EQ(3, got.size());
   ASSERT_EQ("abc", got[0].peer_message().syn());

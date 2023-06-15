@@ -79,7 +79,7 @@ void ReplyWithError(context::Context* ctx, internal::TransactionID tx, error::Er
   if (err != error::OK) {
     LOG(WARNING) << "Responding to host request " << tx << " with error: " << err;
   }
-  sender::Send(*out);
+  sender::Send(ctx, *out);
 }
 
 static bool ContainsMe(const peerid::PeerID& me, const raft::ReplicaGroup& group) {
@@ -281,7 +281,7 @@ error::Error Core::HandleHostToEnclave(context::Context* ctx, const HostToEnclav
         ReplyWithError(ctx, tx, err);
       } else {
         resp->mutable_get_enclave_status_reply()->MergeFrom(replica_status);
-        sender::Send(*out);
+        sender::Send(ctx, *out);
       }
     } return error::OK;
     case HostToEnclaveRequest::kRequestMetrics: {
@@ -291,7 +291,7 @@ error::Error Core::HandleHostToEnclave(context::Context* ctx, const HostToEnclav
       auto resp = out->mutable_h2e_response();
       resp->set_request_id(tx);
       *resp->mutable_metrics_reply() = metrics::AllAsPB();
-      sender::Send(*out);
+      sender::Send(ctx, *out);
     } return error::OK;
     case HostToEnclaveRequest::kDatabaseRequest: {
       MEASURE_CPU(ctx, cpu_core_host_database_req);
@@ -337,7 +337,7 @@ void Core::HandleNewClient(context::Context* ctx, const NewClientRequest& msg, i
   auto new_client = resp->mutable_new_client_reply();
   new_client->set_client_id(client->ID());
   *new_client->mutable_handshake_start() = client->MovedHandshakeStart();
-  sender::Send(*out);
+  sender::Send(ctx, *out);
   COUNTER(core, new_client_success)->Increment();
 }
 
@@ -354,7 +354,7 @@ error::Error Core::HandleExistingClient(context::Context* ctx, const ExistingCli
     auto resp = out->mutable_h2e_response();
     resp->set_request_id(tx);
     resp->mutable_existing_client_reply()->set_data(handshake);
-    sender::Send(*out);
+    sender::Send(ctx, *out);
     return error::OK;
   }
   auto request = db_protocol_->RequestPB(ctx);
@@ -786,7 +786,7 @@ error::Error Core::HandleHostHashes(context::Context* ctx, internal::Transaction
     return COUNTED_ERROR(Core_LogNotFoundAtCommitIndex);
   }
   hashes->set_commit_hash_chain(log->hash_chain());
-  sender::Send(*out);
+  sender::Send(ctx, *out);
   return error::OK;
 }
 
@@ -1458,7 +1458,7 @@ Core::LogTransactionCallback Core::ClientLogTransaction(context::Context* ctx, c
       resp->set_request_id(tx);
       auto existing_client = resp->mutable_existing_client_reply();
       *existing_client->mutable_data() = std::move(ciphertext);
-      sender::Send(*enclave_msg);
+      sender::Send(ctx, *enclave_msg);
     }
   };
 }

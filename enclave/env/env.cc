@@ -14,16 +14,19 @@ namespace {
 class UnsetEnvironment : public Environment {
  public:
   virtual ~UnsetEnvironment() {}
-  virtual std::pair<e2e::Attestation, error::Error> Evidence(const PublicKey& key, const enclaveconfig::RaftGroupConfig& config) const {
+  virtual std::pair<e2e::Attestation, error::Error> Evidence(
+      context::Context* ctx,
+      const PublicKey& key,
+      const enclaveconfig::RaftGroupConfig& config) const {
     CHECK(nullptr == "env::Init not called, environment not initiated");
 
     return std::make_pair(e2e::Attestation(), error::General_Unimplemented);
   }
   // Given evidence and endorsements, extract the key.
   virtual std::pair<PublicKey, error::Error> Attest(
+      context::Context* ctx,
       util::UnixSecs now,
-      const std::string& evidence,
-      const std::string& endorsements) const {
+      const e2e::Attestation& attestation) const {
     CHECK(nullptr == "env::Init not called, environment not initiated");
     std::array<uint8_t, 32> out = {0};
     return std::make_pair(out, error::General_Unimplemented);
@@ -35,7 +38,7 @@ class UnsetEnvironment : public Environment {
     return error::General_Unimplemented;
   }
 
-  virtual error::Error SendMessage(const std::string& msg) const {
+  virtual error::Error SendMessage(context::Context* ctx, const std::string& msg) const {
     CHECK(nullptr == "env::Init not called, environment not initiated");
     return error::General_Unimplemented;
   }

@@ -86,7 +86,7 @@ error::Error Peer::Send(
   }
   send->mutable_data()->swap(ciphertext);
   id_.ToString(send->mutable_peer_id());
-  sender::Send(*enclave_message);
+  sender::Send(ctx, *enclave_message);
   return error::OK;
 }
 
@@ -127,7 +127,7 @@ error::Error Peer::Recv(
         return COUNTED_ERROR(Peers_DecryptParse);
       }
       if (e2e_message->inner_case() == e2e::EnclaveToEnclaveMessage::kAttestationUpdate) {
-        auto err = CheckNextAttestation(e2e_message->attestation_update());
+        auto err = CheckNextAttestation(ctx, e2e_message->attestation_update());
         if (err != error::OK) {
           LOG(WARNING) << "Peer " << id_ << " attestation update failure: " << err;
           InternalDisconnect();
@@ -165,10 +165,7 @@ error::Error Peer::FinishConnection(
   }
   auto remote_attestation = conn->attestation();
   auto ts = parent_->CurrentTime();
-  auto [att_key, att_err] = env::environment->Attest(
-      ts,
-      remote_attestation.evidence(),
-      remote_attestation.endorsements());
+  auto [att_key, att_err] = env::environment->Attest(ctx, ts, remote_attestation);
   if(att_err != error::OK) {
     return att_err;
   }
@@ -263,7 +260,7 @@ error::Error Peer::InternalConnect(
   // Give back the (well-behaved) handshake state.
   local_handshake.swap(handshake_);
 
-  sender::Send(*enclave_message);
+  sender::Send(ctx, *enclave_message);
   return error::OK;
 }
 
@@ -295,10 +292,7 @@ error::Error Peer::Accept(
   // validate the attestation
   auto remote_attestation = conn_request->attestation();
   auto ts = parent_->CurrentTime();
-  auto [att_key, att_err] = env::environment->Attest(
-      ts,
-      remote_attestation.evidence(),
-      remote_attestation.endorsements());
+  auto [att_key, att_err] = env::environment->Attest(ctx, ts, remote_attestation);
   if(att_err != error::OK) {
     return att_err;
   }
@@ -344,7 +338,7 @@ error::Error Peer::Accept(
   e2e_message->set_connected(true);
   *decoded = e2e_message;
   last_attestation_ = ts;
-  sender::Send(*enclave_message);
+  sender::Send(ctx, *enclave_message);
   return error::OK;
 }
 
@@ -381,7 +375,7 @@ void Peer::SendRst(context::Context* ctx, const peerid::PeerID& id) {
   auto send = enclave_message->mutable_peer_message();
   id.ToString(send->mutable_peer_id());
   send->set_rst(true);
-  sender::Send(*enclave_message);
+  sender::Send(ctx, *enclave_message);
 }
 
 error::Error Peer::Reset(const noise::DHState& priv, int noise_role) {
@@ -411,9 +405,9 @@ error::Error Peer::Reset(const noise::DHState& priv, int noise_role) {
   return error::OK;
 }
 
-error::Error Peer::CheckNextAttestation(const e2e::Attestation& a) {
+error::Error Peer::CheckNextAttestation(context::Context* ctx, const e2e::Attestation& a) {
   auto now = parent_->CurrentTime();
-  auto [key, err] = env::environment->Attest(now, a.evidence(), a.endorsements());
+  auto [key, err] = env::environment->Attest(ctx, now, a);
   RETURN_IF_ERROR(err);
   if (!util::ConstantTimeEquals(key, id_.Get())) {
     LOG(ERROR) << "Peer " << id_ << " sent attestation with incorrect key";
@@ -476,7 +470,7 @@ error::Error PeerManager::Init(context::Context* ctx) {
     return COUNTED_ERROR(Peers_NewKeyPublic);
   }
 
-  auto [evidence_and_endorsements, err] = env::environment->Evidence(public_key, enclaveconfig::RaftGroupConfig());
+  auto [evidence_and_endorsements, err] = env::environment->Evidence(ctx, public_key, enclaveconfig::RaftGroupConfig());
   RETURN_IF_ERROR(err);
 
   ACQUIRE_LOCK(mu_, ctx, lock_peermanager);
@@ -497,7 +491,7 @@ const peerid::PeerID& PeerManager::ID() const {
 }
 
 error::Error PeerManager::RefreshAttestation(context::Context* ctx) {
-  auto [evidence_and_endorsements, err] = env::environment->Evidence(ID().Get(), enclaveconfig::RaftGroupConfig());
+  auto [evidence_and_endorsements, err] = env::environment->Evidence(ctx, ID().Get(), enclaveconfig::RaftGroupConfig());
   if (err != error::OK) {
     COUNTER(peers, attestation_refresh_failure)->Increment();
     return err;

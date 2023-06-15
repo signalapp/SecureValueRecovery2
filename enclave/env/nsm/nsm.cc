@@ -34,7 +34,11 @@ class Environment : public ::svr2::env::socket::Environment {
   virtual ~Environment() {
     nsm_lib_exit(nsm_fd_);
   }
-  virtual std::pair<e2e::Attestation, error::Error> Evidence(const PublicKey& key, const enclaveconfig::RaftGroupConfig& config) const {
+  virtual std::pair<e2e::Attestation, error::Error> Evidence(
+      context::Context* ctx,
+      const PublicKey& key,
+      const enclaveconfig::RaftGroupConfig& config) const {
+    MEASURE_CPU(ctx, cpu_env_evidence);
     e2e::Attestation out;
     if (simulated_) {
       out.set_evidence(SIMULATED_REPORT_PREFIX + util::ByteArrayToString(key));
@@ -64,15 +68,16 @@ class Environment : public ::svr2::env::socket::Environment {
 
   // Given evidence and endorsements, extract the key.
   virtual std::pair<PublicKey, error::Error> Attest(
+      context::Context* ctx,
       util::UnixSecs now,
-      const std::string& evidence,
-      const std::string& endorsements) const {
+      const e2e::Attestation& attestation) const {
+    MEASURE_CPU(ctx, cpu_env_attest);
     std::array<uint8_t, 32> out = {0};
     if (simulated_) {
-      if (evidence.rfind(SIMULATED_REPORT_PREFIX, 0) != 0) {
+      if (attestation.evidence().rfind(SIMULATED_REPORT_PREFIX, 0) != 0) {
         return std::make_pair(out, error::Env_AttestationFailure);
       }
-      memcpy(out.data(), evidence.data() + strlen(SIMULATED_REPORT_PREFIX), out.size());
+      memcpy(out.data(), attestation.evidence().data() + strlen(SIMULATED_REPORT_PREFIX), out.size());
       return std::make_pair(out, error::OK);
     }
     attestation::nitro::CoseSign1 cose_sign_1;
@@ -80,7 +85,7 @@ class Environment : public ::svr2::env::socket::Environment {
 
     error::Error err = error::OK;
     if (// Parse the evidence.
-        error::OK != (err = cose_sign_1.ParseFromBytes(reinterpret_cast<const uint8_t*>(evidence.data()), evidence.size())) ||
+        error::OK != (err = cose_sign_1.ParseFromBytes(reinterpret_cast<const uint8_t*>(attestation.evidence().data()), attestation.evidence().size())) ||
         error::OK != (err = attestation_doc.ParseFromBytes(cose_sign_1.payload.data(), cose_sign_1.payload.size())) ||
         // Valiate the attestation doc.
         attestation_doc.public_key.size() != out.size() ||
@@ -128,7 +133,8 @@ class Environment : public ::svr2::env::socket::Environment {
     // Get an initial set of evidence to pull our PCRs from.
     PublicKey k;
     enclaveconfig::RaftGroupConfig config;
-    auto [att, err] = Evidence(k, config);
+    context::Context ctx;
+    auto [att, err] = Evidence(&ctx, k, config);
     CHECK(error::OK == err);
     // Parse evidence into an attestation doc.
     attestation::nitro::CoseSign1 cose_sign_1;

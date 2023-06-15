@@ -175,7 +175,7 @@ noise::DHState ClientManager::NewDHState() {
 
 error::Error ClientManager::RotateKeyAndRefreshAttestation(context::Context* ctx, const enclaveconfig::RaftGroupConfig& config) {
   auto dhstate = NewDHState();
-  auto [attestation, err] = GetAttestation(dhstate, config);
+  auto [attestation, err] = GetAttestation(ctx, dhstate, config);
   if (err != error::OK) {
     COUNTER(client, key_rotate_failure)->Increment();
     return err;
@@ -194,7 +194,7 @@ error::Error ClientManager::RotateKeyAndRefreshAttestation(context::Context* ctx
 
 error::Error ClientManager::RefreshAttestation(context::Context* ctx, const enclaveconfig::RaftGroupConfig& config) {
   auto dhstate = DHState(ctx);
-  auto [attestation, err] = GetAttestation(DHState(ctx), config);
+  auto [attestation, err] = GetAttestation(ctx, DHState(ctx), config);
   if (err != error::OK) {
     COUNTER(client, attestation_refresh_failure)->Increment();
     return err;
@@ -215,7 +215,7 @@ error::Error ClientManager::RefreshAttestation(context::Context* ctx, const encl
   return error::OK;
 }
 
-std::pair<e2e::Attestation, error::Error> ClientManager::GetAttestation(const noise::DHState& dhstate, const enclaveconfig::RaftGroupConfig& config) {
+std::pair<e2e::Attestation, error::Error> ClientManager::GetAttestation(context::Context* ctx, const noise::DHState& dhstate, const enclaveconfig::RaftGroupConfig& config) {
   e2e::Attestation attestation;
   // get attestation for its public key
   uint8_t public_key[32];
@@ -225,7 +225,7 @@ std::pair<e2e::Attestation, error::Error> ClientManager::GetAttestation(const no
 
   env::PublicKey public_key_array {};
   std::copy(std::begin(public_key), std::end(public_key), std::begin(public_key_array));
-  return env::environment->Evidence(public_key_array, config);
+  return env::environment->Evidence(ctx, public_key_array, config);
 }
 
 noise::DHState ClientManager::DHState(context::Context* ctx) const {
