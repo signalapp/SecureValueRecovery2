@@ -212,6 +212,7 @@ enum Error {
   SocketMain_InboundMessageParse = 1406;
   SocketMain_InboundNotMessage = 1407;
   SocketMain_UnsupportedSockType = 1408;
+  SocketMain_SocketSetOpt = 1409;
 
   AttestationNitro_NS = 1500;
   AttestationNitro_CborError = 1501;
