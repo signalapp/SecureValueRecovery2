@@ -98,6 +98,8 @@ CREATE_COUNTER(context, cpu_core_repl_send, cpu, ({{"in", "core"}, {"action", "r
 CREATE_COUNTER(context, cpu_core_repl_recv, cpu, ({{"in", "core"}, {"action", "repl_recv"}}))
 CREATE_COUNTER(context, cpu_core_committed_logs, cpu, ({{"in", "core"}, {"action", "committed_logs"}}))
 CREATE_COUNTER(context, cpu_core_timer_tick, cpu, ({{"in", "core"}, {"action", "timer_tick"}}))
+CREATE_COUNTER(context, cpu_core_host_database_req, cpu, ({{"in", "core"}, {"action", "host_db_req"}}))
+CREATE_COUNTER(context, cpu_core_metrics, cpu, ({{"in", "core"}, {"action", "metrics"}}))
 CREATE_COUNTER(context, cpu_test_database_entries, cpu, ({{"in", "core"}, {"action", "test_database_entries"}}))
 CREATE_COUNTER(context, lock_core_raft, cpu, ({{"in", "core"}, {"action", "lock"}, {"lock", "core_raft"}}))
 CREATE_COUNTER(context, lock_core_log_txns, cpu, ({{"in", "core"}, {"action", "lock"}, {"lock", "core_log_txns"}}))

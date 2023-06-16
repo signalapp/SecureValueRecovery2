@@ -285,6 +285,7 @@ error::Error Core::HandleHostToEnclave(context::Context* ctx, const HostToEnclav
       }
     } return error::OK;
     case HostToEnclaveRequest::kRequestMetrics: {
+      MEASURE_CPU(ctx, cpu_core_metrics);
       env::environment->UpdateEnvStats();
       EnclaveMessage* out = ctx->Protobuf<EnclaveMessage>();
       auto resp = out->mutable_h2e_response();
@@ -292,8 +293,10 @@ error::Error Core::HandleHostToEnclave(context::Context* ctx, const HostToEnclav
       *resp->mutable_metrics_reply() = metrics::AllAsPB();
       sender::Send(*out);
     } return error::OK;
-    case HostToEnclaveRequest::kDatabaseRequest:
-      return HandleHostDatabaseRequest(ctx, tx, msg.database_request());
+    case HostToEnclaveRequest::kDatabaseRequest: {
+      MEASURE_CPU(ctx, cpu_core_host_database_req);
+      RETURN_IF_ERROR(HandleHostDatabaseRequest(ctx, tx, msg.database_request()));
+    } return error::OK;
     case HostToEnclaveRequest::kReconfigure: {
       auto err = HandleReconfigure(ctx, tx, msg.reconfigure());
       ReplyWithError(ctx, tx, err);
