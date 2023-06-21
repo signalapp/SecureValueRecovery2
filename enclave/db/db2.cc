@@ -115,18 +115,23 @@ DB::Response* DB2::Run(context::Context* ctx, const DB::Log& log_pb) {
   auto resp = ctx->Protobuf<client::Response>();
   switch (log.req().inner_case()) {
     case client::Request::kBackup:
+      COUNTER(db2, ops_backup)->Increment();
       Backup(id, log.req().backup(), resp->mutable_backup());
       break;
     case client::Request::kRestore:
+      COUNTER(db2, ops_restore)->Increment();
       Restore(id, log.req().restore(), resp->mutable_restore());
       break;
     case client::Request::kDelete:
+      COUNTER(db2, ops_delete)->Increment();
       Delete(id, log.req().delete_(), resp->mutable_delete_());
       break;
     case client::Request::kExpose:
+      COUNTER(db2, ops_expose)->Increment();
       Expose(id, log.req().expose(), resp->mutable_expose());
       break;
     default:
+      COUNTER(db2, ops_unknown)->Increment();
       LOG(WARNING) << "unsupported request case, returning empty response";
       break;
   }

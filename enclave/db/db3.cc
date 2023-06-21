@@ -41,6 +41,7 @@ std::pair<DB::Log*, error::Error> DB3::Protocol::LogPBFromRequest(
   log->set_backup_id(authenticated_id);
   *log->mutable_req() = std::move(*r);
   if (log->req().inner_case() == client::Request3::kCreate) {
+    MEASURE_CPU(ctx, cpu_db3_new_keys);
     auto [priv, pub] = NewKeys();
     log->set_create_privkey(util::ByteArrayToString(priv));
     log->set_create_pubkey(util::ByteArrayToString(pub));
@@ -102,12 +103,15 @@ DB::Response* DB3::Run(context::Context* ctx, const DB::Log& log_pb) {
   CHECK(err == error::OK);
   switch (log->req().inner_case()) {
     case client::Request3::kCreate: {
+      COUNTER(db3, ops_create)->Increment();
       Create(ctx, id, log->create_privkey(), log->create_pubkey(), log->req().create(), out->mutable_create());
     } break;
     case client::Request3::kEvaluate: {
+      COUNTER(db3, ops_evaluate)->Increment();
       Evaluate(ctx, id, log->req().evaluate(), out->mutable_evaluate());
     } break;
     case client::Request3::kRemove: {
+      COUNTER(db3, ops_remove)->Increment();
       Remove(ctx, id, log->req().remove(), out->mutable_remove());
     } break;
     default: CHECK(nullptr == "should never reach here, client log already validated");
@@ -196,7 +200,11 @@ std::array<uint8_t, 32> DB3::Hash(context::Context* ctx) const {
   return out;
 }
 
-std::pair<DB3::Element, error::Error> DB3::BlindEvaluate(const DB3::PrivateKey& key, const DB3::Element& blinded_element) {
+std::pair<DB3::Element, error::Error> DB3::BlindEvaluate(
+    context::Context* ctx,
+    const DB3::PrivateKey& key,
+    const DB3::Element& blinded_element) {
+  MEASURE_CPU(ctx, cpu_db3_blind_evaluate);
   Element out{0};
   int ret = 0;
   if (0 != (ret = crypto_scalarmult_ristretto255(out.data(), key.data(), blinded_element.data()))) {
@@ -238,7 +246,7 @@ void DB3::Create(
     resp->set_status(client::CreateResponse::ERROR);
     return;
   }
-  auto [evaluated, err4] = BlindEvaluate(priv, elt);
+  auto [evaluated, err4] = BlindEvaluate(ctx, priv, elt);
   if (err4 != error::OK) {
     resp->set_status(client::CreateResponse::ERROR);
     return;
@@ -268,7 +276,7 @@ void DB3::Evaluate(
     resp->set_status(client::EvaluateResponse::MISSING);
     return;
   }
-  auto [evaluated, err2] = BlindEvaluate(find->second.priv, elt);
+  auto [evaluated, err2] = BlindEvaluate(ctx, find->second.priv, elt);
   if (err2 != error::OK) {
     resp->set_status(client::EvaluateResponse::ERROR);
     return;

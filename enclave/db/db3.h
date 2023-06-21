@@ -92,7 +92,7 @@ class DB3 : public DB {
   virtual size_t row_count() const { return rows_.size(); }
 
  private:
-  static std::pair<Element, error::Error> BlindEvaluate(const PrivateKey& key, const Element& blinded_element);
+  static std::pair<Element, error::Error> BlindEvaluate(context::Context* ctx, const PrivateKey& key, const Element& blinded_element);
 
   struct Row {
     PrivateKey priv;
