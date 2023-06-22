@@ -31,6 +31,14 @@ std::pair<std::array<uint8_t, N>, error::Error> StringToByteArray(const std::str
   return std::make_pair(result, error::OK);
 }
 
+std::string ByteVectorToString(const std::vector<uint8_t>& bytes);
+inline std::string ByteVectorToString(const std::vector<uint8_t>& bytes) {
+  std::string result;
+  result.resize(bytes.size());
+  std::copy(bytes.begin(), bytes.end(), result.begin());
+  return result;
+}
+
 }  // namespace svr2::util
 
 #endif // __SVR2_UTIL_BYTES_H

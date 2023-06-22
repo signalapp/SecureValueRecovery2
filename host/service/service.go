@@ -71,6 +71,7 @@ func Start(ctx context.Context, hconfig *config.Config, authenticator auth.Auth,
 
 	logger.Infof("started peer server on %v", ln.Addr())
 
+	logger.Infof("Starting Redis server on %v", hconfig.Redis.Addrs)
 	peerDB := peerdb.New(hconfig.Redis)
 
 	// let other peers look us up by our nodeID

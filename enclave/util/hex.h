@@ -6,11 +6,11 @@
 
 #include <string>
 #include <algorithm>
+#include "proto/error.pb.h"
 
 namespace svr2::util {
 
 std::string BytesToHex(const uint8_t* in, size_t size);
-std::string HexToBytes(std::string hex);
 
 // Turns the `s`-byte prefix of `in` into `s*2` hex characters and returns it as a string.
 template <class T>
@@ -27,6 +27,11 @@ std::string ToHex(const T& in) {
 template <class T>
 std::string ValueToHex(const T& in) {
   return BytesToHex(reinterpret_cast<const uint8_t*>(&in), sizeof(in));
+}
+
+std::pair<std::string, error::Error> HexToBytes(const char* in, size_t in_size);
+inline std::pair<std::string, error::Error> HexToBytes(const std::string& in) {
+  return HexToBytes(in.data(), in.size());
 }
 
 }  // namespace svr2::util

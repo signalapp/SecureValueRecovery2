@@ -7,6 +7,8 @@ require (
 	github.com/armon/go-metrics v0.4.1
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/go-redis/redis_rate/v9 v9.1.2
+	github.com/google/go-sev-guest v0.6.1
+	github.com/mdlayher/vsock v1.2.0
 	golang.org/x/exp v0.0.0-20230213192124-5e25df0256eb
 	golang.org/x/sync v0.1.0
 )
@@ -17,10 +19,14 @@ require (
 	github.com/alicebob/gopher-json v0.0.0-20200520072559-a9ecdc9d1d3a // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
+	github.com/golang/protobuf v1.5.0 // indirect
+	github.com/google/logger v1.1.1 // indirect
+	github.com/google/uuid v1.0.0 // indirect
 	github.com/hashicorp/go-immutable-radix v1.3.1 // indirect
 	github.com/hashicorp/golang-lru v0.5.0 // indirect
 	github.com/mdlayher/socket v0.4.0 // indirect
-	github.com/mdlayher/vsock v1.2.0 // indirect
+	github.com/pborman/uuid v1.2.0 // indirect
+	github.com/pkg/errors v0.9.1 // indirect
 	github.com/yuin/gopher-lua v0.0.0-20220504180219-658193537a64 // indirect
 	golang.org/x/crypto v0.1.0 // indirect
 	golang.org/x/mod v0.8.0 // indirect

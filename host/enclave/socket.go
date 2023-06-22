@@ -21,14 +21,28 @@ import (
 	pb "github.com/signalapp/svr2/proto"
 )
 
-func vSock(port, cid int, simulated bool) (_ net.Conn, returnedErr error) {
-	if simulated {
-		return net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
-	}
-	return vsock.Dial(uint32(cid), uint32(port), nil)
+type SocketConfig struct {
+	Port uint32
+
+	// Only one of VsockCID and Host must be set.
+	// If Host is set, this is an AF_INET socket.
+	// If VsockCID is set, this is an AF_VSOCK socket.
+	VsockCID uint32
+	Host     string
 }
 
-type Nitro struct {
+func (sc *SocketConfig) sock() (_ net.Conn, returnedErr error) {
+	switch {
+	case sc.Host != "":
+		return net.Dial("tcp", fmt.Sprintf("%s:%d", sc.Host, sc.Port))
+	case sc.VsockCID != 0:
+		return vsock.Dial(sc.VsockCID, sc.Port, nil)
+	default:
+		return nil, fmt.Errorf("Invalid socket config: %+v", *sc)
+	}
+}
+
+type Socket struct {
 	c   chan *pb.EnclaveMessage
 	pid peerid.PeerID
 
@@ -40,9 +54,9 @@ type Nitro struct {
 	calls    map[uint64]chan<- error
 }
 
-var testNitroIface Enclave = (*Nitro)(nil)
+var testSocketIface Enclave = (*Socket)(nil)
 
-func (n *Nitro) send(pb proto.Message) error {
+func (n *Socket) send(pb proto.Message) error {
 	buf, err := proto.Marshal(pb)
 	if err != nil {
 		return fmt.Errorf("marshaling proto: %w", err)
@@ -60,7 +74,7 @@ func (n *Nitro) send(pb proto.Message) error {
 	return nil
 }
 
-func (n *Nitro) recv(pb proto.Message) error {
+func (n *Socket) recv(pb proto.Message) error {
 	var sizeBuf [4]byte
 	if _, err := io.ReadFull(n.sock, sizeBuf[:]); err != nil {
 		return fmt.Errorf("reading size: %w", err)
@@ -75,15 +89,15 @@ func (n *Nitro) recv(pb proto.Message) error {
 	return nil
 }
 
-func NewNitro(config *pb.InitConfig, port, cid int) (_ *Nitro, returnedErr error) {
-	sock, err := vSock(port, cid, config.GroupConfig.Simulated)
+func NewSocket(config *pb.InitConfig, sc SocketConfig) (_ *Socket, returnedErr error) {
+	sock, err := sc.sock()
 	if err != nil {
 		return nil, fmt.Errorf("creating nitro socket: %w", err)
 	}
 	if _, err := sock.Write([]byte{'N'}); err != nil {
 		return nil, fmt.Errorf("writing nitro hello byte: %w", err)
 	}
-	n := &Nitro{
+	n := &Socket{
 		c:     make(chan *pb.EnclaveMessage, 100),
 		sock:  sock,
 		calls: map[uint64]chan<- error{},
@@ -122,7 +136,7 @@ loop:
 	return n, nil
 }
 
-func (n *Nitro) readNextOutput() error {
+func (n *Socket) readNextOutput() error {
 	var out pb.OutboundMessage
 	if err := n.recv(&out); err != nil {
 		return fmt.Errorf("recv error: %w", err)
@@ -148,7 +162,7 @@ func (n *Nitro) readNextOutput() error {
 	return nil
 }
 
-func (n *Nitro) handleLog(log *pb.Log) {
+func (n *Socket) handleLog(log *pb.Log) {
 	switch log.Level {
 	case pb.EnclaveLogLevel_LOG_LEVEL_FATAL, pb.EnclaveLogLevel_LOG_LEVEL_ERROR:
 		logger.Errorw(log.Log)
@@ -163,7 +177,7 @@ func (n *Nitro) handleLog(log *pb.Log) {
 	}
 }
 
-func (n *Nitro) receivedResponse(m *pb.MsgCallResponse) error {
+func (n *Socket) receivedResponse(m *pb.MsgCallResponse) error {
 	n.callMu.Lock()
 	defer n.callMu.Unlock()
 	done := n.calls[m.Id]
@@ -179,7 +193,7 @@ func (n *Nitro) receivedResponse(m *pb.MsgCallResponse) error {
 	return nil
 }
 
-func (n *Nitro) readOutputs() {
+func (n *Socket) readOutputs() {
 	var err error
 	for err == nil {
 		err = n.readNextOutput()
@@ -189,15 +203,15 @@ func (n *Nitro) readOutputs() {
 	close(n.c)
 }
 
-func (n *Nitro) PID() peerid.PeerID {
+func (n *Socket) PID() peerid.PeerID {
 	return n.pid
 }
 
-func (n *Nitro) OutputMessages() <-chan *pb.EnclaveMessage {
+func (n *Socket) OutputMessages() <-chan *pb.EnclaveMessage {
 	return n.c
 }
 
-func (n *Nitro) SendMessage(msgPB *pb.UntrustedMessage) error {
+func (n *Socket) SendMessage(msgPB *pb.UntrustedMessage) error {
 	buf, err := proto.Marshal(msgPB)
 	if err != nil {
 		return fmt.Errorf("marshaling: %w", err)
@@ -225,7 +239,7 @@ func (n *Nitro) SendMessage(msgPB *pb.UntrustedMessage) error {
 	return <-done
 }
 
-func (n *Nitro) Close() {
-	logger.Errorf("Closing Nitro")
+func (n *Socket) Close() {
+	logger.Errorf("Closing Socket")
 	n.sock.Close()
 }

@@ -32,7 +32,8 @@ class AttestNitroTest : public ::testing::Test {
   static util::UnixSecs valid_at;
   static util::UnixSecs valid_at2;
   ByteString FromHex(const std::string& hex) {
-    std::string bytes = util::HexToBytes(hex);
+    auto [bytes, err] = util::HexToBytes(hex);
+    CHECK(err == error::OK);
     ByteString out;
     out.resize(bytes.size());
     std::copy(bytes.begin(), bytes.end(), out.begin());

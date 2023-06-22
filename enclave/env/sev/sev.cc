@@ -13,12 +13,13 @@
 #include "attestation/sev/sev.h"
 #include "env/env.h"
 #include "env/socket/socket.h"
-#include "env/sev/linux_types.h"
+#include "sevtypes/sevtypes.h"
 #include "util/macros.h"
 #include "util/constant.h"
 #include "context/context.h"
 #include "socketwrap/socket.h"
 #include "proto/socketmain.pb.h"
+#include "proto/sev.pb.h"
 #include "queue/queue.h"
 #include "util/bytes.h"
 #include "util/hex.h"
@@ -61,10 +62,10 @@ class Environment : public ::svr2::env::socket::Environment {
       return std::make_pair(out, error::OK);
     }
 
-    struct snp_ext_report_req req;
-    struct snp_report_resp resp;
-    struct snp_guest_request_ioctl guest_req;
-    struct msg_report_resp* report_resp = reinterpret_cast<struct msg_report_resp*>(&resp.data);
+    snp_ext_report_req req;
+    snp_report_resp resp;
+    snp_guest_request_ioctl guest_req;
+    attestation::sev::msg_report_resp* report_resp = reinterpret_cast<attestation::sev::msg_report_resp*>(&resp.data);
     uint8_t certs[SEV_FW_BLOB_MAX_SIZE];
     memset(&req, 0, sizeof(req));
     memset(&resp, 0, sizeof(resp));
@@ -88,7 +89,7 @@ class Environment : public ::svr2::env::socket::Environment {
     int ioctl_ret = ioctl(sev_fd_, SNP_GET_EXT_REPORT, &guest_req);
     {
       auto e = errno;
-      LOG(INFO) << "SEV_IOCTL OUTPUT:"
+      LOG(DEBUG) << "SEV_IOCTL OUTPUT:"
           << " ioctl_ret=" << ioctl_ret
           << " fw_error=" << guest_req.fw_error
           << " vmm_error=" << guest_req.vmm_error
@@ -97,44 +98,21 @@ class Environment : public ::svr2::env::socket::Environment {
     }
 
     error::Error err = error::OK;
+    attestation::sev::SevSnpEndorsements endorsements = base_endorsements_;
     if (ioctl_ret < 0) {
       return std::make_pair(out, COUNTED_ERROR(Sev_ReportIOCTLFailure));
     } else if (0 != guest_req.fw_error || 0 != guest_req.vmm_error || 0 != report_resp->status) {
       return std::make_pair(out, COUNTED_ERROR(Sev_FirmwareError));
     } else if (sizeof(report_resp->report) != report_resp->report_size) {
       return std::make_pair(out, COUNTED_ERROR(Sev_ReportSizeMismatch));
-    } else if (error::OK != (err = attestation::sev::ResizeCertificates(certs, &req.certs_len))) {
+    } else if (error::OK != (err = attestation::sev::CertificatesToEndorsements(certs, req.certs_len, &endorsements))) {
       return std::make_pair(out, err);
     }
     out.mutable_evidence()->resize(sizeof(report_resp->report));
     memcpy(out.mutable_evidence()->data(), reinterpret_cast<const char*>(&report_resp->report), sizeof(report_resp->report));
     *out.mutable_evidence() += extra_data;
-    out.mutable_endorsements()->resize(req.certs_len);
-    memcpy(out.mutable_endorsements()->data(), reinterpret_cast<const char*>(certs), req.certs_len);
+    out.set_endorsements(endorsements.SerializeAsString());
 
-    auto r = &report_resp->report;
-    LOG(INFO) << "SEV REPORT:"
-        << " version:" << util::ValueToHex(r->version)
-        << " guest_svn:" << util::ValueToHex(r->guest_svn)
-        << " policy:" << util::ValueToHex(r->policy)
-        << " family_id:" << util::BytesToHex(r->family_id, sizeof(r->family_id))
-        << " image_id:" << util::BytesToHex(r->image_id, sizeof(r->image_id))
-        << " vmpl:" << util::ValueToHex(r->vmpl)
-        << " signature_algo:" << util::ValueToHex(r->signature_algo)
-        << " platform_version:" << util::ValueToHex(r->platform_version.raw)
-        << " platform_info:" << util::ValueToHex(r->platform_info)
-        << " flags:" << util::ValueToHex(r->flags)
-        << " report_data:" << util::BytesToHex(r->report_data, sizeof(r->report_data))
-        << " measurement:" << util::BytesToHex(r->measurement, sizeof(r->measurement))
-        << " host_data:" << util::BytesToHex(r->host_data, sizeof(r->host_data))
-        << " id_key_digest:" << util::BytesToHex(r->id_key_digest, sizeof(r->id_key_digest))
-        << " author_key_digest:" << util::BytesToHex(r->author_key_digest, sizeof(r->author_key_digest))
-        << " report_id:" << util::BytesToHex(r->report_id, sizeof(r->report_id))
-        << " report_id_ma:" << util::BytesToHex(r->report_id_ma, sizeof(r->report_id_ma))
-        << " reported_tcb:" << util::ValueToHex(r->reported_tcb.raw)
-        << " chip_id:" << util::BytesToHex(r->chip_id, sizeof(r->chip_id))
-        << " signature.r:" << util::BytesToHex(r->signature.r, sizeof(r->signature.r))
-        << " signature.s:" << util::BytesToHex(r->signature.s, sizeof(r->signature.s));
     LOG(DEBUG) << "Attestation:"
         << " evidence:" << util::ToHex(out.evidence())
         << " endorsements:" << util::ToHex(out.endorsements());
@@ -156,7 +134,7 @@ class Environment : public ::svr2::env::socket::Environment {
       memcpy(out.data(), attestation.evidence().data() + strlen(SIMULATED_REPORT_PREFIX), out.size());
       return std::make_pair(out, error::OK);
     }
-    return std::make_pair(out, error::General_Unimplemented);
+    return attestation::sev::KeyFromVerifiedAttestation(report_, attestation, now);
   }
 
   // Given a string of size N, rewrite all bytes in that string with
@@ -201,20 +179,49 @@ class Environment : public ::svr2::env::socket::Environment {
   virtual void Init() {
     ::svr2::env::Environment::Init();
     if (simulated_) return;
+
+    const char* base_endorsements_file = "endorsements.pb";
+    if (attestation::sev::EndorsementsFromFile(base_endorsements_file, &base_endorsements_)) {
+      LOG(INFO) << "Successfully pulled base endorsements from '" << base_endorsements_file << "'";
+    }
+
     PublicKey k = {'i', 'n', 'i', 't', 0};
     enclaveconfig::RaftGroupConfig c;
     context::Context ctx;
     auto [attest, err] = Evidence(&ctx, k, c);
-    std::stringstream sst;
-    sst << "Evidence_err=" << err;
-    Log(enclaveconfig::LOG_LEVEL_INFO, sst.str());
     CHECK(err == error::OK);
-    // TODO: parse my own report to get my identity.
+    auto [report, err2] = attestation::sev::ReportFromUnverifiedAttestation(attest);
+    CHECK(err2 == error::OK);
+    report_ = report;
+    LOG(INFO) << "SEV REPORT:"
+        << " version:" << util::ValueToHex(report.version)
+        << " guest_svn:" << util::ValueToHex(report.guest_svn)
+        << " policy:" << util::ValueToHex(report.policy)
+        << " family_id:" << util::BytesToHex(report.family_id, sizeof(report.family_id))
+        << " image_id:" << util::BytesToHex(report.image_id, sizeof(report.image_id))
+        << " vmpl:" << util::ValueToHex(report.vmpl)
+        << " signature_algo:" << util::ValueToHex(report.signature_algo)
+        << " platform_version:" << util::ValueToHex(report.platform_version.raw)
+        << " platform_info:" << util::ValueToHex(report.platform_info)
+        << " flags:" << util::ValueToHex(report.flags)
+        << " report_data:" << util::BytesToHex(report.report_data, sizeof(report.report_data))
+        << " measurement:" << util::BytesToHex(report.measurement, sizeof(report.measurement))
+        << " host_data:" << util::BytesToHex(report.host_data, sizeof(report.host_data))
+        << " id_key_digest:" << util::BytesToHex(report.id_key_digest, sizeof(report.id_key_digest))
+        << " author_key_digest:" << util::BytesToHex(report.author_key_digest, sizeof(report.author_key_digest))
+        << " report_id:" << util::BytesToHex(report.report_id, sizeof(report.report_id))
+        << " report_id_ma:" << util::BytesToHex(report.report_id_ma, sizeof(report.report_id_ma))
+        << " reported_tcb:" << util::ValueToHex(report.reported_tcb.raw)
+        << " chip_id:" << util::BytesToHex(report.chip_id, sizeof(report.chip_id))
+        << " signature.r:" << util::BytesToHex(report.signature.r, sizeof(report.signature.r))
+        << " signature.s:" << util::BytesToHex(report.signature.s, sizeof(report.signature.s));
   }
 
  private:
   int32_t sev_fd_;
   bool simulated_;
+  attestation::sev::SevSnpEndorsements base_endorsements_;
+  attestation::sev::attestation_report report_;
 };
 
 }  // namespace

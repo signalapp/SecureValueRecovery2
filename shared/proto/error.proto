@@ -181,6 +181,8 @@ enum Error {
 
   Util_NS = 1100;
   Util_ArrayCopyTooBig = 1101;
+  Util_HexCharInvalid = 1102;
+  Util_HexBytesSize = 1103;
 
   DB3_NS = 1200;
   DB3_ScalarMultFailure = 1201;
@@ -231,7 +233,21 @@ enum Error {
   Sev_FirmwareError = 1602;
   Sev_ReportSizeMismatch = 1603;
 
-  SevAttest_NS = 1700;
-  SevAttest_CertsTableEntryTooLarge = 1701;
-  SevAttest_CertsTableCertTooLarge = 1702;
+  AttestationSEV_NS = 1700;
+  AttestationSEV_CertsTableEntryTooLarge = 1701;
+  AttestationSEV_CertsTableCertTooLarge = 1702;
+  AttestationSEV_EvidenceTooSmallForReport = 1703;
+  AttestationSEV_ParseEndorsements = 1704;
+  AttestationSEV_EndorsementBadCert = 1705;
+  AttestationSEV_UnsupportedReport = 1706;
+  AttestationSEV_CryptoAllocate = 1707;
+  AttestationSEV_SignatureVerify = 1708;
+  AttestationSEV_CryptoMessageDigest = 1709;
+  AttestationSEV_CryptoStoreInit = 1710;
+  AttestationSEV_CertificateChainVerify = 1711;
+  AttestationSEV_HostDataMismatch = 1712;
+  AttestationSEV_MeasurementMismatch = 1713;
+  AttestationSEV_DebugEnabled = 1714;
+  AttestationSEV_MigrationAllowed = 1715;
+  AttestationSEV_TCBMinimums = 1716;
 };

@@ -222,6 +222,7 @@ SEV_LIBRARIES = \
   attestation/sev \
   socketwrap \
   $(CORE_LIBRARIES_POST_ENV) \
+  boringssl \
 ## SEV_LIBRARIES
 
 build/enclave.sev: $(patsubst %,build/%/X86.a,$(SEV_LIBRARIES))
@@ -238,6 +239,7 @@ SEVATTEST_LIBRARIES = \
   context \
   util \
   $(CORE_LIBRARIES_POST_ENV) \
+  boringssl \
 ## SEVATTEST_LIBRARIES
 
 build/attest.sev: $(patsubst %,build/%/X86.a,$(SEVATTEST_LIBRARIES))

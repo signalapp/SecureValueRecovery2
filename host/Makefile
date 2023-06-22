@@ -2,7 +2,7 @@ OE_INCDIR = $(shell pkg-config oeenclave-clang++ --variable=includedir)
 CC=clang-11
 GO_TEST_FLAGS ?=
 
-all: build test
+all: build test control get_sev_chain miniredis
 .PHONY: all clean protos build test validate enclave_binaries
 
 build: generated
@@ -63,3 +63,6 @@ miniredis:
 
 control: generated
 	(cd cmd/control && go build)
+
+get_sev_chain: generated
+	(cd cmd/get_sev_chain && go build)

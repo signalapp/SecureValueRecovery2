@@ -1,0 +1,16 @@
+// Copyright 2023 Signal Messenger, LLC
+// SPDX-License-Identifier: AGPL-3.0-only
+
+syntax = "proto3";
+
+package svr2.attestation.sev;
+option go_package = "github.com/signalapp/svr2/proto";
+option optimize_for = LITE_RUNTIME;
+
+message SevSnpEndorsements {
+  bytes vcek = 1;
+  bytes ask = 2;
+  bytes ark = 3;
+  bytes vlek = 4;
+  bytes crl = 5;
+}

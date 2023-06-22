@@ -12,7 +12,7 @@ import (
 )
 
 var (
-	addr = flag.String("addr", "", "MiniRedis bind address")
+	addr = flag.String("addr", "localhost:6379", "MiniRedis bind address")
 )
 
 func main() {

@@ -34,6 +34,7 @@ type PeerDB struct {
 
 // New creates a PeerDB
 func New(cfg config.RedisConfig) *PeerDB {
+	logger.Infof("Connecting to Redis cluster %v", cfg.Addrs)
 	rdb := redis.NewClusterClient(&redis.ClusterOptions{
 		Addrs:    cfg.Addrs,
 		Password: cfg.Password,

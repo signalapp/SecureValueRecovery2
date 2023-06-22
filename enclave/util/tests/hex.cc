@@ -3,6 +3,9 @@
 
 //TESTDEP gtest
 //TESTDEP util
+//TESTDEP metrics
+//TESTDEP proto
+//TESTDEP protobuf-lite
 #include <gtest/gtest.h>
 #include "util/hex.h"
 #include <string>

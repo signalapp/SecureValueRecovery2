@@ -51,6 +51,7 @@ LIBRARY_CFLAGS = \
   -I$(CURDIR)/libsodium/src/libsodium/include \
   -I$(CURDIR)/tinycbor/src \
   -I$(CURDIR)/boringssl/include \
+  -I$(CURDIR)/sev-guest/include \
 ## LIBRARY_CFLAGS
 
 TEST_CFLAGS ?= \

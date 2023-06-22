@@ -94,16 +94,16 @@ bssl::UniquePtr<STACK_OF(X509)> RootsOfTrust() {
   CHECK(root_x509.get() != nullptr);
   bssl::UniquePtr<STACK_OF(X509)> root_stack(sk_X509_new_null());
   CHECK(root_stack.get() != nullptr);
-  CHECK(1 == sk_X509_push(root_stack.get(), root_x509.get()));
+  CHECK(0 != sk_X509_push(root_stack.get(), root_x509.get()));
   root_x509.release();  // owned by root_stack
   return root_stack;
 }
 
 const char COSE_SIGN1_NAME[] = "Signature1";
 
-}  // namespace
-
 const bssl::UniquePtr<STACK_OF(X509)> roots_of_trust = RootsOfTrust();
+
+}  // namespace
 
 void CoseSign1::Clear() {
   protected_header.clear();

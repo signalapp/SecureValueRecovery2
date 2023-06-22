@@ -56,8 +56,6 @@ struct AttestationDoc {
 
 error::Error Verify(const AttestationDoc& doc, const CoseSign1& from, util::UnixSecs now);
 
-extern const bssl::UniquePtr<STACK_OF(X509)> roots_of_trust;
-
 }  // namespace svr2::attestation::nitro
 
 #endif  // __SVR2_ATTESTATION_NITRO_NITRO_H__

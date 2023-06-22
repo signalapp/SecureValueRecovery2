@@ -34,10 +34,12 @@ var (
 	sgxPath     = flag.String("sgx_path", "", "Path to binary holding the sgx enclave")
 	econfigPath = flag.String("econfig_path", "", "Path to enclave configuration prototext file")
 	hconfigPath = flag.String("hconfig_path", "", "Path to host configuration yaml file")
-	enclaveType = flag.String("enclave_type", "sgx", "one of {sgx, nitro}")
+	enclaveType = flag.String("enclave_type", "sgx", "one of {sgx, nitro, sev}")
 	nitroPort   = flag.Int("nitro_port", 27427, "Nitro port if --enclave_type=nitro")
 	nitroPath   = flag.String("nitro_path", "", "Path to nitro binary for if enclave is simulated")
 	nitroCID    = flag.Int("nitro_cid", 16, "Nitro CID")
+	sevPort     = flag.Int("sev_port", 27427, "SEV port to use if --enclave_type=sev")
+	sevHost     = flag.String("sev_host", "127.0.0.1", "SEV host address to use if --enclave_type=sev")
 )
 
 func runSimulatedNitro(ctx context.Context) {
@@ -78,6 +80,7 @@ func main() {
 	}
 	logger.Init(hconfig)
 	defer logger.Sync()
+	logger.Infof("Host config: %+v", *hconfig)
 
 	// configure metrics
 	if hconfig.DatadogAgentHost != "" {
@@ -143,15 +146,27 @@ func main() {
 		defer sgx.Close()
 		enc = sgx
 	case "nitro":
+		sc := enclave.SocketConfig{Port: uint32(*nitroPort)}
 		if econfig.GroupConfig.Simulated {
 			runSimulatedNitro(ctx)
+			sc.Host = "127.0.0.1"
+		} else {
+			sc.VsockCID = uint32(*nitroCID)
 		}
-		nitro, err := enclave.NewNitro(&econfig, *nitroPort, *nitroCID)
+		nitro, err := enclave.NewSocket(&econfig, sc)
 		if err != nil {
 			logger.Fatalf("creating nitro connection: %v", err)
 		}
 		defer nitro.Close()
 		enc = nitro
+	case "sev":
+		sc := enclave.SocketConfig{Port: uint32(*sevPort), Host: *sevHost}
+		sev, err := enclave.NewSocket(&econfig, sc)
+		if err != nil {
+			logger.Fatalf("creating nitro connection: %v", err)
+		}
+		defer sev.Close()
+		enc = sev
 	default:
 		logger.Fatalf("invalid enclave type %q", *enclaveType)
 	}
