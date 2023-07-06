@@ -1,6 +1,5 @@
 .gopath
 .gocache
 .git
-enclave/build
 enclave/core.*
 docker/Dockerfile

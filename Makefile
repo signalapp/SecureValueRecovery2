@@ -54,12 +54,22 @@ dockersh: dockerbase
 	  $(DOCKER_ARGS) \
 	  svr2_buildenv
 
-sgx_container: dockerbase
-	docker build -f docker/Dockerfile -t svr2_runenv --target=runner .
-
 enclave_release: docker_enclave_releaser
+	docker build -f docker/Dockerfile -t svr2_nsmrun --target=nsmrun .
+	docker build -f docker/Dockerfile -t svr2_nsmeif --target=nsmeif .
+	docker build -f docker/Dockerfile -t svr2_sgxrun --target=sgxrun .
+	docker run --rm \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    -v $${PWD}/enclave/releases/nitro:/out/ \
+	  -u "0:0" \
+	  -e "TERM=xterm-256color" \
+    -e "DOCKER_IMAGE=svr2_nsmrun:latest" \
+    -e "OUTPUT_DIR=/out" \
+    -e "CHOWN_TO=$$(id -u):$$(id -g)" \
+    svr2_nsmeif:latest
+
 enclave_releaser: enclave host  # depends on 'host' so its tests will run
-	cp -vn enclave/build/enclave.signed "enclave/releases/default.$$(/opt/openenclave/bin/oesign dump -e enclave/build/enclave.signed | fgrep -i mrenclave | cut -d '=' -f2)"
-	cp -vn enclave/build/enclave.small "enclave/releases/small.$$(/opt/openenclave/bin/oesign dump -e enclave/build/enclave.small | fgrep -i mrenclave | cut -d '=' -f2)"
+	cp -vn enclave/build/enclave.signed "enclave/releases/sgx/default.$$(/opt/openenclave/bin/oesign dump -e enclave/build/enclave.signed | fgrep -i mrenclave | cut -d '=' -f2)"
+	cp -vn enclave/build/enclave.small "enclave/releases/sgx/small.$$(/opt/openenclave/bin/oesign dump -e enclave/build/enclave.small | fgrep -i mrenclave | cut -d '=' -f2)"
 
 .PHONY: all clean enclave host dockersh docker dockerbase git validate enclave_testbin control enclave_release enclave_releaser

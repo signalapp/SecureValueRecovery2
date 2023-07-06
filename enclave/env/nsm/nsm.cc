@@ -164,6 +164,10 @@ class Environment : public ::svr2::env::socket::Environment {
     // https://docs.aws.amazon.com/enclaves/latest/user/set-up-attestation.html
     // We only care about:
     //   0: Enclave image file - A contiguous measure of the contents of the image file, without the section data.
+    //      Note:  0 can change when an otherwise exactly-the-same image is rebuilt, due to changes in in-image
+    //      timestamps, etc.  However, it could also change with changes to shared libraries etc, so we do
+    //      check against this.  Be careful, though, that attempts to rebuild the same SVR code may result in
+    //      mismatches here.
     //   1: Linux kernel and bootstrap - A contiguous measurement of the kernel and boot ramfs data.
     //   2: Application - A contiguous, in-order measurement of the user applications, without the boot ramfs.
     // We use & rather than && so that all three are processed without preemption.

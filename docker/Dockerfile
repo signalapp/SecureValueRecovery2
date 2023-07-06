@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # To build use:
 # docker build -t oebuild .
-FROM amd64/debian@sha256:c0508353648d7db3c313661409ca41a2d12c63a4d06007387679161a8372329f AS base
+FROM amd64/debian:buster@sha256:108052254277ea53cd807d2782ed3cbe4b9242256af5c7519c6e5692ae2b5d97 AS base
 
 LABEL description="linux build environment for sgx."
 
@@ -120,30 +120,36 @@ COPY --from=nsmbuild /build/target/release/nsm.h    /opt/nsm/nsm.h
 
 CMD ["/bin/bash"]
 
-FROM builder AS build
-
-COPY docker/check_hash.sh docker/sha256.* ./
-RUN ./check_hash.sh /opt/nsm/libnsm.a
-COPY . /src
-RUN cd /src && make clean && make -j16 all enclave_releaser
-
-FROM base AS runner
+FROM base AS sgxrun
 
 RUN apt-get update && apt-get install -y \
     libsgx-dcap-default-qpl=1.16.100.2-focal1 \
     libsgx-dcap-default-qpl-dev=1.16.100.2-focal1
 COPY docker/sgx_default_qcnl_azure.conf /etc/sgx_default_qcnl.conf
-COPY --from=build /src/host/main /bin/svr2
-COPY --from=build /src/enclave/releases /enclaves
-COPY --from=build /src/host/cmd/control/control /bin/svr2control
+COPY host/main /bin/svr2
+COPY enclave/releases/sgx /enclaves
+COPY host/cmd/control/control /bin/svr2control
 
 ENTRYPOINT ["/bin/svr2"]
 
 FROM public.ecr.aws/amazonlinux/amazonlinux@sha256:94e7183b0739140dbd5b639fb7600f0a2299cec5df8780c26d9cb409da5315a9 AS nsmrun
-COPY --from=build /src/enclave/build/enclave.nsm /bin/svr2
+ADD enclave/build/enclave.nsm /bin/svr2
 ENTRYPOINT ["/bin/svr2", "--sock_type=af_vsock"]
 
 FROM alpine@sha256:ff6bdca1701f3a8a67e328815ff2346b0e4067d32ec36b7992c1fdc001dc8517 AS sevrun
-COPY --from=build /src/enclave/build/enclave.sev /bin/svr2
+COPY enclave/build/enclave.sev /bin/svr2
 EXPOSE 27427
 ENTRYPOINT ["/bin/svr2", "--sock_type=af_inet"]
+
+FROM public.ecr.aws/amazonlinux/amazonlinux@sha256:94e7183b0739140dbd5b639fb7600f0a2299cec5df8780c26d9cb409da5315a9 AS nsmeif
+RUN yum install -y \
+    aws-nitro-enclaves-cli.x86_64 \
+    aws-nitro-enclaves-cli-devel.x86_64 \
+    perl \
+    docker \
+    jq
+ENV DOCKER_IMAGE svr2_nsmrun:latest
+ENV OUTPUT_FILE /tmp/svr2.eif
+ENV CHOWN_TO 0:0
+COPY docker/build_eif.sh build_eif.sh
+ENTRYPOINT ./build_eif.sh
