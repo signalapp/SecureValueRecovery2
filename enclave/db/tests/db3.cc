@@ -59,9 +59,8 @@ TEST_F(DB3Test, SingleBackupLifecycle) {
     auto b = log.mutable_req()->mutable_create();
     b->set_max_tries(3);
     b->set_blinded_element(blinded_element);
-    auto [priv, pub] = DB3::Protocol::NewKeys();
+    auto priv = DB3::Protocol::NewKey();
     log.set_create_privkey(util::ByteArrayToString(priv));
-    log.set_create_pubkey(util::ByteArrayToString(pub));
 
     auto resp = dynamic_cast<client::Response3*>(db.Run(&ctx, log));
     auto r = resp->create();
@@ -105,9 +104,8 @@ TEST_F(DB3Test, Remove) {
     auto b = log.mutable_req()->mutable_create();
     b->set_max_tries(3);
     b->set_blinded_element(blinded_element);
-    auto [priv, pub] = DB3::Protocol::NewKeys();
+    auto priv = DB3::Protocol::NewKey();
     log.set_create_privkey(util::ByteArrayToString(priv));
-    log.set_create_pubkey(util::ByteArrayToString(pub));
 
     auto resp = dynamic_cast<client::Response3*>(db.Run(&ctx, log));
     auto r = resp->create();
@@ -322,10 +320,7 @@ TEST_F(DB3Test, IETF_A_1_1_1) {
     auto b = log.mutable_req()->mutable_create();
     b->set_max_tries(3);
     b->set_blinded_element(util::ByteArrayToString(blinded_element));
-    std::array<uint8_t, PUBLIC_KEY_SIZE> pk{};
-    CHECK(0 == crypto_scalarmult_ristretto255_base(pk.data(), reinterpret_cast<uint8_t*>(sk.data())));
     log.set_create_privkey(sk);
-    log.set_create_pubkey(util::ByteArrayToString(pk));
 
     auto resp = dynamic_cast<client::Response3*>(db.Run(&ctx, log));
     auto r = resp->create();
@@ -362,10 +357,7 @@ TEST_F(DB3Test, IETF_A_1_1_2) {
     auto b = log.mutable_req()->mutable_create();
     b->set_max_tries(3);
     b->set_blinded_element(util::ByteArrayToString(blinded_element));
-    std::array<uint8_t, PUBLIC_KEY_SIZE> pk{};
-    CHECK(0 == crypto_scalarmult_ristretto255_base(pk.data(), reinterpret_cast<uint8_t*>(sk.data())));
     log.set_create_privkey(sk);
-    log.set_create_pubkey(util::ByteArrayToString(pk));
 
     auto resp = dynamic_cast<client::Response3*>(db.Run(&ctx, log));
     auto r = resp->create();

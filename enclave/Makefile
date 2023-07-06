@@ -262,10 +262,11 @@ build/public.pem: build/private.pem
 	$(QUIET) echo -e "KEY\t$@"
 	$(QUIET) openssl rsa -in $< -pubout -out $@ $(QUIET_OUT)
 
-%.test.out: %.test
+%.test.out %.test.success: %.test
 	$(QUIET) echo -e "TEST\t$<"
-	$(QUIET) ./$^ --gtest_color=yes &>$@ || (cat $@; false)
+	$(QUIET) ./$^ --gtest_color=yes &>$*.test.out || (cat $*.test.out; false)
 	$(QUIET) echo -e "TEST\xE2\x9c\x85\t$<"
+	$(QUIET) touch $*.test.success
 
 build/testhost/libsvr2.a: 
 	$(QUIET) mkdir -p $(@D)

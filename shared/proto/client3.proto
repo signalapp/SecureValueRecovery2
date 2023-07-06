@@ -43,7 +43,6 @@ message CreateResponse {
   }
   Status status = 1;
   bytes evaluated_element = 2;  // ristretto255 element, 32 bytes
-  bytes public_key = 3;  // ristretto255 key, 32 bytes
 }
 
 //

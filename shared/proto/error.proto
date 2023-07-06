@@ -192,10 +192,9 @@ enum Error {
   DB3_ToplevelRequestType = 1205;
   DB3_RequestInvalid = 1206;
   DB3_LogPrivateKeyInvalid = 1207;
-  DB3_LogPublicKeyInvalid = 1208;
-  DB3_ReplicationInvalidRow = 1209;
-  DB3_LoadedRowsAlreadyInDB = 1210;
-  DB3_ReplicationOutOfOrder = 1211;
+  DB3_ReplicationInvalidRow = 1208;
+  DB3_LoadedRowsAlreadyInDB = 1209;
+  DB3_ReplicationOutOfOrder = 1210;
 
   Socket_NS = 1300;
   Socket_ReadEOF = 1301;

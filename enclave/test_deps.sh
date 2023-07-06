@@ -12,6 +12,6 @@ for testfile in `find ./ -type f | grep /tests/ | grep cc$`; do
   echo -e '\t$(QUIET) echo -e "BUILD\t$@"'
   echo -e '\t$(QUIET) mkdir -p \$(@D)'
   echo -e "\t\$(QUIET) \$(CXX) \$(TEST_CXXFLAGS) -o \$@ $testfile -Wl,--start-group $deps -Wl,--end-group $args \$(TEST_LDFLAGS)"
-  echo "test: build/$testname.out"
+  echo "test: build/$testname.success"
   echo ".PRECIOUS: build/$testname build/$testname.out"
 done | tee .testdepends

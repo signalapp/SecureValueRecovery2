@@ -49,7 +49,7 @@ class DB3 : public DB {
     virtual error::Error ValidateClientLog(const DB::Log& log) const;
     virtual size_t MaxRowSerializedSize() const;
    public_for_test:
-    static std::pair<PrivateKey, PublicKey> NewKeys();
+    static PrivateKey NewKey();
   };
   // P() returns a pointer to a _static_ Protocol object,
   // which will outlast the DB object.
@@ -104,7 +104,6 @@ class DB3 : public DB {
       context::Context* ctx,
       const BackupID& id,
       const std::string& privkey,
-      const std::string& pubkey,
       const client::CreateRequest& req,
       client::CreateResponse* resp);
   void Evaluate(

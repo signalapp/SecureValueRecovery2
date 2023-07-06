@@ -22,5 +22,4 @@ message Log3 {
   // If req.create(), then we need to generate new keys.
   // These fields will be filled in with the generated keys.
   bytes create_privkey = 3;
-  bytes create_pubkey = 4;
 }

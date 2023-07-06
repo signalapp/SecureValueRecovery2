@@ -42,9 +42,8 @@ std::pair<DB::Log*, error::Error> DB3::Protocol::LogPBFromRequest(
   *log->mutable_req() = std::move(*r);
   if (log->req().inner_case() == client::Request3::kCreate) {
     MEASURE_CPU(ctx, cpu_db3_new_keys);
-    auto [priv, pub] = NewKeys();
+    auto priv = NewKey();
     log->set_create_privkey(util::ByteArrayToString(priv));
-    log->set_create_pubkey(util::ByteArrayToString(pub));
   }
   return std::make_pair(log, error::OK);
 }
@@ -65,7 +64,6 @@ error::Error DB3::Protocol::ValidateClientLog(const DB::Log& log_pb) const {
       if (r.max_tries() < 1 || r.max_tries() > 255) { return COUNTED_ERROR(DB3_MaxTriesOutOfRange); }
       if (r.blinded_element().size() != ELEMENT_SIZE) { return COUNTED_ERROR(DB3_BlindedElementSize); }
       if (log->create_privkey().size() != sizeof(PrivateKey)) { return COUNTED_ERROR(DB3_LogPrivateKeyInvalid); }
-      if (log->create_pubkey().size() != sizeof(PublicKey)) { return COUNTED_ERROR(DB3_LogPublicKeyInvalid); }
     } break;
     case client::Request3::kEvaluate: {
       auto r = log->req().evaluate();
@@ -104,7 +102,7 @@ DB::Response* DB3::Run(context::Context* ctx, const DB::Log& log_pb) {
   switch (log->req().inner_case()) {
     case client::Request3::kCreate: {
       COUNTER(db3, ops_create)->Increment();
-      Create(ctx, id, log->create_privkey(), log->create_pubkey(), log->req().create(), out->mutable_create());
+      Create(ctx, id, log->create_privkey(), log->req().create(), out->mutable_create());
     } break;
     case client::Request3::kEvaluate: {
       COUNTER(db3, ops_evaluate)->Increment();
@@ -214,21 +212,16 @@ std::pair<DB3::Element, error::Error> DB3::BlindEvaluate(
   return std::make_pair(out, error::OK);
 }
 
-std::pair<DB3::PrivateKey, DB3::PublicKey> DB3::Protocol::NewKeys() {
+DB3::PrivateKey DB3::Protocol::NewKey() {
   PrivateKey priv{0};
-  PublicKey pub{0};
   crypto_core_ristretto255_scalar_random(priv.data());
-  // This will only return non-zero if `priv == 0`, which should never happen.
-  // TODO: Consider using either a protocol specific or a server specific base point.
-  CHECK(0 == crypto_scalarmult_ristretto255_base(pub.data(), priv.data()));
-  return std::make_pair(priv, pub);
+  return priv;
 }
 
 void DB3::Create(
     context::Context* ctx,
     const DB3::BackupID& id,
     const std::string& privkey,
-    const std::string& pubkey,
     const client::CreateRequest& req,
     client::CreateResponse* resp) {
   auto [elt, err1] = util::StringToByteArray<ELEMENT_SIZE>(req.blinded_element());
@@ -241,13 +234,8 @@ void DB3::Create(
     resp->set_status(client::CreateResponse::ERROR);
     return;
   }
-  auto [pub, err3] = util::StringToByteArray<sizeof(PublicKey)>(pubkey);
+  auto [evaluated, err3] = BlindEvaluate(ctx, priv, elt);
   if (err3 != error::OK) {
-    resp->set_status(client::CreateResponse::ERROR);
-    return;
-  }
-  auto [evaluated, err4] = BlindEvaluate(ctx, priv, elt);
-  if (err4 != error::OK) {
     resp->set_status(client::CreateResponse::ERROR);
     return;
   }
@@ -257,7 +245,6 @@ void DB3::Create(
   };
   GAUGE(db, rows)->Set(rows_.size());
   resp->set_evaluated_element(util::ByteArrayToString(evaluated));
-  resp->set_public_key(util::ByteArrayToString(pub));
   resp->set_status(client::CreateResponse::OK);
 }
 
