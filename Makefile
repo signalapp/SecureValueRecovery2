@@ -2,7 +2,7 @@ dockall: docker_all
 
 all: validate host enclave control
 
-MAKE_ARGS ?= --keep-going
+MAKE_ARGS ?=
 
 validate:
 	$(MAKE) $(MAKE_ARGS) -C enclave validate

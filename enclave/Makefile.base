@@ -12,6 +12,9 @@ else
 	QUIET_OUT=
 endif
 
+# We use -x86-cmov-converter=false due to https://electricdusk.com/cmov-conversion.html
+# We use -Wno-unused-command-line-argument because -x86-cmov-converter=false is unused
+# during some dependency compilation passes.
 SECURITY_CFLAGS = \
   -fstack-protector-strong \
   -fstack-clash-protection \
@@ -19,6 +22,8 @@ SECURITY_CFLAGS = \
   -D_FORTIFY_SOURCE=3 \
   -fsanitize=bounds \
   -fsanitize-undefined-trap-on-error \
+  -mllvm -x86-cmov-converter=false \
+  -Wno-unused-command-line-argument
 ## SECURITY_CFLAGS
 BASE_CFLAGS = \
   -fPIC \
