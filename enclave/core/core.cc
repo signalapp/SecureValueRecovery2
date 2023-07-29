@@ -800,7 +800,10 @@ void Core::HandleTimerTick(context::Context* ctx, const TimerTick& tick) {
   ACQUIRE_LOCK(raft_.mu, ctx, lock_core_raft);
   if (raft_.state == svr2::RAFTSTATE_LOADED_PART_OF_GROUP) {
     ConnectToRaftMembers(ctx);
-    raft_.loaded.raft->TimerTick(ctx);
+    {
+      MEASURE_CPU(ctx, cpu_core_raft_tick);
+      raft_.loaded.raft->TimerTick(ctx);
+    }
     if (raft_.loaded.raft->is_leader()) {
       raft::ReplicaGroup* next = NextReplicaGroup(ctx);
       if (next != nullptr) {
@@ -815,6 +818,7 @@ void Core::HandleTimerTick(context::Context* ctx, const TimerTick& tick) {
 }
 
 void Core::MaybeUpdateGroupTime(context::Context* ctx) {
+  MEASURE_CPU(ctx, cpu_core_updating_group_time);
   std::set<peerid::PeerID> peers = peer_manager_->ConnectedPeers(ctx);
   {
     ACQUIRE_LOCK(raft_.mu, ctx, lock_core_raft);
@@ -836,6 +840,7 @@ void Core::MaybeUpdateGroupTime(context::Context* ctx) {
 }
 
 void Core::ConnectToRaftMembers(context::Context* ctx) {
+  MEASURE_CPU(ctx, cpu_core_connecting_to_raft_members);
   const auto& membership = raft_.loaded.raft->membership();
   for (auto peer : membership.all_replicas()) {
     if (peer == ID() || peer < ID()) {

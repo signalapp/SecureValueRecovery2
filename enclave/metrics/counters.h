@@ -112,6 +112,9 @@ CREATE_COUNTER(context, cpu_core_committed_logs, cpu, ({{"in", "core"}, {"action
 CREATE_COUNTER(context, cpu_core_timer_tick, cpu, ({{"in", "core"}, {"action", "timer_tick"}}))
 CREATE_COUNTER(context, cpu_core_host_database_req, cpu, ({{"in", "core"}, {"action", "host_db_req"}}))
 CREATE_COUNTER(context, cpu_core_metrics, cpu, ({{"in", "core"}, {"action", "metrics"}}))
+CREATE_COUNTER(context, cpu_core_connecting_to_raft_members, cpu, ({{"in", "core"}, {"action", "connecting_to_raft_members"}}))
+CREATE_COUNTER(context, cpu_core_updating_group_time, cpu, ({{"in", "core"}, {"action", "updating_group_time"}}))
+CREATE_COUNTER(context, cpu_core_raft_tick, cpu, ({{"in", "core"}, {"action", "raft_tick"}}))
 CREATE_COUNTER(context, cpu_test_database_entries, cpu, ({{"in", "core"}, {"action", "test_database_entries"}}))
 CREATE_COUNTER(context, cpu_env_attest, cpu, ({{"in", "env"}, {"action", "attest"}}))
 CREATE_COUNTER(context, cpu_env_evidence, cpu, ({{"in", "env"}, {"action", "evidence"}}))
@@ -122,6 +125,7 @@ CREATE_COUNTER(context, cpu_socket_read_recv, cpu, ({{"in", "socket"}, {"action"
 CREATE_COUNTER(context, cpu_socket_read_parse, cpu, ({{"in", "socket"}, {"action", "read_parse"}}))
 CREATE_COUNTER(context, cpu_socket_write_serialize, cpu, ({{"in", "socket"}, {"action", "write_serialize"}}))
 CREATE_COUNTER(context, cpu_socket_write_send, cpu, ({{"in", "socket"}, {"action", "write_send"}}))
+CREATE_COUNTER(context, cpu_timeout_timer_tick, cpu, ({{"in", "timeout"}, {"action", "timer_tick"}}))
 
 CREATE_COUNTER(context, lock_core_raft, cpu, ({{"in", "core"}, {"action", "lock"}, {"lock", "core_raft"}}))
 CREATE_COUNTER(context, lock_core_log_txns, cpu, ({{"in", "core"}, {"action", "lock"}, {"lock", "core_log_txns"}}))

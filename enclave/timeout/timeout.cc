@@ -10,6 +10,7 @@ Timeout::Timeout() : ticks_(0), timeout_cancel_gen_(0) {}
 
 void Timeout::TimerTick(context::Context* ctx) {
   ACQUIRE_NAMED_LOCK(lock, mu_, ctx, lock_timeout);
+  MEASURE_CPU(ctx, cpu_timeout_timer_tick);
   ticks_++;
   auto timeouts_to_run = timeouts_.find(ticks_);
   if (timeouts_to_run == timeouts_.end()) {
