@@ -84,21 +84,21 @@ func (p *PeerDB) Close() error {
 //
 // This method retries until the insert succeeds or the provided context is cancelled
 func (p *PeerDB) Insert(ctx context.Context, me peerid.PeerID, addr string, ttl time.Duration) error {
-	return p.insert(ctx, me, addr, false, ttl)
+	return p.insert(ctx, me, addr, false, false, ttl)
 }
 
 // JoinedRaft updates a peer entry to indicate that it has joined the raft cluster
 //
 // This method retries until the insert succeeds or the provided context is cancelled
-func (p *PeerDB) JoinedRaft(ctx context.Context, me peerid.PeerID, addr string, ttl time.Duration) error {
-	return p.insert(ctx, me, addr, true, ttl)
+func (p *PeerDB) JoinedRaft(ctx context.Context, me peerid.PeerID, isLeader bool, addr string, ttl time.Duration) error {
+	return p.insert(ctx, me, addr, true, isLeader, ttl)
 }
 
-func (p *PeerDB) insert(ctx context.Context, me peerid.PeerID, addr string, isRaftMember bool, ttl time.Duration) error {
+func (p *PeerDB) insert(ctx context.Context, me peerid.PeerID, addr string, isRaftMember bool, isLeader bool, ttl time.Duration) error {
 	return util.RetryWithBackoff(ctx, func() error {
 		logger.Debugw("Attempting to add self to peerdb", "addr", addr, "raftmember", isRaftMember)
 		currentTime := p.clock.Now().Unix()
-		m := pb.PeerEntry{Addr: addr, LastUpdateTs: currentTime, RaftMember: isRaftMember}
+		m := pb.PeerEntry{Addr: addr, LastUpdateTs: currentTime, RaftMember: isRaftMember, Leader: isLeader}
 		if isRaftMember {
 			m.JoinTs = currentTime
 		}
@@ -113,6 +113,19 @@ func (p *PeerDB) insert(ctx context.Context, me peerid.PeerID, addr string, isRa
 		return nil
 	}, p.cfg.MinSleepDuration, p.cfg.MaxSleepDuration)
 
+}
+
+// betterThan returns true if `e1` is a better candidate to use to join a raft group
+// than `e2`
+func betterThan(e1 *pb.PeerEntry, e2 *pb.PeerEntry) bool {
+	if e1.Leader != e2.Leader {
+		// If e1 is the leader, e2 is the better candidate
+		// If e2 is the leader, e1 is the better candidate.
+		return !e1.Leader
+	}
+
+	// otherwise the most recently joined peer is the best candidate
+	return e1.JoinTs > e2.JoinTs
 }
 
 // FindRaftMember returns a member of an existing raft group that may be used to join raft
@@ -147,9 +160,9 @@ func (p *PeerDB) FindRaftMember(ctx context.Context, me peerid.PeerID, localPeer
 			}
 			return me, nil
 		}
-		// sort so the most recently joined member is first
+		// sort so the most recently joined member is first, preferring non-leaders
 		sort.Slice(peerIDs, func(i int, j int) bool {
-			return peers[peerIDs[j]].JoinTs < peers[peerIDs[i]].JoinTs
+			return betterThan(peers[peerIDs[i]], peers[peerIDs[j]])
 		})
 		logger.Infow("found joinable raft peer", "peerID", peerIDs[0])
 		return peerIDs[0], nil

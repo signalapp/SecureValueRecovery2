@@ -49,9 +49,13 @@ func New(me peerid.PeerID, enclaveRequester EnclaveRequester, memberFinder Membe
 	}
 }
 
+type EnclaveJoinInfo struct {
+	IsLeader bool // if true, this node currently thinks it's the leader
+}
+
 // MarkLiveFun is used to indicate to other peers that
 // this peer is a good candidate to join raft with
-type MarkLiveFun func(ctx context.Context) error
+type MarkLiveFun func(ctx context.Context, info EnclaveJoinInfo) error
 
 // RunRefresher periodically checks the enclave to verify this peer has good connectivity
 // to other raft nodes, and if so calls the provided MarkLiveFun
@@ -62,7 +66,7 @@ func (r *RaftManager) RunRefresher(ctx context.Context, markLive MarkLiveFun) er
 	}
 
 	// always initially mark ourselves as live
-	if err := markLive(ctx); err != nil {
+	if err := markLive(ctx, EnclaveJoinInfo{false}); err != nil {
 		return err
 	}
 
@@ -73,9 +77,10 @@ func (r *RaftManager) RunRefresher(ctx context.Context, markLive MarkLiveFun) er
 	for {
 		select {
 		case <-ch:
-			if err := r.enclaveJoinable(); err != nil {
+			info, err := r.enclaveJoinInfo()
+			if err != nil {
 				logger.Warnw("could not get enclave status", "err", err)
-			} else if err := markLive(ctx); err != nil {
+			} else if err := markLive(ctx, *info); err != nil {
 				logger.Warnw("failed to mark ourselves as joinable", "err", err)
 			}
 		case <-ctx.Done():
@@ -84,33 +89,39 @@ func (r *RaftManager) RunRefresher(ctx context.Context, markLive MarkLiveFun) er
 	}
 }
 
-// enclaveJoinable returns nil if other peers may use this node to join a raft cluster
-func (r *RaftManager) enclaveJoinable() error {
+// enclaveJoinInfo returns nil if other peers may use this node to join a raft cluster
+func (r *RaftManager) enclaveJoinInfo() (*EnclaveJoinInfo, error) {
 	resp, err := r.enclaveRequester.SendTransaction(&pb.HostToEnclaveRequest{
 		Inner: &pb.HostToEnclaveRequest_GetEnclaveStatus{
 			GetEnclaveStatus: true,
 		},
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if v, ok := resp.Inner.(*pb.HostToEnclaveResponse_Status); ok && v.Status != pb.Error_OK {
-		return v.Status
+		return nil, v.Status
 	}
 	v, ok := resp.Inner.(*pb.HostToEnclaveResponse_GetEnclaveStatusReply)
 	if !ok {
-		return fmt.Errorf("unexpected enclave reply %v", resp)
+		return nil, fmt.Errorf("unexpected enclave reply %v", resp)
 	}
 
 	partitionStatus := v.GetEnclaveStatusReply
 	if partitionStatus == nil {
-		return errors.New("unexpected enclave reply, missing partition status")
+		return nil, errors.New("unexpected enclave reply, missing partition status")
 	}
 
 	if partitionStatus.RaftState != pb.RaftState_RAFTSTATE_LOADED_PART_OF_GROUP {
-		return fmt.Errorf("not part of raft group, state: %v", partitionStatus.RaftState)
+		return nil, fmt.Errorf("not part of raft group, state: %v", partitionStatus.RaftState)
 	}
-	return nil
+
+	for _, peer := range partitionStatus.Peers {
+		if peer.Me && peer.IsLeader {
+			return &EnclaveJoinInfo{true}, nil
+		}
+	}
+	return &EnclaveJoinInfo{false}, nil
 }
 
 // CreateOrJoin finds and joins an existing raft group or creates a new raft group

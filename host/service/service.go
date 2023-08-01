@@ -123,10 +123,10 @@ func Start(ctx context.Context, hconfig *config.Config, authenticator auth.Auth,
 
 	// Successfully joined raft, periodically refresh our peerdb status
 	g.Go(func() error {
-		return raftManager.RunRefresher(ctx, func(innerCtx context.Context) error {
+		return raftManager.RunRefresher(ctx, func(innerCtx context.Context, info raftmanager.EnclaveJoinInfo) error {
 			timeoutCtx, cancel := context.WithTimeout(innerCtx, time.Minute)
 			defer cancel()
-			return peerDB.JoinedRaft(timeoutCtx, nodeID, hconfig.PeerAddr, hconfig.RecurringRedisPeerDBTTL)
+			return peerDB.JoinedRaft(timeoutCtx, nodeID, info.IsLeader, hconfig.PeerAddr, hconfig.RecurringRedisPeerDBTTL)
 		})
 	})
 

@@ -77,6 +77,7 @@ const (
 	EntryStatusNonMember                    // peer that isn't in the raft cluster
 	EntryStatusMember                       // peer that is in the raft cluster
 	EntryStatusRecentMember                 // peer that has been seen recently
+	EntryStatusRecentLeader                 // peer that has been seen recently and is the leader
 	EntryStatusMatchingHostname             // peer with the same hostname as we have
 )
 
@@ -110,7 +111,9 @@ func TestFindRaftMember(t *testing.T) {
 		{"pick_member_1", []EntryStatus{EntryStatusMember}, 0},
 		{"pick_member", []EntryStatus{EntryStatusSelf, EntryStatusMember, EntryStatusNonMember}, 1},
 		{"pick_recent", []EntryStatus{EntryStatusNonMember, EntryStatusMember, EntryStatusMember, EntryStatusRecentMember}, 3},
+		{"pick_non_leader", []EntryStatus{EntryStatusRecentLeader, EntryStatusMember, EntryStatusMember, EntryStatusRecentMember}, 3},
 		{"no_members", []EntryStatus{EntryStatusSelf, EntryStatusNonMember, EntryStatusMissing, EntryStatusMatchingHostname}, 0},
+		{"only_leader", []EntryStatus{EntryStatusRecentLeader, EntryStatusNonMember}, 0},
 		{"only_self", []EntryStatus{EntryStatusSelf}, 0},
 	}
 
@@ -125,6 +128,7 @@ func TestFindRaftMember(t *testing.T) {
 
 			oldTime := time.Unix(100, 0)
 			recentTime := time.Unix(101, 0)
+			recentLeaderTime := time.Unix(102, 0)
 			peerdb.clock = util.TestAt(oldTime)
 
 			// add peers to redis according to their status
@@ -140,13 +144,17 @@ func TestFindRaftMember(t *testing.T) {
 				case EntryStatusNonMember:
 					err = peerdb.Insert(context.Background(), peers[i], hostname, time.Minute)
 				case EntryStatusMember:
-					err = peerdb.JoinedRaft(context.Background(), peers[i], hostname, time.Minute)
+					err = peerdb.JoinedRaft(context.Background(), peers[i], false, hostname, time.Minute)
 				case EntryStatusRecentMember:
 					peerdb.clock = util.TestAt(recentTime)
-					err = peerdb.JoinedRaft(context.Background(), peers[i], hostname, time.Minute)
+					err = peerdb.JoinedRaft(context.Background(), peers[i], false, hostname, time.Minute)
+					peerdb.clock = util.TestAt(oldTime)
+				case EntryStatusRecentLeader:
+					peerdb.clock = util.TestAt(recentLeaderTime)
+					err = peerdb.JoinedRaft(context.Background(), peers[i], true, hostname, time.Minute)
 					peerdb.clock = util.TestAt(oldTime)
 				case EntryStatusMatchingHostname:
-					err = peerdb.JoinedRaft(context.Background(), peers[i], "self", time.Minute)
+					err = peerdb.JoinedRaft(context.Background(), peers[i], false, "self", time.Minute)
 				case EntryStatusSelf:
 					self = peers[i]
 				}
