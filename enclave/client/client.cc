@@ -127,13 +127,14 @@ std::pair<std::string, error::Error> Client::EncryptResponse(context::Context* c
 }
 
 std::pair<Client*, error::Error> ClientManager::NewClient(context::Context* ctx, const std::string& authenticated_id) {
-  ACQUIRE_LOCK(mu_, ctx, lock_clientmanager);
   MEASURE_CPU(ctx, cpu_client_hs_start);
   std::unique_ptr<Client> c(new Client(authenticated_id));
-  error::Error err = c->Init(dhstate_, attestation_);
+  auto [dhstate, attestation] = ClientArgs(ctx);
+  error::Error err = c->Init(dhstate, attestation);
   if (err != error::OK) {
     return std::make_pair(nullptr, err);
   }
+  ACQUIRE_LOCK(mu_, ctx, lock_clientmanager);
   Client* ptr = c.get();
   clients_[ptr->ID()] = std::move(c);
   GAUGE(client, clients)->Set(clients_.size());
@@ -193,8 +194,8 @@ error::Error ClientManager::RotateKeyAndRefreshAttestation(context::Context* ctx
 }
 
 error::Error ClientManager::RefreshAttestation(context::Context* ctx, const enclaveconfig::RaftGroupConfig& config) {
-  auto dhstate = DHState(ctx);
-  auto [attestation, err] = GetAttestation(ctx, DHState(ctx), config);
+  auto [dhstate, _] = ClientArgs(ctx);
+  auto [attestation, err] = GetAttestation(ctx, dhstate, config);
   if (err != error::OK) {
     COUNTER(client, attestation_refresh_failure)->Increment();
     return err;
@@ -228,9 +229,9 @@ std::pair<e2e::Attestation, error::Error> ClientManager::GetAttestation(context:
   return env::environment->Evidence(ctx, public_key_array, config);
 }
 
-noise::DHState ClientManager::DHState(context::Context* ctx) const {
+std::pair<noise::DHState, e2e::Attestation> ClientManager::ClientArgs(context::Context* ctx) const {
   ACQUIRE_LOCK(mu_, ctx, lock_clientmanager);
-  return noise::CloneDHState(dhstate_);
+  return std::make_pair(noise::CloneDHState(dhstate_), attestation_);
 }
 
 }  // namespace svr2::client
