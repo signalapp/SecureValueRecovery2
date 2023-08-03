@@ -313,9 +313,10 @@ void Raft::AppendEntries(context::Context* ctx, const peerid::PeerID& peer) {
   LogIdx last_entry = prev_log_idx;
   //        \* Send up to 1 entry, constrained by the end of the log.
   if (send_entries) {
-    size_t max_entries_size = config_.replication_chunk_bytes();
-    uint64_t start_entry = next_idx;
-    uint64_t limit_entry = std::min(last_log_idx + 1, start_entry+max_entries_size);
+    size_t total_entries_size = 0;
+    const size_t max_entries_size = config_.replication_chunk_bytes();
+    const uint64_t start_entry = next_idx;
+    const uint64_t limit_entry = last_log_idx + 1;
     //        entries == SubSeq(log[i], nextIndex[i][j], lastEntry)
     for (uint64_t entry_idx = start_entry; entry_idx < limit_entry; entry_idx++) {
       const LogEntry* e = log_->At(entry_idx).Entry();
@@ -324,6 +325,13 @@ void Raft::AppendEntries(context::Context* ctx, const peerid::PeerID& peer) {
         break;
       }
       entries.emplace_back(*e);
+      total_entries_size += e->ByteSizeLong();
+      if (total_entries_size >= max_entries_size) {
+        LOG(WARNING) << "not all log entries in [" << start_entry << ", " << limit_entry
+                     << ") sent due to size constraint.  At " << entry_idx
+                     << ", size " << total_entries_size << " >= " << max_entries_size;
+        break;
+      }
     }
     //        lastEntry == Min({Len(log[i]), nextIndex[i][j]})
     last_entry = prev_log_idx + entries.size();
