@@ -282,8 +282,9 @@ RaftMessage* Raft::RequestVoteMessage(context::Context* ctx) {
 }
 
 // \* Leader i sends j an AppendEntries request containing up to 1 entry.
-// \* While implementations may want to send more than 1 at a time, this spec uses
-// \* just 1 because it minimizes atomic regions without loss of generality.
+// The TLA+ spec for Raft limits AppendEntries requests to just one log entry
+// because it minimizes atomic regions without loss of generality.
+// This implementation allows multiple log entries in a request.
 void Raft::AppendEntries(context::Context* ctx, const peerid::PeerID& peer) {
   // AppendEntries(i, j) ==
   // /\ state[i] = Leader
@@ -311,7 +312,7 @@ void Raft::AppendEntries(context::Context* ctx, const peerid::PeerID& peer) {
   }
   std::vector<LogEntry> entries;
   LogIdx last_entry = prev_log_idx;
-  //        \* Send up to 1 entry, constrained by the end of the log.
+  //        \* Send entries, constrained by the end of the log and config_.replication_chunk_bytes.
   if (send_entries) {
     size_t total_entries_size = 0;
     const size_t max_entries_size = config_.replication_chunk_bytes();
