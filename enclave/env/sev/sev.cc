@@ -37,8 +37,12 @@ class Environment : public ::svr2::env::socket::Environment {
  public:
   DELETE_COPY_AND_ASSIGN(Environment);
   Environment(bool simulated) : sev_fd_(0), simulated_(simulated) {
-    sev_fd_ = open("/dev/sev-guest", O_RDWR | O_CLOEXEC);
-    CHECK(sev_fd_ > 0);
+    for (const char* devname : {"/dev/sev-guest", "/dev/sev"}) {
+      sev_fd_ = open(devname, O_RDWR | O_CLOEXEC);
+      if (sev_fd_ > 0) return;
+      LOG(WARNING) << "Failed to open SEV device: " << devname;
+    }
+    CHECK(nullptr == "could not open SEV device");
   }
   virtual ~Environment() {
     close(sev_fd_);
