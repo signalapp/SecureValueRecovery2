@@ -102,6 +102,7 @@ class DB2 : public DB {
   void Restore(const BackupID& id, const client::RestoreRequest& request, client::RestoreResponse* resp);
   void Delete(const BackupID& id, const client::DeleteRequest& request, client::DeleteResponse* resp);
   void Expose(const BackupID& id, const client::ExposeRequest& request, client::ExposeResponse* resp);
+  void Tries(const BackupID& id, const client::TriesRequest& request, client::TriesResponse* resp) const;
   // We use std::map over std::unordered_map because order matters to us.
   // We need a consistently ordered keyspace for data transfers between
   // replicas.

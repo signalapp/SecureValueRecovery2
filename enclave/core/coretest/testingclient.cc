@@ -92,6 +92,22 @@ void TestingClient::RequestRestore(PIN pin) {
   state_ = State::AWAITING_RESTORE;
 }
 
+void TestingClient::RequestTries() {
+  LOG(INFO) << "sending tries request";
+
+  client::Request req;
+  req.mutable_tries();
+
+  // serialize and encrypt
+  std::string req_str;
+  ASSERT_TRUE(req.SerializeToString(&req_str));
+  auto [ciphertext, encrypt_err] = noise::Encrypt(tx_.get(), req_str);
+  ASSERT_EQ(error::OK, encrypt_err);
+  ASSERT_EQ(error::OK,
+            core_.ExistingClientRequest(this, client_id_, ciphertext));
+  state_ = State::AWAITING_TRIES;
+}
+
 void TestingClient::HandleNewClientReply(NewClientReply ncr) {
   client_id_ = ncr.client_id();
   ASSERT_GT(client_id_, 0ul);
@@ -164,6 +180,13 @@ void TestingClient::HandleRestoreResponse(ExistingClientReply ecr) {
   restore_response_ = response.restore();
   state_ = State::RESTORE_READY;
 }
+void TestingClient::HandleTriesResponse(ExistingClientReply ecr) {
+  client::Response response;
+  DecryptClientReply(ecr, &response);
+  ASSERT_EQ(response.inner_case(), client::Response::kTries);
+  tries_response_ = response.tries();
+  state_ = State::TRIES_READY;
+}
 
 void TestingClient::HandleExistingClientReply(ExistingClientReply ecr) {
   LOG(VERBOSE) << "state_: "
@@ -177,6 +200,8 @@ void TestingClient::HandleExistingClientReply(ExistingClientReply ecr) {
       return HandleRestoreResponse(ecr);
     case State::AWAITING_AVAILABLE:
       return HandleExposeResponse(ecr);
+    case State::AWAITING_TRIES:
+      return HandleTriesResponse(ecr);
     default:
       CHECK(false);
   }

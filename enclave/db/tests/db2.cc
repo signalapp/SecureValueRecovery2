@@ -47,12 +47,30 @@ TEST_F(DB2Test, SingleBackupLifecycle) {
   }
   {
     client::Log2 log;
+    log.mutable_req()->mutable_tries();
+    log.set_backup_id("BACKUP7890123456");
+    auto resp = dynamic_cast<client::Response*>(db.Run(&ctx, log));
+    ASSERT_EQ(client::TriesResponse::OK, resp->tries().status());
+    ASSERT_EQ(2, resp->tries().tries());
+    ASSERT_EQ(false, resp->tries().exposed());
+  }
+  {
+    client::Log2 log;
     auto b = log.mutable_req()->mutable_expose();
     log.set_backup_id("BACKUP7890123456");
     b->set_data("DATA56789012345678901234567890123456789012345678");
 
     auto resp = dynamic_cast<client::Response*>(db.Run(&ctx, log));
     ASSERT_EQ(client::ExposeResponse::OK, resp->expose().status());
+  }
+  {
+    client::Log2 log;
+    log.mutable_req()->mutable_tries();
+    log.set_backup_id("BACKUP7890123456");
+    auto resp = dynamic_cast<client::Response*>(db.Run(&ctx, log));
+    ASSERT_EQ(client::TriesResponse::OK, resp->tries().status());
+    ASSERT_EQ(2, resp->tries().tries());
+    ASSERT_EQ(true, resp->tries().exposed());
   }
   {
     client::Log2 log;
@@ -67,6 +85,15 @@ TEST_F(DB2Test, SingleBackupLifecycle) {
   }
   {
     client::Log2 log;
+    log.mutable_req()->mutable_tries();
+    log.set_backup_id("BACKUP7890123456");
+    auto resp = dynamic_cast<client::Response*>(db.Run(&ctx, log));
+    ASSERT_EQ(client::TriesResponse::OK, resp->tries().status());
+    ASSERT_EQ(2, resp->tries().tries());
+    ASSERT_EQ(true, resp->tries().exposed());
+  }
+  {
+    client::Log2 log;
     auto r = log.mutable_req()->mutable_restore();
     log.set_backup_id("BACKUP7890123456");
     r->set_pin("PIN............................2");
@@ -75,6 +102,15 @@ TEST_F(DB2Test, SingleBackupLifecycle) {
     ASSERT_EQ(client::RestoreResponse::PIN_MISMATCH, resp->restore().status());
     ASSERT_EQ("", resp->restore().data());
     ASSERT_EQ(1, resp->restore().tries());
+  }
+  {
+    client::Log2 log;
+    log.mutable_req()->mutable_tries();
+    log.set_backup_id("BACKUP7890123456");
+    auto resp = dynamic_cast<client::Response*>(db.Run(&ctx, log));
+    ASSERT_EQ(client::TriesResponse::OK, resp->tries().status());
+    ASSERT_EQ(1, resp->tries().tries());
+    ASSERT_EQ(true, resp->tries().exposed());
   }
   {
     client::Log2 log;

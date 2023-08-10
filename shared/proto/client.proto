@@ -28,6 +28,7 @@ message Request {
     ExposeRequest expose = 5;
     RestoreRequest restore = 3;
     DeleteRequest delete = 4;
+    TriesRequest tries = 6;
   }
 }
 
@@ -37,6 +38,7 @@ message Response {
     ExposeResponse expose = 4;
     RestoreResponse restore = 2;
     DeleteResponse delete = 3;
+    TriesResponse tries = 5;
   }
 }
 
@@ -111,4 +113,21 @@ message ExposeResponse {
   }
 
   Status status = 1;
+}
+
+//
+// tries
+//
+
+message TriesRequest {
+}
+message TriesResponse {
+  enum Status {
+    UNSET = 0;
+    OK = 1;
+    MISSING = 2;
+  }
+  Status status = 1;
+  uint32 tries = 2;
+  bool exposed = 3;
 }

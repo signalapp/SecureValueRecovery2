@@ -84,14 +84,15 @@ error::Error DB2::Protocol::ValidateClientLog(const DB::Log& req_pb) const {
       auto r = req.restore();
       if (r.pin().size() != PIN_SIZE) { return COUNTED_ERROR(DB2_ClientPinSize); }
     } break;
-    case client::Request::kDelete: {
-      auto r = req.delete_();
-    } break;
     case client::Request::kExpose: {
       auto r = req.expose();
       if (r.data().size() > MAX_DATA_SIZE) { return COUNTED_ERROR(DB2_ClientDataSize); }
       if (r.data().size() < MIN_DATA_SIZE) { return COUNTED_ERROR(DB2_ClientDataSize); }
     } break;
+    case client::Request::kTries:
+    case client::Request::kDelete:
+      // nothing to do for these
+      break;
     default:
       return COUNTED_ERROR(DB2_ClientRequestCase);
   }
@@ -129,6 +130,10 @@ DB::Response* DB2::Run(context::Context* ctx, const DB::Log& log_pb) {
     case client::Request::kExpose:
       COUNTER(db2, ops_expose)->Increment();
       Expose(id, log.req().expose(), resp->mutable_expose());
+      break;
+    case client::Request::kTries:
+      COUNTER(db2, ops_tries)->Increment();
+      Tries(id, log.req().tries(), resp->mutable_tries());
       break;
     default:
       COUNTER(db2, ops_unknown)->Increment();
@@ -240,6 +245,18 @@ void DB2::Expose(const BackupID& id, const client::ExposeRequest& req, client::E
     resp->set_status(client::ExposeResponse::ERROR);
     return;
   }
+}
+
+void DB2::Tries(const BackupID& id, const client::TriesRequest& request, client::TriesResponse* resp) const {
+  auto find = rows_.find(id);
+  if (find == rows_.end()) {
+    resp->set_status(client::TriesResponse::MISSING);
+    return;
+  }
+  const Row* row = &find->second;
+  resp->set_status(client::TriesResponse::OK);
+  resp->set_exposed(row->state == e2e::DB2RowState::AVAILABLE);
+  resp->set_tries(row->tries);
 }
 
 std::pair<std::string, error::Error> DB2::RowsAsProtos(context::Context* ctx, const std::string& exclusive_start, size_t size, google::protobuf::RepeatedPtrField<std::string>* out) const {

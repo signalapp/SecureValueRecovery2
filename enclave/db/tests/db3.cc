@@ -67,6 +67,16 @@ TEST_F(DB3Test, SingleBackupLifecycle) {
     ASSERT_EQ(client::CreateResponse::OK, r.status());
     evaluated_element = r.evaluated_element();
   }
+  {
+    client::Log3 log;
+    log.set_backup_id(backup_id);
+    log.mutable_req()->mutable_query();
+
+    auto resp = dynamic_cast<client::Response3*>(db.Run(&ctx, log));
+    auto r = resp->query();
+    ASSERT_EQ(client::QueryResponse::OK, r.status());
+    ASSERT_EQ(3, r.tries_remaining());
+  }
   for (int i = 0; i < tries; i++) {
     client::Log3 log;
     log.set_backup_id(backup_id);

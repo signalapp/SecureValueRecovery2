@@ -81,9 +81,9 @@ namespace {
 struct ReplicaGroupConfig {
   enclaveconfig::EnclaveConfig ecfg;
   uint32_t min_voting;
-  uint32_t max_voting; 
+  uint32_t max_voting;
   size_t initial_voting;
-  size_t initial_nonvoting; 
+  size_t initial_nonvoting;
   size_t initial_nonmember;
 
   enclaveconfig::InitConfig init_config() const {
@@ -109,7 +109,7 @@ class CoreTest : public ::testing::Test {
   static void SetUpTestCase() {
     env::Init(env::SIMULATED);
   }
-  
+
   HostToEnclaveResponse Response(std::vector<EnclaveMessage> msgs) {
     CHECK(msgs.size() == 1);
     CHECK(msgs[0].inner_case() == EnclaveMessage::kH2EResponse);
@@ -252,7 +252,7 @@ class CoreTest : public ::testing::Test {
       ASSERT_EQ(resp.inner_case(), HostToEnclaveResponse::kExistingClientReply);
       auto crep = resp.mutable_existing_client_reply();
       NoiseBuffer read_buf = noise::BufferInputFromString(crep->mutable_data());
-      NOISE_OK(noise_handshakestate_read_message(hsp, &read_buf, nullptr)); 
+      NOISE_OK(noise_handshakestate_read_message(hsp, &read_buf, nullptr));
       ASSERT_EQ(NOISE_ACTION_SPLIT, noise_handshakestate_get_action(hsp));
       NOISE_OK(noise_handshakestate_split(hsp, &txp, &rxp));
     }
@@ -276,7 +276,7 @@ class CoreTest : public ::testing::Test {
       auto resp = out[core->ID()][0].h2e_response();
       ASSERT_EQ(resp.request_id(), client_request);
       ASSERT_EQ(resp.status(), error::OK);
-      ASSERT_EQ(resp.inner_case(), HostToEnclaveResponse::kExistingClientReply); 
+      ASSERT_EQ(resp.inner_case(), HostToEnclaveResponse::kExistingClientReply);
       auto ec2 = resp.existing_client_reply();
       auto [plaintext, decrypt_err] = noise::Decrypt(rxp, ec2.data());
       ASSERT_EQ(error::OK, decrypt_err);
@@ -342,7 +342,7 @@ static void BackupRestoreTest(ReplicaGroupConfig cfg, CoreRole connect_to, bool 
     replica_group.TickTock(false);
 
     cl.RequestBackup(secret, pin, 10);
-    replica_group.TickTock(false); 
+    replica_group.TickTock(false);
 
     auto backup_response = cl.get_backup_response();
     ASSERT_NE(backup_response, nullptr);
@@ -355,12 +355,40 @@ static void BackupRestoreTest(ReplicaGroupConfig cfg, CoreRole connect_to, bool 
     replica_group.TickTock(false);
     replica_group.TickTock(false);
 
+    cl.RequestTries();
+    replica_group.TickTock(false);
+    auto tries_response = cl.get_tries_response();
+    ASSERT_NE(tries_response, nullptr);
+    ASSERT_EQ(tries_response->status(), client::TriesResponse::OK);
+    ASSERT_EQ(tries_response->tries(), 10);
+    ASSERT_EQ(tries_response->exposed(), false);
+  }
+  {
+    TestingClient cl(*client_core, "authenticated_id");
+    cl.RequestHandshake();
+    replica_group.TickTock(false);
+    replica_group.TickTock(false);
+
     cl.RequestExpose(secret);
-    replica_group.TickTock(false); 
+    replica_group.TickTock(false);
     auto expose_response = cl.get_expose_response();
     ASSERT_NE(expose_response, nullptr);
     LOG(INFO) << "backup expose";
     ASSERT_EQ(expose_response->status(), client::ExposeResponse::OK);
+  }
+  {
+    TestingClient cl(*client_core, "authenticated_id");
+    cl.RequestHandshake();
+    replica_group.TickTock(false);
+    replica_group.TickTock(false);
+
+    cl.RequestTries();
+    replica_group.TickTock(false);
+    auto tries_response = cl.get_tries_response();
+    ASSERT_NE(tries_response, nullptr);
+    ASSERT_EQ(tries_response->status(), client::TriesResponse::OK);
+    ASSERT_EQ(tries_response->tries(), 10);
+    ASSERT_EQ(tries_response->exposed(), true);
   }
 
   // Now introduce problems if requested
@@ -384,10 +412,10 @@ static void BackupRestoreTest(ReplicaGroupConfig cfg, CoreRole connect_to, bool 
         break;
       case CoreRole::VotingNonLeader: {
         // Can't capture main_partition until C++20, need to assign it
-        auto maybe_it = std::find_if(partition.begin(), partition.end(), 
+        auto maybe_it = std::find_if(partition.begin(), partition.end(),
                     [mp = main_partition, &replica_group, cfg](auto it) {
                         auto c = replica_group.get_core(it.first);
-                        return it.second == mp 
+                        return it.second == mp
                                     && !c->leader()
                                     && c->voting();});
         // Make sure you put some voting members in the big partition or this
@@ -397,17 +425,17 @@ static void BackupRestoreTest(ReplicaGroupConfig cfg, CoreRole connect_to, bool 
         break;
         }
       case CoreRole::NonVoting: {
-        auto maybe_it = std::find_if(partition.begin(), partition.end(), 
+        auto maybe_it = std::find_if(partition.begin(), partition.end(),
                     [mp = main_partition, &replica_group, cfg](auto it) {
                         auto c = replica_group.get_core(it.first);
-                        return it.second == mp 
+                        return it.second == mp
                                     && !c->voting()
                                     && c->serving();});
         // Make sure you put some non-voting members in the big partition or
         // this will fail!
         ASSERT_NE(maybe_it, partition.end());
         core_num = maybe_it->first;
-        break; 
+        break;
         }
     }
 
@@ -505,7 +533,7 @@ static void WrongPINTest(ReplicaGroupConfig cfg, CoreRole connect_to, bool drop_
 
   // Block 2: Client requests restore with wrong pin
   {
-    
+
     auto [main_partition, partition_size] = test::LargestPartition(partition);
     switch(connect_to) {
       case CoreRole::Leader:
@@ -513,10 +541,10 @@ static void WrongPINTest(ReplicaGroupConfig cfg, CoreRole connect_to, bool drop_
         break;
       case CoreRole::VotingNonLeader: {
         // Can't capture main_partition until C++20, need to assign it
-        auto maybe_it = std::find_if(partition.begin(), partition.end(), 
+        auto maybe_it = std::find_if(partition.begin(), partition.end(),
                     [mp = main_partition, &replica_group, cfg](auto it) {
                         auto c = replica_group.get_core(it.first);
-                        return it.second == mp 
+                        return it.second == mp
                                     && !c->leader()
                                     && c->voting();});
         // Make sure you put some voting members in the big partition or this
@@ -526,17 +554,17 @@ static void WrongPINTest(ReplicaGroupConfig cfg, CoreRole connect_to, bool drop_
         break;
         }
       case CoreRole::NonVoting: {
-        auto maybe_it = std::find_if(partition.begin(), partition.end(), 
+        auto maybe_it = std::find_if(partition.begin(), partition.end(),
                     [mp = main_partition, &replica_group, cfg](auto it) {
                         auto c = replica_group.get_core(it.first);
-                        return it.second == mp 
+                        return it.second == mp
                                     && !c->voting()
                                     && c->serving();});
         // Make sure you put some non-voting members in the big partition or
         // this will fail!
         ASSERT_NE(maybe_it, partition.end());
         core_num = maybe_it->first;
-        break; 
+        break;
         }
     }
 
@@ -588,7 +616,7 @@ void ConfirmWillNotServeClientRequests(ReplicaGroup& replica_group) {
 
   cl.RequestBackup(secret, pin, num_tries);
   ASSERT_EQ(error::OK, leader->ProcessAllIncomingMessages());
-  
+
   auto h2e_msgs = leader->take_host_to_enclave_responses();
   auto& h2e_response = h2e_msgs[0];
   ASSERT_EQ(h2e_response.inner_case(), HostToEnclaveResponse::kStatus);
@@ -598,7 +626,7 @@ void ConfirmWillNotServeClientRequests(ReplicaGroup& replica_group) {
 void SelfHealingTest(ReplicaGroupConfig cfg) {
   ReplicaGroup replica_group{};
   replica_group.Init(cfg.init_config(), cfg.initial_voting, cfg.initial_nonvoting, cfg.initial_nonmember);
-  
+
   size_t initial_members = cfg.initial_nonvoting + cfg.initial_voting;
   ASSERT_EQ(replica_group.num_voting(), 1);
 
@@ -616,20 +644,20 @@ void SelfHealingTest(ReplicaGroupConfig cfg) {
   LOG(INFO) << "Removing two non-leader voting members";
   auto leader_core = replica_group.get_leader_core();
   TestingCore* non_leader_core = replica_group.get_voting_nonleader_core();
-  if(non_leader_core != nullptr) { 
-    LOG(INFO) << "STOPPING peer " << non_leader_core->ID() 
+  if(non_leader_core != nullptr) {
+    LOG(INFO) << "STOPPING peer " << non_leader_core->ID()
       << "(leader: " << leader_core->ID() << ")";
-    non_leader_core->Pause(false); 
+    non_leader_core->Pause(false);
   }
   non_leader_core = replica_group.get_voting_nonleader_core();
-  if(non_leader_core != nullptr) { 
-    LOG(INFO) << "STOPPING peer " << non_leader_core->ID() 
+  if(non_leader_core != nullptr) {
+    LOG(INFO) << "STOPPING peer " << non_leader_core->ID()
       << "(leader: " << leader_core->ID() << ")";
-    non_leader_core->Pause(false); 
+    non_leader_core->Pause(false);
   }
 
   // even though we stopped them the replica group counts them as voting
-  ASSERT_EQ(replica_group.num_voting(), num_voting); 
+  ASSERT_EQ(replica_group.num_voting(), num_voting);
 
   // replica_membership_timeout_ticks is time to kick out a member
   // replica_voting_timeout_ticks is time to demote from voting
@@ -639,13 +667,13 @@ void SelfHealingTest(ReplicaGroupConfig cfg) {
     LOG(INFO) << "\nTICK " << i << "\n";
     replica_group.TickTock(false);
   }
-  LOG(INFO) << "NUM_VOTING before demotion: " << num_voting << " after demotion: " 
+  LOG(INFO) << "NUM_VOTING before demotion: " << num_voting << " after demotion: "
     << replica_group.num_voting();
   ASSERT_EQ(replica_group.num_voting(), num_voting - 1);
 
   // Tick again and eliminate the second core
   replica_group.TickTock(false);
-  LOG(INFO) << "NUM_VOTING before demotion: " << num_voting << " after demotion: " 
+  LOG(INFO) << "NUM_VOTING before demotion: " << num_voting << " after demotion: "
     << replica_group.num_voting();
   ASSERT_EQ(replica_group.num_voting(), num_voting - 2);
 }
@@ -697,12 +725,12 @@ TEST_F(CoreTest, CreateReplicaGroup) {
     replica_group.TickTock(false);
   }
   ASSERT_TRUE(
-    replica_group.get_core(1)->leader() || 
-    replica_group.get_core(2)->leader() || 
-    replica_group.get_core(3)->leader() || 
+    replica_group.get_core(1)->leader() ||
+    replica_group.get_core(2)->leader() ||
+    replica_group.get_core(3)->leader() ||
     replica_group.get_core(4)->leader());
-  
-  LOG(INFO) << "\nNEW LEADER\n" << " current leader: " << replica_group.GroupLeaderIndex() 
+
+  LOG(INFO) << "\nNEW LEADER\n" << " current leader: " << replica_group.GroupLeaderIndex()
   << " (" << replica_group.GroupLeader() <<  ")\n";
 }
 
@@ -749,12 +777,12 @@ TEST_F(CoreTest, TestPartition) {
   replica_group.TickTock(true);
   // replica_group.ClearBlockedMessages(); // This will drop all messages and leave replicas stuck in-flight until self-healing
   replica_group.PassMessagesUntilQuiet();
-  
+
   // for(size_t i = 0; i < 2*valid_enclave_config.raft().election_ticks(); ++i) {
   //   replica_group.TickTock(false);
   // }
 
-  LOG(INFO) << "\nNEW LEADER\n" << " current leader: " << replica_group.GroupLeaderIndex() 
+  LOG(INFO) << "\nNEW LEADER\n" << " current leader: " << replica_group.GroupLeaderIndex()
   << " (" << replica_group.GroupLeader() <<  ")\n";
   for(size_t i = 0; i < 10; ++i) {
     LOG(INFO) << "replica " << i << " (" << replica_group.get_core(i)->ID()
@@ -763,8 +791,8 @@ TEST_F(CoreTest, TestPartition) {
   }
 
   ASSERT_TRUE(
-    replica_group.get_core(2)->leader() || 
-    replica_group.get_core(3)->leader() || 
+    replica_group.get_core(2)->leader() ||
+    replica_group.get_core(3)->leader() ||
     replica_group.get_core(4)->leader());
 }
 
@@ -817,8 +845,8 @@ TEST_F(CoreTest, BackupRestoreHealthyNetworkTest) {
   };
   // no partition in network
   std::map<size_t, test::PartitionID> partition = {
-    {0,1}, {1,1}, {5,1}, {6,1}, {9,1}, 
-    {2,1}, {3,1}, {4,1}, {7,1}, {8,1}  
+    {0,1}, {1,1}, {5,1}, {6,1}, {9,1},
+    {2,1}, {3,1}, {4,1}, {7,1}, {8,1}
   };
   BackupRestoreTest(cfg, CoreRole::Leader, false, partition);
   BackupRestoreTest(cfg, CoreRole::VotingNonLeader, false, partition);
@@ -836,8 +864,8 @@ TEST_F(CoreTest, WrongPINHealthyNetworkTest) {
   };
   // no partition in network
   std::map<size_t, test::PartitionID> partition = {
-    {0,1}, {1,1}, {5,1}, {6,1}, {9,1}, 
-    {2,1}, {3,1}, {4,1}, {7,1}, {8,1}  
+    {0,1}, {1,1}, {5,1}, {6,1}, {9,1},
+    {2,1}, {3,1}, {4,1}, {7,1}, {8,1}
   };
   WrongPINTest(cfg, CoreRole::Leader, false, partition);
   WrongPINTest(cfg, CoreRole::VotingNonLeader, false, partition);
@@ -855,8 +883,8 @@ TEST_F(CoreTest, BackupRestoreDropLeaderTest) {
   };
   // no partition in network
   std::map<size_t, test::PartitionID> partition = {
-    {0,1}, {1,1}, {5,1}, {6,1}, {9,1}, 
-    {2,1}, {3,1}, {4,1}, {7,1}, {8,1}  
+    {0,1}, {1,1}, {5,1}, {6,1}, {9,1},
+    {2,1}, {3,1}, {4,1}, {7,1}, {8,1}
   };
   BackupRestoreTest(cfg, CoreRole::Leader, true, partition);
   BackupRestoreTest(cfg, CoreRole::VotingNonLeader, true, partition);
@@ -874,8 +902,8 @@ TEST_F(CoreTest, WrongPINDropLeaderTest) {
   };
   // no partition in network
   std::map<size_t, test::PartitionID> partition = {
-    {0,1}, {1,1}, {5,1}, {6,1}, {9,1}, 
-    {2,1}, {3,1}, {4,1}, {7,1}, {8,1}  
+    {0,1}, {1,1}, {5,1}, {6,1}, {9,1},
+    {2,1}, {3,1}, {4,1}, {7,1}, {8,1}
   };
   WrongPINTest(cfg, CoreRole::Leader, true, partition);
   WrongPINTest(cfg, CoreRole::VotingNonLeader, true, partition);
@@ -1172,7 +1200,7 @@ TEST_F(CoreTest, MultiNodeRaft) {
   ASSERT_EQ(client::ExposeResponse::OK, resp2.expose().status());
 
   LOG(INFO) << "\n\nRequest to non-leader core3";
-  
+
   client::Request req3;
   auto r3 = req3.mutable_restore();
   r3->set_pin("12345678901234567890123456789012");
@@ -2299,7 +2327,7 @@ TEST_F(CoreTest, Hashes3) {
               11717402061570123096ULL);
     EXPECT_EQ(resp.hashes().commit_idx(), 2);
     EXPECT_EQ(util::BigEndian64FromBytes(reinterpret_cast<const uint8_t*>(resp.hashes().commit_hash_chain().data())),
-              2411277891247409165ULL);
+              12286927969688271036ULL);
   }
 }
 

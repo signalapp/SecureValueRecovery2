@@ -11,9 +11,10 @@ option optimize_for = LITE_RUNTIME;
 
 message Request3 {
   oneof inner {
-    CreateRequest create = 2;
-    EvaluateRequest evaluate = 3;
-    RemoveRequest remove = 4;
+    CreateRequest create = 1;
+    EvaluateRequest evaluate = 2;
+    RemoveRequest remove = 3;
+    QueryRequest query = 4;
   }
 }
 
@@ -21,7 +22,8 @@ message Response3 {
   oneof inner {
     CreateResponse create = 1;
     EvaluateResponse evaluate = 2;
-    RemoveResponse remove = 4;
+    RemoveResponse remove = 3;
+    QueryResponse query = 4;
   }
 }
 
@@ -73,4 +75,20 @@ message EvaluateResponse {
 message RemoveRequest {
 }
 message RemoveResponse {
+}
+
+//
+// query
+//
+
+message QueryRequest {
+}
+message QueryResponse {
+  enum Status {
+    UNSET = 0;
+    OK = 1;
+    MISSING = 2;
+  }
+  Status status = 1;
+  uint32 tries_remaining = 2;
 }

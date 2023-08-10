@@ -31,6 +31,10 @@ class TestingClient {
     return state_ == State::AVAILABLE_READY ? &expose_response_ : nullptr;
   }
 
+  client::TriesResponse* get_tries_response() {
+    return state_ == State::TRIES_READY ? &tries_response_ : nullptr;
+  }
+
   // These functions return void so that we can use gtest assertions inside
   // them. (gtest asertions that generate a fatal failure can only be used with
   // void-returning functions:
@@ -39,6 +43,7 @@ class TestingClient {
   void RequestBackup(SecretData data, PIN pin, uint32_t tries);
   void RequestExpose(SecretData data);
   void RequestRestore(PIN pin);
+  void RequestTries();
 
   void HandleNewClientReply(NewClientReply ncr);
   void HandleExistingClientReply(ExistingClientReply ecr);
@@ -53,14 +58,17 @@ class TestingClient {
     AWAITING_BACKUP,
     AWAITING_RESTORE,
     AWAITING_AVAILABLE,
+    AWAITING_TRIES,
     BACKUP_READY,
     RESTORE_READY,
-    AVAILABLE_READY
+    AVAILABLE_READY,
+    TRIES_READY
   };
   void FinishHandshake(ExistingClientReply ecr);
   void HandleBackupResponse(ExistingClientReply ecr);
   void HandleExposeResponse(ExistingClientReply ecr);
   void HandleRestoreResponse(ExistingClientReply ecr);
+  void HandleTriesResponse(ExistingClientReply ecr);
   void DecryptClientReply(ExistingClientReply ecr, client::Response* rsp);
 
   TestingCore& core_;
@@ -74,6 +82,7 @@ class TestingClient {
   client::BackupResponse backup_response_;
   client::RestoreResponse restore_response_;
   client::ExposeResponse expose_response_;
+  client::TriesResponse tries_response_;
 };
 
 };  // namespace svr2::core::test

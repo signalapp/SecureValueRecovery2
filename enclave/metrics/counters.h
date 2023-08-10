@@ -78,11 +78,13 @@ CREATE_COUNTER(db2, ops_backup, ops, ({{"type", "backup"}}))
 CREATE_COUNTER(db2, ops_restore, ops, ({{"type", "restore"}}))
 CREATE_COUNTER(db2, ops_delete, ops, ({{"type", "delete"}}))
 CREATE_COUNTER(db2, ops_expose, ops, ({{"type", "expose"}}))
+CREATE_COUNTER(db2, ops_tries, ops, ({{"type", "tries"}}))
 CREATE_COUNTER(db2, ops_unknown, ops, ({{"type", "unknown"}}))
 
 CREATE_COUNTER(db3, ops_create, ops, ({{"type", "create"}}))
 CREATE_COUNTER(db3, ops_evaluate, ops, ({{"type", "evaluate"}}))
 CREATE_COUNTER(db3, ops_remove, ops, ({{"type", "remove"}}))
+CREATE_COUNTER(db3, ops_query, ops, ({{"type", "query"}}))
 
 CREATE_COUNTER(context, cpu_uncategorized, cpu, ({{"in", "uncategorized"}, {"action", "uncategorized"}}))
 CREATE_COUNTER(context, cpu_client_encrypt, cpu, ({{"in", "client"}, {"action", "encrypt"}}))

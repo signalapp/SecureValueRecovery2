@@ -69,6 +69,7 @@ error::Error DB3::Protocol::ValidateClientLog(const DB::Log& log_pb) const {
       auto r = log->req().evaluate();
       if (r.blinded_element().size() != ELEMENT_SIZE) { return COUNTED_ERROR(DB3_BlindedElementSize); }
     } break;
+    case client::Request3::kQuery: 
     case client::Request3::kRemove: {
       // nothing to do
     } break;
@@ -111,6 +112,10 @@ DB::Response* DB3::Run(context::Context* ctx, const DB::Log& log_pb) {
     case client::Request3::kRemove: {
       COUNTER(db3, ops_remove)->Increment();
       Remove(ctx, id, log->req().remove(), out->mutable_remove());
+    } break;
+    case client::Request3::kQuery: {
+      COUNTER(db3, ops_query)->Increment();
+      Query(ctx, id, log->req().query(), out->mutable_query());
     } break;
     default: CHECK(nullptr == "should never reach here, client log already validated");
   }
@@ -288,6 +293,21 @@ void DB3::Remove(
     rows_.erase(find);
     GAUGE(db, rows)->Set(rows_.size());
   }
+}
+
+void DB3::Query(
+    context::Context* ctx,
+    const BackupID& id,
+    const client::QueryRequest& request,
+    client::QueryResponse* resp) const {
+  auto find = rows_.find(id);
+  if (find == rows_.end()) {
+    resp->set_status(client::QueryResponse::MISSING);
+    return;
+  }
+  const Row* row = &find->second;
+  resp->set_status(client::QueryResponse::OK);
+  resp->set_tries_remaining(row->tries);
 }
 
 }  // namespace svr2::db

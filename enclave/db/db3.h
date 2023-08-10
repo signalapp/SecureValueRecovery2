@@ -116,6 +116,11 @@ class DB3 : public DB {
       const BackupID& id,
       const client::RemoveRequest& req,
       client::RemoveResponse* resp);
+  void Query(
+      context::Context* ctx,
+      const BackupID& id,
+      const client::QueryRequest& req,
+      client::QueryResponse* resp) const;
 };
 
 }  // namespace svr2::db
