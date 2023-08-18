@@ -1,6 +1,6 @@
 #!/bin/bash
 
-for testfile in `find ./ -type f | grep /tests/ | grep cc$`; do
+for testfile in `find ./ -type f -wholename '*/tests/*.cc'`; do
   testfile="$(echo "$testfile" | sed 's#./##')"
   testname="$(echo "$testfile" | sed 's/\.cc$/\.test/')"
   echo 1>&2 "TEST: $testfile -> $testname"

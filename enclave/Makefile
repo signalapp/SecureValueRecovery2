@@ -3,8 +3,12 @@ all: test build sign
 MAKEFILTER=| (grep --line-buffered -v '^make\[' || true)
 
 include Makefile.base
+.testdepends: $(shell find ./ -type f -wholename '*/tests/*.cc')
+	$(QUIET) echo -e "GEN\t.testdepends"
+	$(QUIET) ./test_deps.sh $(QUIET_OUT)
+include .testdepends
 
-.PHONY: all build sign clean sign protos validate generatem
+.PHONY: all build sign test clean sign protos validate generatem
 
 build: build/enclave.bin build/enclave.nsm build/enclave.sev
 
@@ -19,7 +23,7 @@ PROTO_FILES= \
 protos: $(PROTO_FILES)
 
 build/proto:
-	$(QUIET) echo -e "MKDIR $@"
+	$(QUIET) echo -e "MKDIR\t$@"
 	$(QUIET) mkdir -p $@
 build/proto/%.pb.h build/proto/%.pb.cc: proto/%.proto | build/proto
 	$(QUIET) echo -e "PROTO\t$^"
@@ -247,6 +251,7 @@ build/attest.sev: $(patsubst %,build/%/X86.a,$(SEVATTEST_LIBRARIES))
 	$(QUIET) $(CXX) -o $@ $(X86_LDFLAGS) -Wl,--start-group $^ -Wl,--end-group $(X86_LDFLAGS)
 
 clean:
+	$(QUIET) echo CLEAN
 	$(QUIET) (cd protobuf ; make clean ; git clean -fx ; true) $(QUIET_OUT)
 	$(QUIET) (cd noise-c ; make clean ; git clean -fx ; true) $(QUIET_OUT)
 	$(QUIET) (cd SipHash ; make clean ; git clean -fx ; true) $(QUIET_OUT)
@@ -276,9 +281,4 @@ build/testhost/libsvr2.a:
 build/testhost.bin: testhost/testhost.cc build/testhost/libsvr2.a build/attestation/HOST.a build/metrics/HOST.a build/proto/HOST.a build/protobuf-lite/HOST.a
 	$(CXX) -o $@ $(HOST_CXXFLAGS) $(HOST_LDFLAGS) $^ $(HOST_LDFLAGS)
 
-.testdepends: $(shell find ./ -type f | grep /tests/ | grep cc$)
-	$(QUIET) ./test_deps.sh $(QUIET_OUT)
-include .testdepends
-
-test:
 validate:
