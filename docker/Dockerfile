@@ -6,12 +6,14 @@ FROM amd64/debian:buster@sha256:108052254277ea53cd807d2782ed3cbe4b9242256af5c751
 LABEL description="linux build environment for sgx."
 
 COPY docker/apt.conf docker/sources.list /etc/apt/
-RUN apt-get update && \
-    apt-get -y install \
+RUN while true; do apt update && break; done && \
+    while true; do apt install -y \
       gpg \
       gnupg2 \
       wget \
-      software-properties-common
+      software-properties-common \
+    && break; done
+    
 
 COPY docker/sgx.sources.list docker/ms.sources.list /etc/apt/sources.list.d/
 # ms and intel repos keep old packages around,
@@ -19,8 +21,8 @@ COPY docker/sgx.sources.list docker/ms.sources.list /etc/apt/sources.list.d/
 # binary packages can be retrieved from github releases
 RUN wget -qO - https://download.01.org/intel-sgx/sgx_repo/ubuntu/intel-sgx-deb.key | apt-key add - && \
     wget -qO - https://packages.microsoft.com/keys/microsoft.asc | apt-key add - && \
-    apt-get update && \
-    apt -y install \
+    while true; do apt update && break; done && \
+    while true; do apt install -y \
     libsgx-ae-id-enclave=1.16.100.2-focal1 \
     libsgx-ae-pce=2.19.100.3-focal1 \
     libsgx-ae-qe3=1.16.100.2-focal1 \
@@ -31,7 +33,8 @@ RUN wget -qO - https://download.01.org/intel-sgx/sgx_repo/ubuntu/intel-sgx-deb.k
     libsgx-pce-logic=1.16.100.2-focal1 \
     libsgx-qe3-logic=1.16.100.2-focal1 \
     libsgx-urts=2.19.100.3-focal1 \
-    open-enclave=0.19.0
+    open-enclave=0.19.0 \
+    && break; done
 
 FROM public.ecr.aws/amazonlinux/amazonlinux@sha256:94e7183b0739140dbd5b639fb7600f0a2299cec5df8780c26d9cb409da5315a9 AS nsmbuild
 ENV HOST_MACHINE=x86_64
@@ -60,8 +63,8 @@ RUN ar mD target/release/libnsm.a $(ar t target/release/libnsm.a | env -u LANG L
 FROM base AS builder
 
 RUN mkdir /src && \
-    apt-get update && \
-    apt-get -y install \
+    while true; do apt update && break; done && \
+    while true; do apt install -y \
       clang-11 \
       libssl-dev \
       gdb \
@@ -76,7 +79,8 @@ RUN mkdir /src && \
       git \
       gcc \
       libgtest-dev \
-      cmake
+      cmake \
+    && break; done
 
 COPY docker/check_hash.sh docker/sha256.* ./
 
@@ -122,7 +126,7 @@ CMD ["/bin/bash"]
 
 FROM base AS sgxrun
 
-RUN apt-get update && apt-get install -y \
+RUN apt update && apt install -y \
     libsgx-dcap-default-qpl=1.16.100.2-focal1 \
     libsgx-dcap-default-qpl-dev=1.16.100.2-focal1
 COPY docker/sgx_default_qcnl_azure.conf /etc/sgx_default_qcnl.conf
