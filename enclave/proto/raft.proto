@@ -51,6 +51,7 @@ message AppendRequest {
   uint64 leader_commit = 3;
   repeated LogEntry entries = 4;
   uint64 leader_promise = 5;
+  bytes prev_log_hash_chain = 6;
 }
 
 message AppendResponse {
@@ -58,6 +59,7 @@ message AppendResponse {
   uint64 match_idx = 2;
   uint64 last_log_idx = 3;
   uint64 promise_idx = 4;
+  bytes match_hash_chain = 5;
 }
 
 message LogEntry {

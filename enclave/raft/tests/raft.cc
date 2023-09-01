@@ -44,6 +44,10 @@ class RaftTest : public ::testing::Test {
   }
 
   void SetUpRaft(int size, enclaveconfig::RaftConfig config) {
+    SetUpRaftWithSupermajority(size, 0, config);
+  } 
+
+  void SetUpRaftWithSupermajority(int size, int super_majority, enclaveconfig::RaftConfig config) {
     // Create a size-3 raft group
     ReplicaGroup g;
     std::set<peerid::PeerID> peers;
@@ -67,7 +71,7 @@ class RaftTest : public ::testing::Test {
           std::move(std::make_unique<Log>(1<<20)),  // 1MB log
           config,
           false,
-          0);
+          super_majority);
       group_[peer] = std::move(r);
     }
   }
@@ -272,6 +276,30 @@ TEST_F(RaftTest, RelinquishLeadership) {
   }
   EXPECT_TRUE(expected_new_leader.Valid());
   EXPECT_TRUE(group_[expected_new_leader]->is_leader());
+}
+
+TEST_F(RaftTest, RejectInconsistentLogs) {
+  auto config = DefaultConfig();
+  SetUpRaftWithSupermajority(5, 1, DefaultConfig());
+  auto leader = ElectLeader(config);
+  
+  // Copy the leader before adding entry
+  auto leader_copy = group_[leader]->Copy();
+  LOG(INFO) "============== SENDING LOG TO LEADER " << leader;
+  auto [loc1, err] = group_[leader]->ClientRequest(&ctx, "abc");
+  CommitOnAll(config);
+
+  ASSERT_EQ(group_[leader]->commit_idx(), loc1.idx());
+
+  LOG(INFO) << "Rolling back leader ";
+  group_[leader] = std::move(leader_copy);
+
+  auto [loc2, err2] = group_[leader]->ClientRequest(&ctx, "zyx");
+  ASSERT_EQ(loc2.idx(), loc1.idx());
+  ASSERT_EQ(loc2.term(), loc1.term());
+  ASSERT_NE(loc2.hash_chain(), loc1.hash_chain());
+  CommitOnAll(config);
+  ASSERT_LT(group_[leader]->commit_idx(), loc2.idx());
 }
 
 }  // namespace svr2::raft

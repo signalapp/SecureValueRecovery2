@@ -9,6 +9,7 @@
 #include "hmac/hmac.h"
 #include "util/constant.h"
 #include "util/bytes.h"
+#include "util/endian.h"
 
 #define MELOG(x) LOG(x) << "(" << me().DebugString() << ") "
 
@@ -306,6 +307,8 @@ void Raft::AppendEntries(context::Context* ctx, const peerid::PeerID& peer) {
   //                       ELSE
   //                           0
   uint64_t prev_log_term = prev_log_idx == 0 ? 0 : log_->At(prev_log_idx).Term();
+  auto prev_log_hash_chain = (prev_log_idx == 0 || !log_->At(prev_log_idx).Valid())
+                              ? std::string("") : log_->At(prev_log_idx).Entry()->hash_chain();
   if (prev_log_term == 0 && prev_log_idx != 0) {
     LOG(ERROR) << "missing log " << prev_log_idx << " to send to " << peer;
     return;
@@ -349,6 +352,9 @@ void Raft::AppendEntries(context::Context* ctx, const peerid::PeerID& peer) {
   append->set_prev_log_idx(prev_log_idx);
   //             mprevLogTerm   |-> prevLogTerm,
   append->set_prev_log_term(prev_log_term);
+  //             \* Signal TLA+ extension
+  //             mprevLogHash   |-> prevLogHash
+  append->set_prev_log_hash_chain(prev_log_hash_chain);
   //             mentries       |-> entries,
   for (size_t i = 0; i < entries.size(); i++) {
     *append->add_entries() = std::move(entries[i]);
@@ -432,28 +438,37 @@ void Raft::HandleMembershipChange() {
 std::array<uint8_t, 32> Raft::NextHash(const LogEntry& next_entry) {
   std::array<uint8_t, 32> previous_hash = {0};
   log_->MostRecentHash(&previous_hash);
+
+  //hash the term and index into the chain along with the contents
+  LogIdx next_idx = log_->next_idx();
+  TermId term = next_entry.term();
+  std::array<uint8_t, 16> idx_term_data {0};
+  util::BigEndian64Bytes(next_idx, idx_term_data.data());
+  util::BigEndian64Bytes(term, idx_term_data.data()+8);
+  auto idx_term = util::ByteArrayToString(idx_term_data);
+
   // We add prefixes to each input, so that inputs with the same serialization are distinct.
   switch (next_entry.inner_case()) {
     case LogEntry::kData:
-      return hmac::HmacSha256(previous_hash, "\001" + next_entry.data());
+      return hmac::HmacSha256(previous_hash, "\001" + idx_term + next_entry.data());
     case LogEntry::kMembershipChange: {
       std::string serialized = next_entry.membership_change().SerializeAsString();
-      return hmac::HmacSha256(previous_hash, "\002" + serialized);
+      return hmac::HmacSha256(previous_hash, "\002" + idx_term + serialized);
     }
     case LogEntry::INNER_NOT_SET:
-      return hmac::HmacSha256(previous_hash, "\003");
+      return hmac::HmacSha256(previous_hash, "\003" + idx_term);
   }
 }
 
 // \* Leader i receives a client request to add v to the log.
 std::pair<LogLocation, error::Error> Raft::ClientRequestInternal(LogEntry* entry) {
-  // NON-TLA+: Set up hash chain for entry:
-  auto new_hash = NextHash(*entry);
-  entry->set_hash_chain(util::ByteArrayToString(new_hash));
   // ClientRequest(i, v) ==
   // /\ LET entry == [term  |-> currentTerm[i],
   entry->set_term(current_term_);
   //                  value |-> v]
+  // NON-TLA+: Set up hash chain for entry:
+  auto new_hash = NextHash(*entry);
+  entry->set_hash_chain(util::ByteArrayToString(new_hash));
   // /\ state[i] = Leader
   if (role_ != internal::Role::LEADER || leader_.relinquishing) {
     return std::make_pair(LogLocation(), COUNTED_ERROR(Raft_AppendEntryNotLeader));
@@ -673,10 +688,34 @@ void Raft::HandleVoteResponse(context::Context* ctx, const TermId& msg_term, con
 void Raft::HandleAppendRequest(context::Context* ctx, const TermId& msg_term, const AppendRequest& msg, const peerid::PeerID& from) {
   uint64_t prev_log_idx = msg.prev_log_idx();
   uint64_t msg_prev_log_term = msg.prev_log_term();
-  uint64_t our_prev_log_term = log_->At(msg.prev_log_idx()).Term();
+  auto our_prev_log = log_->At(prev_log_idx);
+  uint64_t our_prev_log_term = our_prev_log.Term();
+
+  bool prev_log_hash_matches = false;
+  if (prev_log_idx == 0) {
+    // This is our first set of logs, we have no matching hash.  Treat this as a match success
+    prev_log_hash_matches = true;
+  }  else if (!our_prev_log.Valid()) {
+    // We want to check against the previous log entry, but it's been truncated for being too old.
+    // We assume the worst here. This will ensure that log_ok is false, no entries will be appended,
+    // and we will return failure to the leader.
+    LOG(WARNING) << "sent index for a previous log we do not have: " << prev_log_idx << " our earliest stored index: " << log_->oldest_stored_idx();
+    prev_log_hash_matches = false;
+  } else {
+    // We have a log entry in the log, so we can actually check its hash:
+    our_prev_log_term = our_prev_log.Term();
+    prev_log_hash_matches = util::ConstantTimeEquals(our_prev_log.Entry()->hash_chain(), msg.prev_log_hash_chain());
+    if (!prev_log_hash_matches) {
+      LOG(WARNING) << "previous log hash from leader does not match: " << prev_log_idx << " <= " << commit_idx_;
+    }
+  }
+
+  
   // LET logOk == \/ m.mprevLogIndex = 0
   //              \/ /\ m.mprevLogIndex > 0 /\ m.mprevLogIndex <= Len(log[i]) /\ m.mprevLogTerm = log[i][m.mprevLogIndex].term
-  bool log_ok = prev_log_idx == 0 || msg_prev_log_term == our_prev_log_term;
+  //                 \* Signal TLA+ extension follows
+  //                 /\ m.mprevLogHash = log[i][m.mprevLogIndex].hash
+  bool log_ok = prev_log_idx == 0 || (msg_prev_log_term == our_prev_log_term && prev_log_hash_matches);
       
   // IN /\ m.mterm <= currentTerm[i]
   //    /\ \/ \* return to follower state
@@ -720,6 +759,8 @@ void Raft::HandleAppendRequest(context::Context* ctx, const TermId& msg_term, co
       LOG(INFO) << "ignored message with term " << msg_term << " < current " << current_term_;
     } else if (our_prev_log_term > 0) {
       LOG(WARNING) << "rejected append from " << from << " with idx " << prev_log_idx << " at term " << msg_prev_log_term << ", we have " << our_prev_log_term;
+    } else if (!prev_log_hash_matches) {
+      LOG(WARNING) << "prev log hash from leader did not match at term " << current_term_ << " index " << prev_log_idx;
     } else {
       LOG(INFO) << "rejected append from " << from << " with idx " << prev_log_idx << ", we are behind at " << our_last_idx;
     }
@@ -738,6 +779,8 @@ void Raft::HandleAppendRequest(context::Context* ctx, const TermId& msg_term, co
     // up to a point in time, we know we match with the rest of the Raft group up to
     // that index, so this should be safe.
     append->set_match_idx(commit_idx_);
+    auto iter = log_->At(commit_idx_);
+    append->set_match_hash_chain(iter.Valid() ? iter.Entry()->hash_chain() : "");
     append->set_last_log_idx(our_last_idx);
     append->set_promise_idx(promise_idx_);
     AddSendableMessage(SendableRaftMessage::Reply(from, out));
@@ -752,6 +795,7 @@ void Raft::HandleAppendRequest(context::Context* ctx, const TermId& msg_term, co
   CHECK(msg_term == current_term_);
   CHECK(role_ == internal::Role::FOLLOWER);
   CHECK(log_ok);
+  CHECK(prev_log_hash_matches);
   uint64_t last_processed_idx = prev_log_idx;
   for (int i = 0; i < msg.entries_size(); i++) {
     uint64_t msg_entry_log_idx = prev_log_idx + i + 1;
@@ -773,7 +817,17 @@ void Raft::HandleAppendRequest(context::Context* ctx, const TermId& msg_term, co
       MaybeChangeUncommittedMembershipsBasedOnLog();
       // If this succeeds, the next if statement should always be true.
     }
+
     LogIdx last = log_->last_idx();
+    // If the entries are at indexes we already have we need to validate the hash chain
+    if (our_idx_term == msg_entry.term() && msg_entry_log_idx <= last) {
+      auto our_hash = log_->At(msg_entry_log_idx).Entry()->hash_chain();
+      if (!util::ConstantTimeEquals(our_hash, msg_entry.hash_chain())) {
+        LOG(WARNING) << "leader sent inconsistent log: hash chain mismatch at " << msg_entry_log_idx;
+        break;
+      }
+    }
+
     if (msg_entry_log_idx == last + 1) {
       auto next_hash = NextHash(msg_entry);
       if (!util::ConstantTimeEquals(next_hash, msg_entry.hash_chain())) {
@@ -825,7 +879,13 @@ void Raft::HandleAppendRequest(context::Context* ctx, const TermId& msg_term, co
   append->set_success(true);
   //           mmatchIndex     |-> m.mprevLogIndex + Len(m.mentries),
   append->set_match_idx(last_processed_idx);
-  append->set_promise_idx(promise_idx_);
+  append->set_match_hash_chain(log_->At(last_processed_idx).Valid() ? log_->At(last_processed_idx).Entry()->hash_chain() : "");
+
+  // The only way that last_processed_idx could be less than promise_idx_ is
+  // if the leader sent inconsistent log entries at indexes we already had.
+  // In this case we only tell the leader that we promise the consistent ones
+  // and importantly we do not promise beyond what we have succesfully processed.
+  append->set_promise_idx(std::min(promise_idx_, last_processed_idx));
   append->set_last_log_idx(log_->last_idx());
   AddSendableMessage(SendableRaftMessage::Reply(from, out));
 }
@@ -869,6 +929,42 @@ void Raft::HandleAppendResponse(context::Context* ctx, const TermId& msg_term, c
     // /\ \/ /\ m.msuccess \* successful
     if (replication.inflight.has_value() && msg.match_idx() >= (*replication.inflight)) {
       replication.inflight.reset();
+    }
+    auto match_log = log_->At(msg.match_idx());
+    if(match_log.Valid()) {
+      // This CHECK will only fail if this server has been rolled back:
+      // The follower that sent this message appended it to its log at some earlier
+      // time. When it appended this entry it confirmed that the hash chain
+      // value the leader sent for the entry was consistent with its own log. We
+      // can use this to prove that after the follower appended this entry, its
+      // log was a prefix of the leader's log when the leader sent the message.
+      //    * If this was the leader that sent the message then this leader used
+      //      to have a different entry in its log at msg.match_idx(). We can prove
+      //      that the leader's log grows monotonically during its term unless there
+      //      was a rollback. So the leader - this server - was rolled back. 
+      //    * A different leader sent the log at msg.match_idx(). Since we are in
+      //      a branch where msg.success() == true this could only happen one way: the
+      //      follower's entry last_processed_idx had a hash chain that matched the hash
+      //      chain in the AppendEntriesRequest that caused this response. That
+      //      AppendEntriesRequest was sent by this server and reflected the state of this
+      //      server's log at the time it was sent. Again, this means that this server's log
+      //      entry at msg.match_idx() has changed.
+      //      So this server has been rolled back.
+      CHECK(util::ConstantTimeEquals(msg.match_hash_chain(), match_log.Entry()->hash_chain()));
+    } else {
+      // The following check will only fail if *this* server has been rolled back:
+      // We can prove that there is only one leader per term, this is the leader
+      // of that term, and this leader must have sent the entry at
+      // msg.match_idx() (even if msg has entries from an earlier term). This
+      // means the leader used to have a longer log! We can prove that the only
+      // way a leader's log can get shorter in its term is if it has been rolled
+      // back. Therefore in this situation we know that this server, the leader
+      // of this term, has been rolled back.
+      CHECK(msg.match_idx() <= log_->last_idx());
+      // The matching index is not present in our log. This could happen for a follower that is 
+      // far behind during correct execution. Because these logs are gone, this 
+      // leader can never get the follower caught up.
+      LOG(WARNING) << "Match idx " << msg.match_idx() << " for follower " << from << " is not present in leader's log. Cannot compare hash chain values.";
     }
     if (msg.match_idx() + 1 > replication.next_idx) {
       //       /\ nextIndex'  = [nextIndex  EXCEPT ![i][j] = m.mmatchIndex + 1]
@@ -1153,4 +1249,30 @@ error::Error Raft::FollowerReplicationStatus(const peerid::PeerID& follower, Enc
   return error::OK;
 }
 
+#ifdef IS_TEST
+std::unique_ptr<Raft> Raft::Copy() {
+
+  // copy membership
+  auto r =  std::make_unique<Raft>(
+          group_,  // group
+          me_,
+          std::make_unique<Membership>(*membership_),
+          log_->Copy(),  // 1MB log
+          config_,
+          false,
+          super_majority_);
+  // copy uncommitted_memberships_
+  r->role_ = role_;
+  r->follower_ =  follower_;
+  r->candidate_ = candidate_;
+  r->leader_ =  leader_;
+
+  r->last_applied_ = last_applied_;
+  r->current_term_ = current_term_;
+  r->commit_idx_ = commit_idx_;
+  r->promise_idx_ = promise_idx_;
+  r->super_majority_ = super_majority_;
+  return r;
+}
+#endif // IS_TEST
 }  // namespace svr2::raft

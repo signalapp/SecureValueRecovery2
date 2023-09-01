@@ -92,6 +92,14 @@ class Log {
 
  public_for_test:
   static size_t logentry_bytes_in_log(const LogEntry& e);
+  std::unique_ptr<Log> Copy() const {
+    auto r = std::make_unique<Log>(max_bytes_);
+    r->entries_ = entries_;
+    r->oldest_stored_idx_ = oldest_stored_idx_;
+    r->curr_bytes_ = curr_bytes_;
+
+    return r;
+  }
 
  private:
   // RemoveOldestLogOlderThan removes the oldest log from the Log and returns

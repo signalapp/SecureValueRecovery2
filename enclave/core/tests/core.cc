@@ -1657,7 +1657,7 @@ TEST_F(CoreTest, Hashes2) {
               5883775926529965153ULL);
     EXPECT_EQ(resp.hashes().commit_idx(), 4);
     EXPECT_EQ(util::BigEndian64FromBytes(reinterpret_cast<const uint8_t*>(resp.hashes().commit_hash_chain().data())),
-              8788200018387288622ULL);
+              17588214037507609329ULL);
   }
 }
 
@@ -2327,7 +2327,7 @@ TEST_F(CoreTest, Hashes3) {
               11717402061570123096ULL);
     EXPECT_EQ(resp.hashes().commit_idx(), 2);
     EXPECT_EQ(util::BigEndian64FromBytes(reinterpret_cast<const uint8_t*>(resp.hashes().commit_hash_chain().data())),
-              12286927969688271036ULL);
+              4818198584546649367);
   }
 }
 

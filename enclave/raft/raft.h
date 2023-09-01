@@ -177,6 +177,10 @@ class Raft {
 
   const Membership& membership() const;
 
+ #ifdef IS_TEST
+  std::unique_ptr<Raft> Copy();
+#endif // IS_TEST
+
  private:
   void set_heartbeat_timeout(util::Ticks t);
   void set_election_timeout(util::Ticks t);
