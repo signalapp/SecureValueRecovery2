@@ -10,6 +10,7 @@
 #include "util/constant.h"
 #include "util/bytes.h"
 #include "util/endian.h"
+#include "util/hex.h"
 
 #define MELOG(x) LOG(x) << "(" << me().DebugString() << ") "
 
@@ -279,6 +280,9 @@ RaftMessage* Raft::RequestVoteMessage(context::Context* ctx) {
   vote_req->set_last_log_term(log_->last_term());
   //          mlastLogIndex |-> Len(log[i]),
   vote_req->set_last_log_idx(log_->last_idx());
+  //          mlastLogHash  |-> Hash(log[i])
+  auto iter = log_->At(log_->last_idx());
+  vote_req->set_last_log_hash_chain(iter.Valid() ? iter.Entry()->hash_chain() : "");
   return msg;
 }
 
@@ -1061,17 +1065,101 @@ bool Raft::ShouldDropResponseDueToStaleTerm(const peerid::PeerID& from, const Ra
   return false;
 }
 
+error::Error Raft::CheckLogHash(const Log& log, LogIdx idx, TermId term, const std::string& hash, Raft::CLH_Options opts) {
+  if (idx == 0) {
+    return error::OK;
+  }
+  if (idx < log.oldest_stored_idx()) {
+    return COUNTED_ERROR(Raft_MsgTruncated);
+  }
+  if (idx > log.last_idx()) {
+    return (opts & CLH_AllowFuture) ? error::OK : COUNTED_ERROR(Raft_MsgInFuture);
+  } 
+  auto iter = log.At(idx);
+  CHECK(iter.Valid());
+  if (term == 0) {
+    term = iter.Term();
+  } else if (term > iter.Term()) {
+    return idx > promise_idx_ ? error::OK : COUNTED_ERROR(Raft_MsgTermPromised);
+  } else if (term < iter.Term()) {
+    return error::OK;  // might just be an old message
+  }
+  if (!util::ConstantTimeEquals(hash, iter.Entry()->hash_chain())) {
+    return COUNTED_ERROR(Raft_MsgHashMismatch);
+  }
+  return error::OK;
+}
+
+error::Error Raft::ValidateReceivedMessage(context::Context* ctx, const RaftMessage& msg, const peerid::PeerID& from) {
+  if (msg.group() != group_) {
+    return COUNTED_ERROR(Raft_MsgWrongGroup);
+  } else if (membership().all_replicas().count(from) == 0) {
+    return COUNTED_ERROR(Raft_MsgNotPeer);
+  }
+  switch (msg.inner_case()) {
+    case RaftMessage::kVoteRequest: {
+      auto m = msg.vote_request();
+      RETURN_IF_ERROR(CheckLogHash(*log_,
+          m.last_log_idx(),
+          m.last_log_term(),
+          m.last_log_hash_chain(),
+          CLH_AllowFuture));
+    } break;
+    case RaftMessage::kVoteResponse: {
+    } break;
+    case RaftMessage::kAppendRequest: {
+      auto m = msg.append_request();
+      RETURN_IF_ERROR(CheckLogHash(*log_,
+          m.prev_log_idx(),
+          m.prev_log_term(),
+          m.prev_log_hash_chain(),
+          CLH_AllowFuture));
+      if (m.leader_commit() > m.prev_log_idx() + m.entries_size()) {
+        return COUNTED_ERROR(Raft_MsgAppendEntryIndex);
+      }
+      if (m.leader_promise() > m.prev_log_idx() + m.entries_size()) {
+        return COUNTED_ERROR(Raft_MsgAppendEntryIndex);
+      }
+      if (m.leader_commit() > m.leader_promise()) {
+        return COUNTED_ERROR(Raft_MsgLogIndexOrdering);
+      }
+      for (int i = 0; i < m.entries_size(); i++) {
+        auto e = m.entries(i);
+        RETURN_IF_ERROR(CheckLogHash(*log_,
+            m.prev_log_idx() + i + 1,
+            e.term(),
+            e.hash_chain(),
+            CLH_AllowFuture));
+      }
+    } break;
+    case RaftMessage::kAppendResponse: {
+      auto m = msg.append_response();
+      RETURN_IF_ERROR(CheckLogHash(*log_,
+          m.match_idx(),
+          0,
+          m.match_hash_chain(),
+          CLH_AllowNothing));
+      if (m.match_idx() > m.last_log_idx() ||
+          m.promise_idx() > m.last_log_idx()) {
+        return COUNTED_ERROR(Raft_MsgLogIndexOrdering);
+      }
+    } break;
+    case RaftMessage::kTimeoutNow: {
+    } break;
+    case RaftMessage::INNER_NOT_SET:
+    default:
+      return COUNTED_ERROR(Raft_MsgInvalidType);
+  }
+  return error::OK;
+}
+
 // #* Receive a message.
 void Raft::Receive(context::Context* ctx, const RaftMessage& msg, const peerid::PeerID& from) {
+  if (auto err = ValidateReceivedMessage(ctx, msg, from); err != error::OK) {
+    LOG(ERROR) << "ignoring invalid Raft message from " << from << " (" << err << "): " << MsgStr(msg);
+    return;
+  }
   // Receive(m) ==
-  if (msg.group() != group_) {
-    LOG(ERROR) << "received raft message from " << from << " for wrong group " << msg.group();
-    return;
-  }
-  if (membership().all_replicas().count(from) == 0) {
-    LOG(ERROR) << "message from non-peer " << from;
-    return;
-  }
   // IN \* Any RPC with a newer term causes the recipient to advance
   //    \* its term first. Responses with stale terms are ignored.
   //    \/ UpdateTerm(i, j, m)
@@ -1182,7 +1270,11 @@ std::string MsgStr(const RaftMessage& msg) {
   switch (msg.inner_case()) {
     case RaftMessage::kVoteRequest: {
       auto m = msg.vote_request();
-      ss << " vote_request:{ last_log_idx:" << m.last_log_idx() << " last_log_term:" << m.last_log_term() << " }";
+      ss << " vote_request:{"
+         << " last_log_idx:" << m.last_log_idx()
+         << " last_log_term:" << m.last_log_term()
+         << " last_log_hash_chain:" << util::PrefixToHex(m.last_log_hash_chain(), 4)
+         << " }";
     } break;
     case RaftMessage::kVoteResponse: {
       auto m = msg.vote_response();
@@ -1192,10 +1284,15 @@ std::string MsgStr(const RaftMessage& msg) {
       auto m = msg.append_request();
       ss << " append_request:{ prev_log_idx:" << m.prev_log_idx()
          << " prev_log_term:" << m.prev_log_term()
+         << " prev_log_hash_chain:" << util::PrefixToHex(m.prev_log_hash_chain(), 4)
          << " leader_commit:" << m.leader_commit()
          << " leader_promise:" << m.leader_promise();
       for (int i = 0; i < m.entries_size(); i++) {
-        ss << " entries:{ term=" << m.entries(i).term() << " }";
+        auto e = m.entries(i);
+        ss << " entries:{"
+           << " term=" << e.term()
+           << " hash_chain=" << util::PrefixToHex(e.hash_chain(), 4)
+           << " }";
       }
       ss << " }";
     } break;
@@ -1203,6 +1300,7 @@ std::string MsgStr(const RaftMessage& msg) {
       auto m = msg.append_response();
       ss << " append_response:{ success:" << m.success()
          << " match_idx:" << m.match_idx()
+         << " match_hash_chain:" << util::PrefixToHex(m.match_hash_chain(), 4)
          << " promise_idx:" << m.promise_idx()
          << " last_log_idx:" << m.last_log_idx() << " }";
     } break;

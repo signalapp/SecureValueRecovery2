@@ -119,6 +119,15 @@ enum Error {
   Raft_NoHashChainInAppend = 508;
   Raft_FollowerNotFound = 509;
   Raft_SetNextOnNonemptyLog = 510;
+  Raft_MsgNotPeer = 511;
+  Raft_MsgWrongGroup = 512;
+  Raft_MsgInvalidType = 513;
+  Raft_MsgHashMismatch = 514;
+  Raft_MsgTruncated = 515;
+  Raft_MsgInFuture = 516;
+  Raft_MsgTermPromised = 517;
+  Raft_MsgAppendEntryIndex = 518;
+  Raft_MsgLogIndexOrdering = 519;
 
   DB2_NS = 600;
   DB2_ClientRequestCase = 601;

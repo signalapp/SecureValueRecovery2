@@ -39,6 +39,7 @@ message RaftMessage {
 message VoteRequest {
   uint64 last_log_idx = 1;
   uint64 last_log_term = 2;
+  bytes last_log_hash_chain = 3;
 }
 
 message VoteResponse {

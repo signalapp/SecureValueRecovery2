@@ -236,6 +236,12 @@ class Raft {
   void HandleAppendResponse(context::Context* ctx, const TermId& msg_term, const AppendResponse& msg, const peerid::PeerID& from);
 
   void AddSendableMessage(SendableRaftMessage msg);
+  error::Error ValidateReceivedMessage(context::Context* ctx, const RaftMessage& msg, const peerid::PeerID& from);
+  enum CLH_Options {
+    CLH_AllowNothing   = 0,
+    CLH_AllowFuture    = 1 << 0,
+  };
+  error::Error CheckLogHash(const Log& log, LogIdx idx, TermId term, const std::string& hash, CLH_Options opts);
 
   // Message to request a vote for myself.  Requires role==candidate.
   RaftMessage* RequestVoteMessage(context::Context* ctx);
