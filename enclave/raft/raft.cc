@@ -623,6 +623,10 @@ void Raft::HandleVoteRequest(context::Context* ctx, const TermId& msg_term, cons
   //     \/ m.mlastLogTerm > LastTerm(log[i])
   //     \/ /\ m.mlastLogTerm = LastTerm(log[i])
   //        /\ m.mlastLogIndex >= Len(log[i])
+  //        \* Signal TLA+ addition, guaranteed by `ValidateReceivedMessages`
+  //        /\ \/ m.mlastLogIndex > Len(log[i])
+  //           \/ /\ m.mlastLogIndex = Len(log[i])
+  //              /\ m.mlastLogHashChain = log[i][m.mlastLogIndex].hashChain
   bool log_ok =
       msg.last_log_term() > last_log_term || (
           msg.last_log_term() == last_log_term &&
@@ -695,31 +699,32 @@ void Raft::HandleAppendRequest(context::Context* ctx, const TermId& msg_term, co
   auto our_prev_log = log_->At(prev_log_idx);
   uint64_t our_prev_log_term = our_prev_log.Term();
 
-  bool prev_log_hash_matches = false;
-  if (prev_log_idx == 0) {
-    // This is our first set of logs, we have no matching hash.  Treat this as a match success
-    prev_log_hash_matches = true;
-  }  else if (!our_prev_log.Valid()) {
-    // We want to check against the previous log entry, but it's been truncated for being too old.
-    // We assume the worst here. This will ensure that log_ok is false, no entries will be appended,
-    // and we will return failure to the leader.
-    LOG(WARNING) << "sent index for a previous log we do not have: " << prev_log_idx << " our earliest stored index: " << log_->oldest_stored_idx();
-    prev_log_hash_matches = false;
-  } else {
-    // We have a log entry in the log, so we can actually check its hash:
-    our_prev_log_term = our_prev_log.Term();
-    prev_log_hash_matches = util::ConstantTimeEquals(our_prev_log.Entry()->hash_chain(), msg.prev_log_hash_chain());
-    if (!prev_log_hash_matches) {
-      LOG(WARNING) << "previous log hash from leader does not match: " << prev_log_idx << " <= " << commit_idx_;
-    }
-  }
+  // We have some guarantees here since we have called `ValidateReceivedMessage` first.
+  // 1. msg.prev_log_idx() >= log_.oldest_stored_idx() so our_prev_log is invalid if and only if
+  //    msg.prev_log_idx() > log_.last_stored_idx(). In this case we must set logOk to false.
+  // 2. If our_prev_log.Valid() then it's hash matches msg.prev_log_hash_chain()
+  // 3. If any entries in msg.entries() have an index that we already have, then either
+  //    a. its hash chain matches the hash chain we have at the same index (and hence the whole
+  //       matches.)
+  //    b. it's an old message for an old term that will be ignored
+  //    c. The entry has a higher term than the one in our log, and the one in our log has
+  //       not been promised, so the new entry will replace the existing one.
+  // 4. msg.leader_commit() and msg.leader_promise() are less than or equal to the length of our 
+  //    log after we append these.
+  // 5. msg.leader_commit() >= msg.leader_promise()
+  //
+  // We still need to check theRaft logOk conditions and validate the hash chain on
+  // all new entries.
+
 
   
   // LET logOk == \/ m.mprevLogIndex = 0
-  //              \/ /\ m.mprevLogIndex > 0 /\ m.mprevLogIndex <= Len(log[i]) /\ m.mprevLogTerm = log[i][m.mprevLogIndex].term
+  //              \/ /\ m.mprevLogIndex > 0 
+  //                 /\ m.mprevLogIndex <= Len(log[i]) \* Implied by our_prev_log.Valid(), see (1) in above comment
+  //                 /\ m.mprevLogTerm = log[i][m.mprevLogIndex].term
   //                 \* Signal TLA+ extension follows
-  //                 /\ m.mprevLogHash = log[i][m.mprevLogIndex].hash
-  bool log_ok = prev_log_idx == 0 || (msg_prev_log_term == our_prev_log_term && prev_log_hash_matches);
+  //                 /\ m.mprevLogHash = log[i][m.mprevLogIndex].hash \* True by (2) in above comment.
+  bool log_ok = prev_log_idx == 0 || (our_prev_log.Valid() &&  msg_prev_log_term == our_prev_log_term);
       
   // IN /\ m.mterm <= currentTerm[i]
   //    /\ \/ \* return to follower state
@@ -763,8 +768,6 @@ void Raft::HandleAppendRequest(context::Context* ctx, const TermId& msg_term, co
       LOG(INFO) << "ignored message with term " << msg_term << " < current " << current_term_;
     } else if (our_prev_log_term > 0) {
       LOG(WARNING) << "rejected append from " << from << " with idx " << prev_log_idx << " at term " << msg_prev_log_term << ", we have " << our_prev_log_term;
-    } else if (!prev_log_hash_matches) {
-      LOG(WARNING) << "prev log hash from leader did not match at term " << current_term_ << " index " << prev_log_idx;
     } else {
       LOG(INFO) << "rejected append from " << from << " with idx " << prev_log_idx << ", we are behind at " << our_last_idx;
     }
@@ -799,7 +802,6 @@ void Raft::HandleAppendRequest(context::Context* ctx, const TermId& msg_term, co
   CHECK(msg_term == current_term_);
   CHECK(role_ == internal::Role::FOLLOWER);
   CHECK(log_ok);
-  CHECK(prev_log_hash_matches);
   uint64_t last_processed_idx = prev_log_idx;
   for (int i = 0; i < msg.entries_size(); i++) {
     uint64_t msg_entry_log_idx = prev_log_idx + i + 1;
@@ -823,15 +825,9 @@ void Raft::HandleAppendRequest(context::Context* ctx, const TermId& msg_term, co
     }
 
     LogIdx last = log_->last_idx();
-    // If the entries are at indexes we already have we need to validate the hash chain
-    if (our_idx_term == msg_entry.term() && msg_entry_log_idx <= last) {
-      auto our_hash = log_->At(msg_entry_log_idx).Entry()->hash_chain();
-      if (!util::ConstantTimeEquals(our_hash, msg_entry.hash_chain())) {
-        LOG(WARNING) << "leader sent inconsistent log: hash chain mismatch at " << msg_entry_log_idx;
-        break;
-      }
-    }
-
+    // If the entry is at an index that already exists in our log, then `ValidateReceivedMessages`
+    // has already checked that the hash chain is consistent. On the other hand, if
+    // this is a new entry then we will have `msg_entry_log_idx == last + 1`
     if (msg_entry_log_idx == last + 1) {
       auto next_hash = NextHash(msg_entry);
       if (!util::ConstantTimeEquals(next_hash, msg_entry.hash_chain())) {
@@ -923,6 +919,8 @@ void Raft::MaybeChangeUncommittedMembershipsBasedOnLog() {
 // \* Server i receives an AppendEntries response from server j with
 // \* m.mterm = currentTerm[i].
 void Raft::HandleAppendResponse(context::Context* ctx, const TermId& msg_term, const AppendResponse& msg, const peerid::PeerID& from) {
+  
+  
   // HandleAppendEntriesResponse(i, j, m) ==
   // /\ m.mterm = currentTerm[i]
   if (msg_term != current_term_) { return; }
@@ -935,6 +933,13 @@ void Raft::HandleAppendResponse(context::Context* ctx, const TermId& msg_term, c
       replication.inflight.reset();
     }
     auto match_log = log_->At(msg.match_idx());
+    // We have some guarantees here since we have called `ValidateReceivedMessage` first.
+    // 1. msg.match_idx() <= log_->last_idx() && msg.match_idx() >= log_.oldest_Stored_idx()
+    //    thus match_log is Valid.
+    // 2. msg.match_hash_chain() matches match_log.Entry()->hash_chain()
+    // Thus the CHECK in the `if` branch below will always pass and the
+    // `else` branch is unreachable. We leave them in for the explanation
+    // of the comments and alignment with the TLA+. 
     if(match_log.Valid()) {
       // This CHECK will only fail if this server has been rolled back:
       // The follower that sent this message appended it to its log at some earlier
