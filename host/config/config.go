@@ -108,6 +108,7 @@ func Default() *Config {
 			RefreshStatusDuration:      time.Minute,
 			TickDuration:               time.Second,
 			MetricPollDuration:         time.Second * 10,
+			EnvStatsPollDuration:       0,
 			RefreshAttestationDuration: time.Minute * 10,
 			EnclaveConcurrency:         util.Min(runtime.NumCPU(), 64),
 		},

@@ -17,6 +17,8 @@ type RaftHostConfig struct {
 	TickDuration time.Duration `yaml:"tickDuration"`
 	// how often to poll metrics from the enclave
 	MetricPollDuration time.Duration `yaml:"metricPollDuration"`
+	// how often to update env stats (memory usage, etc)
+	EnvStatsPollDuration time.Duration `yaml:"envStatsPollDuration"`
 	// max number of in-flight enclave calls
 	EnclaveConcurrency int `yaml:"enclaveConcurrency"`
 }

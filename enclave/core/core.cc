@@ -284,13 +284,18 @@ error::Error Core::HandleHostToEnclave(context::Context* ctx, const HostToEnclav
         sender::Send(ctx, *out);
       }
     } return error::OK;
+    case HostToEnclaveRequest::kMetrics:
     case HostToEnclaveRequest::kRequestMetrics: {
       MEASURE_CPU(ctx, cpu_core_metrics);
-      env::environment->UpdateEnvStats();
+      if (msg.inner_case() == HostToEnclaveRequest::kRequestMetrics ||
+          msg.metrics().update_env_stats()) {
+        MEASURE_CPU(ctx, cpu_core_update_env_stats);
+        env::environment->UpdateEnvStats();
+      }
       EnclaveMessage* out = ctx->Protobuf<EnclaveMessage>();
       auto resp = out->mutable_h2e_response();
       resp->set_request_id(tx);
-      *resp->mutable_metrics_reply() = metrics::AllAsPB();
+      *resp->mutable_metrics_reply() = std::move(*metrics::AllAsPB(ctx));
       sender::Send(ctx, *out);
     } return error::OK;
     case HostToEnclaveRequest::kDatabaseRequest: {

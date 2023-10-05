@@ -3,12 +3,14 @@
 
 //TESTDEP gtest
 //TESTDEP metrics
+//TESTDEP context
 //TESTDEP proto
 //TESTDEP protobuf-lite
 
 #include <gtest/gtest.h>
 #include "proto/error.pb.h"
 #include "metrics/metrics.h"
+#include "context/context.h"
 
 namespace svr2::metrics {
 
@@ -44,6 +46,8 @@ class MetricsTest : public ::testing::Test {
     }
     return -1;
   }
+
+  context::Context ctx;
 };
 
 error::Error ReturnsGeneralUnimplemented() {
@@ -58,20 +62,20 @@ TEST_F(MetricsTest, CountsReturnedErrors) {
   for (int i = 0; i < 3; i++) {
     ReturnsGeneralUnimplemented();
   }
-  MetricsPB got = AllAsPB();
-  ASSERT_EQ(got.counters_size(), 1 + COUNTERS_ARRAY_SIZE);
-  auto c = got.counters(0);
+  MetricsPB* got = AllAsPB(&ctx);
+  ASSERT_EQ(got->counters_size(), 1 + COUNTERS_ARRAY_SIZE);
+  auto c = got->counters(0);
   ASSERT_EQ(c.v(), 3);
   ASSERT_EQ(c.tags().at("error"), "General_Unimplemented");
   for (int i = 0; i < 5; i++) {
     ReturnsCoreReInit();
   }
-  got = AllAsPB();
-  ASSERT_EQ(got.counters_size(), 2 + COUNTERS_ARRAY_SIZE);
-  c = got.counters(0);
+  got = AllAsPB(&ctx);
+  ASSERT_EQ(got->counters_size(), 2 + COUNTERS_ARRAY_SIZE);
+  c = got->counters(0);
   ASSERT_EQ(c.v(), 3);
   ASSERT_EQ(c.tags().at("error"), "General_Unimplemented");
-  c = got.counters(1);
+  c = got->counters(1);
   ASSERT_EQ(c.v(), 5);
   ASSERT_EQ(c.tags().at("error"), "Core_ReInit");
 }
@@ -80,10 +84,10 @@ TEST_F(MetricsTest, Counters) {
   COUNTER(core, peer_msgs_received)->Increment();
   COUNTER(core, peer_msgs_received)->Increment();
   COUNTER(core, peer_msgs_received)->Increment();
-  MetricsPB got = AllAsPB();
-  int i = FindCounter(got, "core.msgs_received", {{"type", "peer_message"}});
+  MetricsPB* got = AllAsPB(&ctx);
+  int i = FindCounter(*got, "core.msgs_received", {{"type", "peer_message"}});
   ASSERT_GE(i, 0);
-  auto c = got.counters(i);
+  auto c = got->counters(i);
   ASSERT_EQ(c.name(), "core.msgs_received");
   ASSERT_EQ(c.tags().size(), 1);
   ASSERT_EQ(c.tags().at("type"), "peer_message");
@@ -91,32 +95,32 @@ TEST_F(MetricsTest, Counters) {
 }
 
 TEST_F(MetricsTest, Gauges) {
-  MetricsPB got = AllAsPB();
-  ASSERT_EQ(got.gauges_size(), 0);
+  MetricsPB* got = AllAsPB(&ctx);
+  ASSERT_EQ(got->gauges_size(), 0);
   GAUGE(test, test1)->Set(123);
-  got = AllAsPB();
-  ASSERT_EQ(got.gauges_size(), 1);
-  EXPECT_EQ(got.gauges(0).name(), "test.test1");
-  EXPECT_EQ(got.gauges(0).v(), 123);
+  got = AllAsPB(&ctx);
+  ASSERT_EQ(got->gauges_size(), 1);
+  EXPECT_EQ(got->gauges(0).name(), "test.test1");
+  EXPECT_EQ(got->gauges(0).v(), 123);
   GAUGE(test, test2)->Set(234);
   GAUGE(test, test1)->Set(345);
-  got = AllAsPB();
-  ASSERT_EQ(got.gauges_size(), 2);
-  int t1 = FindGauge(got, "test.test1");
-  int t2 = FindGauge(got, "test.test2");
+  got = AllAsPB(&ctx);
+  ASSERT_EQ(got->gauges_size(), 2);
+  int t1 = FindGauge(*got, "test.test1");
+  int t2 = FindGauge(*got, "test.test2");
   ASSERT_GE(t1, 0);
   ASSERT_GE(t2, 0);
-  auto g1 = got.gauges(t1);
-  auto g2 = got.gauges(t2);
+  auto g1 = got->gauges(t1);
+  auto g2 = got->gauges(t2);
   EXPECT_EQ(g1.name(), "test.test1");
   EXPECT_EQ(g1.v(), 345);
   EXPECT_EQ(g2.name(), "test.test2");
   EXPECT_EQ(g2.v(), 234);
   GAUGE(test, test1)->Clear();
-  got = AllAsPB();
-  ASSERT_EQ(got.gauges_size(), 1);
-  EXPECT_EQ(got.gauges(0).name(), "test.test2");
-  EXPECT_EQ(got.gauges(0).v(), 234);
+  got = AllAsPB(&ctx);
+  ASSERT_EQ(got->gauges_size(), 1);
+  EXPECT_EQ(got->gauges(0).name(), "test.test2");
+  EXPECT_EQ(got->gauges(0).v(), 234);
 }
 
 }  // namespace svr2::metrics

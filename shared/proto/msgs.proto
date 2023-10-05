@@ -51,6 +51,10 @@ message HashResponse {
   bytes commit_hash_chain = 3;
 }
 
+message MetricsRequest {
+  bool update_env_stats = 1;  // CPU usage scales with RAM used
+}
+
 message HostToEnclaveRequest {
   uint64 request_id = 1;
   oneof inner {
@@ -64,12 +68,13 @@ message HostToEnclaveRequest {
     JoinRaftRequest join_raft = 9;
     EnclavePeer ping_peer = 10;
     bool request_voting = 11;
-    bool request_metrics = 12;
+    bool request_metrics = 12;  // deprecated, use 'metrics'
     RefreshAttestation refresh_attestation = 13;
     enclaveconfig.EnclaveLogLevel set_log_level = 14;
     bool relinquish_leadership = 15;
     bool request_removal = 16;
     bool hashes = 17;
+    MetricsRequest metrics = 18;
   }
 }
 

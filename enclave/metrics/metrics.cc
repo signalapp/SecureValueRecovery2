@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 #include "metrics/metrics.h"
+#include "context/context.h"
 
 namespace svr2::metrics {
 
@@ -9,13 +10,13 @@ namespace {
 static std::atomic<uint64_t> recorded_errors[error::Error_ARRAYSIZE] = {0};
 }  // namespace
 
-MetricsPB AllAsPB() {
-  MetricsPB out;
+MetricsPB* AllAsPB(context::Context* ctx) {
+  auto out = ctx->Protobuf<MetricsPB>();
   for (int i = 0; i < error::Error_ARRAYSIZE; i++) {
     if (error::Error_IsValid(i)) {
       uint64_t v = recorded_errors[i].load();
       if (v > 0) {
-        U64PB* counter = out.add_counters();
+        U64PB* counter = out->add_counters();
         counter->set_name("errors");
         (*counter->mutable_tags())["error"] = error::Error_Name(i);
         counter->set_v(v);
@@ -23,10 +24,10 @@ MetricsPB AllAsPB() {
     }
   }
   for (int i = 0; i < COUNTERS_ARRAY_SIZE; i++) {
-    internal::counters[i].AddToMetrics(&out);
+    internal::counters[i].AddToMetrics(out);
   }
   for (int i = 0; i < GAUGES_ARRAY_SIZE; i++) {
-    internal::gauges[i].AddToMetrics(&out);
+    internal::gauges[i].AddToMetrics(out);
   }
   return out;
 }

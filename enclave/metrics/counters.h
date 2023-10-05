@@ -117,6 +117,7 @@ CREATE_COUNTER(context, cpu_core_metrics, cpu, ({{"in", "core"}, {"action", "met
 CREATE_COUNTER(context, cpu_core_connecting_to_raft_members, cpu, ({{"in", "core"}, {"action", "connecting_to_raft_members"}}))
 CREATE_COUNTER(context, cpu_core_updating_group_time, cpu, ({{"in", "core"}, {"action", "updating_group_time"}}))
 CREATE_COUNTER(context, cpu_core_raft_tick, cpu, ({{"in", "core"}, {"action", "raft_tick"}}))
+CREATE_COUNTER(context, cpu_core_update_env_stats, cpu, ({{"in", "core"}, {"action", "update_env_stats"}}))
 CREATE_COUNTER(context, cpu_test_database_entries, cpu, ({{"in", "core"}, {"action", "test_database_entries"}}))
 CREATE_COUNTER(context, cpu_env_attest, cpu, ({{"in", "env"}, {"action", "attest"}}))
 CREATE_COUNTER(context, cpu_env_evidence, cpu, ({{"in", "env"}, {"action", "evidence"}}))

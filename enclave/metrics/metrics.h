@@ -10,10 +10,13 @@
 #include "proto/metrics.pb.h"
 #include "proto/error.pb.h"
 
+namespace svr2::context {
+class Context;
+}  // namespace svr2::context
 namespace svr2::metrics {
 
 // Export all global metrics as a single protobuf.
-MetricsPB AllAsPB();
+MetricsPB* AllAsPB(context::Context* ctx);
 
 // Return all global metrics to an initial state.  For testing only.
 void ClearAllForTest();
@@ -26,8 +29,9 @@ class Counter {
   Counter(const std::string& name, std::map<std::string, std::string>&& tags);
   void IncrementBy(uint64_t v);
   inline void Increment() { IncrementBy(1); }
+  inline uint64_t Value() const { return v_.load(); }
  private:
-  friend MetricsPB AllAsPB();
+  friend MetricsPB* AllAsPB(context::Context* ctx);
   friend void ClearAllForTest();
   void AddToMetrics(MetricsPB* pb);
   void Clear();
@@ -43,8 +47,9 @@ class Gauge {
   Gauge(const std::string& name);
   void Set(uint64_t v);
   void Clear();
+  inline uint64_t Value() const { return v_.load(); }
  private:
-  friend MetricsPB AllAsPB();
+  friend MetricsPB* AllAsPB(context::Context* ctx);
   friend void ClearAllForTest();
   void AddToMetrics(MetricsPB* pb);
   std::atomic<uint64_t> v_;

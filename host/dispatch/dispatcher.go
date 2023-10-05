@@ -230,6 +230,7 @@ func (d *Dispatcher) refreshAttestation() error {
 // metricLoop sends requests for metrics to the enclave on a fixed interval
 func (d *Dispatcher) metricLoop(ctx context.Context) error {
 	poller := time.NewTicker(d.cfg.MetricPollDuration)
+	var lastEnvStats time.Time
 	defer poller.Stop()
 	for {
 		select {
@@ -252,9 +253,15 @@ func (d *Dispatcher) metricLoop(ctx context.Context) error {
 				return errors.New("unexpected HostToEnclaveResponse from enclave")
 			}
 			// Then, get actual metrics.
-			resp, err = d.SendTransaction(&pb.HostToEnclaveRequest{
-				Inner: &pb.HostToEnclaveRequest_RequestMetrics{RequestMetrics: true},
-			})
+			req := &pb.HostToEnclaveRequest{}
+			// TODO: after we stop supporting older versions, just use HostToEnclaveRequest_Metrics with UpdateEnvStats set correctly.
+			if lastEnvStats.Add(d.cfg.EnvStatsPollDuration).Before(time.Now()) {
+				lastEnvStats = time.Now()
+				req.Inner = &pb.HostToEnclaveRequest_RequestMetrics{RequestMetrics: true}
+			} else {
+				req.Inner = &pb.HostToEnclaveRequest_Metrics{Metrics: &pb.MetricsRequest{UpdateEnvStats: false}}
+			}
+			resp, err = d.SendTransaction(req)
 			if err != nil {
 				return err
 			}

@@ -45,6 +45,7 @@
 #include "env/test/test.h"
 #include "util/bytes.h"
 #include "db/db3.h"
+#include "metrics/metrics.h"
 #include "core/coretest/testingcore.h"
 #include "core/coretest/replicagroup.h"
 #include "core/coretest/testingclient.h"
@@ -2328,6 +2329,44 @@ TEST_F(CoreTest, Hashes3) {
     EXPECT_EQ(resp.hashes().commit_idx(), 2);
     EXPECT_EQ(util::BigEndian64FromBytes(reinterpret_cast<const uint8_t*>(resp.hashes().commit_hash_chain().data())),
               4818198584546649367);
+  }
+}
+
+TEST_F(CoreTest, RequestMetricsEnvStats) {
+  auto [core, err] = Core::Create(ctx, valid_init_config);
+  ASSERT_TRUE(core->ID().Valid());
+  CoreMap cores;
+  cores[core->ID()] = core.get();
+
+  metrics::ClearAllForTest();
+  {  // Set up as one-replica Raft
+    UntrustedMessage msg;
+
+    auto host = msg.mutable_h2e_request();
+    host->set_request_id(998);
+    host->mutable_metrics()->set_update_env_stats(true);
+
+    context::Context ctx;
+    ASSERT_EQ(error::OK, core->Receive(&ctx, msg));
+    auto resp = Response(env::test::SentMessages());
+    ASSERT_EQ(resp.request_id(), 998);
+    ASSERT_EQ(resp.inner_case(), HostToEnclaveResponse::kMetricsReply);
+    ASSERT_GT(COUNTER(context, cpu_core_update_env_stats)->Value(), 0);
+  }
+  metrics::ClearAllForTest();
+  {  // Set up as one-replica Raft
+    UntrustedMessage msg;
+
+    auto host = msg.mutable_h2e_request();
+    host->set_request_id(999);
+    host->mutable_metrics()->set_update_env_stats(false);
+
+    context::Context ctx;
+    ASSERT_EQ(error::OK, core->Receive(&ctx, msg));
+    auto resp = Response(env::test::SentMessages());
+    ASSERT_EQ(resp.request_id(), 999);
+    ASSERT_EQ(resp.inner_case(), HostToEnclaveResponse::kMetricsReply);
+    ASSERT_EQ(COUNTER(context, cpu_core_update_env_stats)->Value(), 0);
   }
 }
 
