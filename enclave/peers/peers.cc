@@ -594,6 +594,7 @@ error::Error PeerManager::ResetPeer(
   if (peer == nullptr) {
     return COUNTED_ERROR(Peers_ResetMissingPeer);
   }
+  LOG(INFO) << "Resetting peer " << to;
   peer->Disconnect(ctx);
   return error::OK;
 }

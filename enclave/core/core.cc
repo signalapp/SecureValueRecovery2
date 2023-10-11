@@ -324,6 +324,11 @@ error::Error Core::HandleHostToEnclave(context::Context* ctx, const HostToEnclav
       auto err = HandleHostHashes(ctx, tx);
       if (err != error::OK) { ReplyWithError(ctx, tx, err); }
     } return error::OK;
+    case HostToEnclaveRequest::kResetPeerId: {
+      peerid::PeerID peer_id;
+      RETURN_IF_ERROR(peer_id.FromString(msg.reset_peer_id()));
+      return peer_manager_->ResetPeer(ctx, peer_id);
+    }
     default:
       return error::General_Unimplemented;
   }

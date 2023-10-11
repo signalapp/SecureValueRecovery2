@@ -75,6 +75,7 @@ message HostToEnclaveRequest {
     bool request_removal = 16;
     bool hashes = 17;
     MetricsRequest metrics = 18;
+    bytes reset_peer_id = 19;
   }
 }
 
