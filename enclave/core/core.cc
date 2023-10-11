@@ -1115,15 +1115,22 @@ void Core::SendNextReplicationState(context::Context* ctx, std::shared_ptr<Core:
       break;
     }
     *out->add_entries() = *iter.Entry();
-    size += iter.SerializedSize();
+    // Try to take into account the extra size in bytes added to each
+    // repeated field in a protobuf.
+    const size_t EXTRA_SIZE_PER_LOG_ENTRY = 1;
+    size += iter.SerializedSize() + EXTRA_SIZE_PER_LOG_ENTRY;
     if (size >= replication_chunk_bytes) { break; }
   }
 
-  // our db rows represent the state at `raft_.loaded.db_commit`, so we can
+  // Our db rows represent the state at `raft_.loaded.db_commit`, so we can
   // only send them if after this message the requester will be at `raft_.loaded.db_commit`
-  if (at_commit_idx) {
+  // The `size` computed in the above loop was an estimate, so we
+  // can't assume that the actual current size is really less than our limit.
+  // Thus, to avoid an overflow, we re-check it in this if statement.
+  size_t current_size = out->ByteSizeLong();
+  if (at_commit_idx && current_size < replication_chunk_bytes) {
     size_t rows_to_send =
-        (replication_chunk_bytes - out->ByteSizeLong())
+        (replication_chunk_bytes - current_size)
         / db_protocol_->MaxRowSerializedSize();
     if (rows_to_send) {  // if we've got space
       auto [row_id, err] = raft_.loaded.db->RowsAsProtos(ctx, push_state->db_from_key_exclusive, rows_to_send, out->mutable_rows());

@@ -1881,9 +1881,9 @@ TEST_F(CoreTest, Replicator) {
     ASSERT_EQ(error::OK, core->Receive(ctx, PeerMessage(pm.ID(), core->ID(), msgs[0])));
     msgs = env::test::SentMessages();
     std::vector<e2e::ReplicateStatePush> expected_pipeline = {
-        MakeReplicateStatePush(repl_id, 0, 1, 80, false, 0),
-        MakeReplicateStatePush(repl_id, 1, 81, 79, false, 0),
-        MakeReplicateStatePush(repl_id, 2, 160, 42, false, 44),
+        MakeReplicateStatePush(repl_id, 0, 1, 79, false, 0),
+        MakeReplicateStatePush(repl_id, 1, 80, 79, false, 0),
+        MakeReplicateStatePush(repl_id, 2, 159, 43, false, 42),
     };
     ASSERT_EQ(expected_pipeline.size(), msgs.size());  // pipelining
     for (size_t i = 0; i < expected_pipeline.size(); i++) {
@@ -1924,7 +1924,7 @@ TEST_F(CoreTest, Replicator) {
     MakeReplicateStatePush(repl_id, 5, 360, 42, false, 44),
     MakeReplicateStatePush(repl_id, 6, 402, 0, false, 97),
     MakeReplicateStatePush(repl_id, 7, 402, 0, false, 97),
-    MakeReplicateStatePush(repl_id, 8, 402, 0, true, 75),
+    MakeReplicateStatePush(repl_id, 8, 402, 0, true, 79),
   };
   while (expected_pushes.size()) {
     e2e::EnclaveToEnclaveMessage msg;
