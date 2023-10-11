@@ -185,6 +185,7 @@ func (p *PeerClient) getOrCreateSender(msg *pb.PeerMessage, peerID peerid.PeerID
 			// remember if we gave up on this peer, so we know to reset our connect
 			// if we communicate with them again.
 			p.abandonedPeers[peerID] = true
+			logger.Infow("abandoning peer", "peerID", peerID)
 
 			// not a fatal error
 			return nil
