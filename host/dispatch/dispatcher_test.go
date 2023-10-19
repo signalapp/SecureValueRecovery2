@@ -5,15 +5,14 @@ package dispatch
 
 import (
 	"context"
+	"fmt"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/signalapp/svr2/config"
-	"github.com/signalapp/svr2/peer"
 	pb "github.com/signalapp/svr2/proto"
 	"github.com/signalapp/svr2/util"
-	"google.golang.org/protobuf/proto"
 )
 
 type mockEnclave struct {
@@ -154,40 +153,10 @@ type slowPeerSender struct {
 
 func (s *slowPeerSender) Send(m *pb.PeerMessage) error {
 	if s.block {
-		return peer.ErrResetConnection
+		return fmt.Errorf("bad thing")
 	}
 	s.out <- m
 	return nil
-}
-
-func TestReconnectPeer(t *testing.T) {
-	sender := &slowPeerSender{out: make(chan *pb.PeerMessage, 1)}
-	f := makeFixtureWithSender(sender)
-	defer f.Close()
-
-	peerMessage := &pb.EnclaveMessage{Inner: &pb.EnclaveMessage_PeerMessage{
-		PeerMessage: &pb.PeerMessage{
-			PeerId: []byte{},
-			Inner:  &pb.PeerMessage_Data{Data: []byte{}},
-		},
-	}}
-
-	// return an error
-	sender.block = true
-	f.enclaveSend(peerMessage)
-
-	// the dispatcher should send a ResetPeer to the enclave
-	msg := <-f.m.uch
-	if msg.GetResetPeer() == nil {
-		t.Errorf("expected ResetPeer, got %v", msg)
-	}
-
-	// restore sender
-	sender.block = false
-	f.enclaveSend(peerMessage)
-	if got := <-sender.out; !proto.Equal(got, peerMessage.GetPeerMessage()) {
-		t.Errorf("dispatcher forwarded %v, want %v", got, peerMessage)
-	}
 }
 
 func TestConcurrentRequests(t *testing.T) {

@@ -13,7 +13,7 @@ import (
 
 	"github.com/signalapp/svr2/config"
 	"github.com/signalapp/svr2/logger"
-	"github.com/signalapp/svr2/peer"
+	"github.com/signalapp/svr2/peerid"
 	"github.com/signalapp/svr2/util"
 	"golang.org/x/sync/errgroup"
 
@@ -312,21 +312,15 @@ func (d *Dispatcher) forwardToHost(peerSender PeerSender, message *pb.EnclaveMes
 		close(recv)
 	case *pb.EnclaveMessage_PeerMessage:
 		metrics.IncrCounterWithLabels(processMessageCounterName, 1, []metrics.Label{{Name: "destination", Value: "peer"}})
-		if err := peerSender.Send(v.PeerMessage); errors.Is(err, peer.ErrResetConnection) {
-			// The peerSender is full, we should attempt to reconnect so we can drop some messages
-			err := d.resetPeerConnection(v.PeerMessage.PeerId)
-			if err != nil {
-				logger.Errorw("failed to reset peer connection", "peerID", v.PeerMessage.PeerId, "err", err)
-			}
-			metrics.IncrCounterWithLabels(peerReconnectCounterName, 1, []metrics.Label{{Name: "success", Value: strconv.FormatBool(err != nil)}})
-		} else if err != nil {
+		if err := peerSender.Send(v.PeerMessage); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (d *Dispatcher) resetPeerConnection(peerID []byte) error {
+func (d *Dispatcher) ResetPeer(peerID peerid.PeerID) error {
+	logger.Infow("resetting peer", "peerID", peerID)
 	_, err := d.Send(&pb.UntrustedMessage{
 		Inner: &pb.UntrustedMessage_ResetPeer{
 			ResetPeer: &pb.EnclavePeer{
@@ -334,6 +328,10 @@ func (d *Dispatcher) resetPeerConnection(peerID []byte) error {
 			},
 		},
 	})
+	if err != nil {
+		logger.Errorw("failed to reset peer connection", "peerID", peerID, "err", err)
+	}
+	metrics.IncrCounterWithLabels(peerReconnectCounterName, 1, []metrics.Label{{Name: "success", Value: strconv.FormatBool(err == nil)}})
 	return err
 }
 

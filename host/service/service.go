@@ -84,7 +84,7 @@ func Start(ctx context.Context, hconfig *config.Config, authenticator auth.Auth,
 	logger.Infof("built peer lookup")
 
 	// create network senders
-	peerClient := peer.NewPeerClient(ctx, nodeID, peerDB, &hconfig.Peer)
+	peerClient := peer.NewPeerClient(ctx, nodeID, peerDB, &hconfig.Peer, dispatcher)
 	g.Go(func() error { return peerClient.Run() })
 
 	// now that everything's wired up, start processing enclave requests

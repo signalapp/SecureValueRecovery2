@@ -30,6 +30,12 @@ type PeerLookup interface {
 	Lookup(context.Context, peerid.PeerID) (*string, error)
 }
 
+// PeerResetter provides an API for the PeerClient to asynchronously let
+// the enclave know that a client should be fully reset.
+type PeerResetter interface {
+	ResetPeer(peerid.PeerID) error
+}
+
 // PeerClient can be used to send PeerMessages to remote peers
 //
 // PeerClient routes PeerMessages to dedicated goroutines (peerSenders)
@@ -72,6 +78,7 @@ type PeerClient struct {
 	sendersMu      sync.Mutex
 	senders        map[peerid.PeerID]*peerSender // map of live peerSenders
 	abandonedPeers map[peerid.PeerID]bool        // set of peers we've previously talked to but now have abandoned
+	resetter       PeerResetter
 }
 
 var (
@@ -90,7 +97,8 @@ func NewPeerClient(
 	ctx context.Context,
 	me peerid.PeerID,
 	peerLookup PeerLookup,
-	cfg *config.PeerConfig) *PeerClient {
+	cfg *config.PeerConfig,
+	resetter PeerResetter) *PeerClient {
 
 	eg, ctx := errgroup.WithContext(ctx)
 
@@ -108,6 +116,7 @@ func NewPeerClient(
 		ctx:            ctx,
 		senders:        make(map[peerid.PeerID]*peerSender),
 		abandonedPeers: make(map[peerid.PeerID]bool),
+		resetter:       resetter,
 	}
 }
 
@@ -116,13 +125,9 @@ func (p *PeerClient) Run() error {
 	return p.eg.Wait()
 }
 
-var ErrResetConnection = errors.New("connection must be reset")
 var errAbandonPeer = errors.New("peer connect timed out")
 
 // Send a message to a peer.
-//
-// ErrResetConnection may be returned if we cannot deliver messages to this peer. In this case
-// messages will be dropped and the caller must reset their peer session.
 func (p *PeerClient) Send(msg *pb.PeerMessage) error {
 	peerID, err := peerid.Make(msg.PeerId)
 	if err != nil {
@@ -132,7 +137,11 @@ func (p *PeerClient) Send(msg *pb.PeerMessage) error {
 	if err != nil {
 		return err
 	}
-	return sender.queueMessage(msg)
+	if !sender.queueMessage(msg) {
+		p.resetter.ResetPeer(peerID)
+		return fmt.Errorf("unable to queue message to %v", peerID)
+	}
+	return nil
 }
 
 // getOrCreateSender returns the existing peerSender for the peerID, or creates a new one if it doesn't exist
@@ -153,7 +162,8 @@ func (p *PeerClient) getOrCreateSender(msg *pb.PeerMessage, peerID peerid.PeerID
 			// must first establish a new enclave connection
 			logger.Warnw("attempting to send non-establishing message to previously abandoned peer",
 				"peerID", peerID)
-			return nil, ErrResetConnection
+			p.resetter.ResetPeer(peerID)
+			return nil, fmt.Errorf("attempting to send non-establishing message to previously abandoned peer %v", peerID)
 		}
 
 		// otherwise, we can create a new connection for it it
@@ -186,6 +196,7 @@ func (p *PeerClient) getOrCreateSender(msg *pb.PeerMessage, peerID peerid.PeerID
 			// if we communicate with them again.
 			p.abandonedPeers[peerID] = true
 			logger.Infow("abandoning peer", "peerID", peerID)
+			p.resetter.ResetPeer(peerID)
 
 			// not a fatal error
 			return nil
@@ -339,8 +350,9 @@ func (p *peerSender) lookupPeerAddr(ctx context.Context) (string, error) {
 	}, p.cfg.MinSleepDuration, p.cfg.MaxSleepDuration)
 }
 
-// queue a message to be sent by the run loop
-func (p *peerSender) queueMessage(msg *pb.PeerMessage) error {
+// queue a message to be sent by the run loop.  Returns true on success
+// or false if the buffer is full.
+func (p *peerSender) queueMessage(msg *pb.PeerMessage) bool {
 	var c chan *pb.PeerMessage
 	if isEstablishing(msg) {
 		// these messages indicate we don't care about previous messages, we can replace our
@@ -355,9 +367,9 @@ func (p *peerSender) queueMessage(msg *pb.PeerMessage) error {
 
 	select {
 	case c <- msg:
-		return nil
+		return true
 	default:
-		return ErrResetConnection
+		return false
 	}
 }
 

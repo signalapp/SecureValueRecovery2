@@ -27,6 +27,14 @@ type mapPeerDB struct {
 	m map[peerid.PeerID]string
 }
 
+type testResetter map[peerid.PeerID]bool
+
+func (t testResetter) ResetPeer(peerID peerid.PeerID) error {
+	log.Printf("Resetting peer %v", peerID)
+	t[peerID] = true
+	return nil
+}
+
 // Implements PeerLookup
 func (m *mapPeerDB) Lookup(ctx context.Context, peer peerid.PeerID) (*string, error) {
 	val, ok := m.m[peer]
@@ -100,8 +108,8 @@ func (c *clientFixture) sendData(t *testing.T, s *peerSender) {
 }
 
 func (c *clientFixture) queueMessage(t *testing.T, s *peerSender, msg *pb.PeerMessage) {
-	if err := s.queueMessage(msg); err != nil {
-		t.Error(err)
+	if !s.queueMessage(msg) {
+		t.Fatalf("unable to queue message")
 	}
 }
 
@@ -341,8 +349,8 @@ func TestBufferLimit(t *testing.T) {
 	}
 
 	// 11th send we're out of space
-	if err := sender.queueMessage(f.peerDataMessage()); err != ErrResetConnection {
-		t.Fatalf("got %v, want %v", err, ErrResetConnection)
+	if sender.queueMessage(f.peerDataMessage()) {
+		t.Fatalf("want error from queue message, but was successful")
 	}
 
 	// send a Syn, which should work and free up our buffer for 10 more sends
@@ -361,11 +369,12 @@ func TestAbandonPeer(t *testing.T) {
 
 	// no longer listening on address
 	ln.Close()
+	resetter := testResetter{}
 
 	peerClient := NewPeerClient(context.Background(), clientID, lookup, &config.PeerConfig{
 		AbandonDuration: time.Millisecond * 10,
 		BufferSize:      1000,
-	})
+	}, resetter)
 
 	// eventually these should fail
 	for i := 0; i < 10; i++ {
@@ -379,8 +388,8 @@ func TestAbandonPeer(t *testing.T) {
 		time.Sleep(time.Millisecond * 5)
 	}
 
-	if !errors.Is(err, ErrResetConnection) {
-		t.Fatalf("got %v, want %v", err, ErrResetConnection)
+	if !reflect.DeepEqual(resetter, testResetter{serverID: true}) {
+		t.Fatalf("didn't reset server ID: %+v %+v", resetter, serverID)
 	}
 
 	if _, ok := peerClient.abandonedPeers[serverID]; !ok {
@@ -396,10 +405,11 @@ func TestAbandonZombiePeer(t *testing.T) {
 	}
 	lookup := &mapPeerDB{map[peerid.PeerID]string{serverID: ln.Addr().String()}}
 
+	resetter := testResetter{}
 	peerClient := NewPeerClient(context.Background(), clientID, lookup, &config.PeerConfig{
 		AbandonDuration: time.Millisecond * 10,
 		BufferSize:      1000,
-	})
+	}, resetter)
 
 	// server accepts a connection and reads a hello, but then terminates
 	serverDone := make(chan error, 1)
@@ -431,8 +441,8 @@ func TestAbandonZombiePeer(t *testing.T) {
 		time.Sleep(time.Millisecond * 5)
 	}
 
-	if !errors.Is(err, ErrResetConnection) {
-		t.Fatalf("got %v, want %v", err, ErrResetConnection)
+	if !reflect.DeepEqual(resetter, testResetter{serverID: true}) {
+		t.Fatalf("didn't reset server ID: %+v %+v", resetter, serverID)
 	}
 
 	if _, ok := peerClient.abandonedPeers[serverID]; !ok {
@@ -451,10 +461,11 @@ func TestProdigalPeer(t *testing.T) {
 		t.Fatal(err)
 	}
 	lookup := &mapPeerDB{map[peerid.PeerID]string{serverID: ln.Addr().String()}}
+	resetter := testResetter{}
 	peerClient := NewPeerClient(context.Background(), clientID, lookup, &config.PeerConfig{
 		AbandonDuration: time.Minute,
 		BufferSize:      1,
-	})
+	}, resetter)
 
 	peerClient.abandonedPeers[serverID] = true
 
@@ -464,9 +475,12 @@ func TestProdigalPeer(t *testing.T) {
 	}
 
 	// a data message should be outright rejected
-	if err := peerClient.Send(dataMsg); !errors.Is(err, ErrResetConnection) {
-		t.Fatalf("Send(data message) = %v, want %v", err, ErrResetConnection)
+	if err := peerClient.Send(dataMsg); err == nil {
+		t.Fatalf("Send(data message) = nil")
+	} else if !reflect.DeepEqual(resetter, testResetter{serverID: true}) {
+		t.Fatalf("Send(data message) didn't reset serverID: %v %v", resetter, serverID)
 	}
+	delete(resetter, serverID)
 
 	serverDone := make(chan error, 1)
 	server := errorServer{seqno: sequenceNumber{1, 9}, id: serverID, ln: ln}
@@ -488,6 +502,9 @@ func TestProdigalPeer(t *testing.T) {
 	if expected := (sequenceNumber{1, 10}); server.seqno != expected {
 		t.Fatalf("server recieved seqno=%v, want %v", server.seqno, expected)
 	}
+	if len(resetter) != 0 {
+		t.Fatalf("server reset after it should have: %v", resetter)
+	}
 }
 
 func TestPeerLookupFails(t *testing.T) {
@@ -502,7 +519,7 @@ func TestPeerLookupFails(t *testing.T) {
 	peerClient := NewPeerClient(context.Background(), clientID, lookup, &config.PeerConfig{
 		AbandonDuration: time.Minute,
 		BufferSize:      1000,
-	})
+	}, testResetter{})
 
 	if err := peerClient.Send(dataMsg); err != nil {
 		t.Fatalf("first send failed: %v", err)
