@@ -503,10 +503,10 @@ HandleAppendEntriesRequest(i, j, m) ==
                        \/ /\ m.mprevLogIndex < Len(log[i])
                           /\ UNCHANGED hash
                           /\ \/ m.mentries[1].hashChain = log[i][m.mprevLogIndex+1].hashChain
-                             \/ \* there's a conflict on a promised entry
+                             \/ \* there's a conflict on a non-promised entry
                                 /\ Len(m.mentries) > 0
                                 /\ log[i][m.mprevLogIndex+1].term /= m.mentries[1].term
-                                /\ promiseIndex[i] = Len(log[i])
+                                /\ promiseIndex[i] < Len(log[i])
                        \/ /\ m.mprevLogIndex = Len(log[i])
                           /\ m.mentries[1].hashChain = hashValue
                           /\ hash' = [hash EXCEPT ![hashInput] = hashValue]
@@ -583,7 +583,7 @@ HandleAppendEntriesResponse(i, j, m) ==
           /\ m.mmatchHash = log[i][m.mmatchIndex].hashChain
           /\ nextIndex'  = [nextIndex  EXCEPT ![i][j] = m.mmatchIndex + 1]
           /\ matchIndex' = [matchIndex EXCEPT ![i][j] = m.mmatchIndex]
-          /\ ackedPromiseIndex' = [ackedPromiseIndex EXCEPT ![i][j] = Max({m.mpromiseIndex, @})] 
+          /\ ackedPromiseIndex' = [ackedPromiseIndex EXCEPT ![i][j] = m.mpromiseIndex] 
        \/ /\ \lnot m.msuccess \* not successful
           /\ nextIndex' = [nextIndex EXCEPT ![i][j] =
                                Max({nextIndex[i][j] - 1, 1})]

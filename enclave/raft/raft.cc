@@ -316,6 +316,12 @@ void Raft::AppendEntries(context::Context* ctx, const peerid::PeerID& peer) {
   //                       ELSE
   //                           0
   uint64_t prev_log_term = prev_log_idx == 0 ? 0 : log_->At(prev_log_idx).Term();
+  
+  //         prevLogHash == IF prevLogIndex > 0 THEN
+  //                            log[i][prevLogIndex].hashChain
+  //                        ELSE
+  //                            0
+  // \* Note that log truncation is not modeled in the TLA+
   auto prev_log_hash_chain = (prev_log_idx == 0 || !log_->At(prev_log_idx).Valid())
                               ? std::string("") : log_->At(prev_log_idx).Entry()->hash_chain();
   if (prev_log_term == 0 && prev_log_idx != 0) {
@@ -346,7 +352,8 @@ void Raft::AppendEntries(context::Context* ctx, const peerid::PeerID& peer) {
         break;
       }
     }
-    //        lastEntry == Min({Len(log[i]), nextIndex[i][j]})
+    // \* The following TLA+ constrained the replica to send at most one entry. We send multiple.
+    //       lastEntry == Min({Len(log[i]), nextIndex[i][j]})
     last_entry = prev_log_idx + entries.size();
   }
     
@@ -370,6 +377,8 @@ void Raft::AppendEntries(context::Context* ctx, const peerid::PeerID& peer) {
   }
   //             mcommitIndex   |-> Min({commitIndex[i], lastEntry}),
   append->set_leader_commit(std::min(commit_idx_, last_entry));
+  //             \* Signal TLA+ extension
+  //              mpromiseIndex  |-> Min({promiseIndex[i], lastEntry}),
   append->set_leader_promise(std::min(promise_idx_, last_entry));
 
   replication.send_heartbeat = false;
@@ -444,6 +453,13 @@ void Raft::HandleMembershipChange() {
   }
 }
 
+// \* Computes the hash chain value. hash is modeled in TLA+ as a random function
+// \* and the value is set on first call for an input.
+//           hashInput == [ hiindex |-> index, hiterm |-> currentTerm[i], hivalue |-> clientRequests, hilastHash |-> log[i][Len(log[i])] ]
+//           hashValue == IF [ hiindex |-> index, hiterm |-> currentTerm[i], hivalue |-> clientRequests, hilastHash |-> log[i][Len(log[i])] ] \in DOMAIN hash THEN
+//                           hash[[ hiindex |-> index, hiterm |-> currentTerm[i], hivalue |-> clientRequests, hilastHash |-> log[i][Len(log[i])] ]]
+//                       ELSE
+//                            RandomElement(BitString256)
 std::array<uint8_t, 32> Raft::NextHash(const LogEntry& next_entry) {
   std::array<uint8_t, 32> previous_hash = {0};
   log_->MostRecentHash(&previous_hash);
@@ -475,8 +491,9 @@ std::pair<LogLocation, error::Error> Raft::ClientRequestInternal(LogEntry* entry
   // /\ LET entry == [term  |-> currentTerm[i],
   entry->set_term(current_term_);
   //                  value |-> v]
-  // NON-TLA+: Set up hash chain for entry:
+  // Set up hash chain for entry (TLA+ is at `NextHash` definition):
   auto new_hash = NextHash(*entry);
+  //                   hashChain |-> hash[hashInput],
   entry->set_hash_chain(util::ByteArrayToString(new_hash));
   // /\ state[i] = Leader
   if (role_ != internal::Role::LEADER || leader_.relinquishing) {
@@ -533,19 +550,25 @@ std::pair<LogLocation, error::Error> Raft::ReplicaGroupChange(context::Context* 
 // \* in part to minimize atomic regions, and in part so that leaders of
 // \* single-server clusters are able to mark entries committed.
 void Raft::MaybeAdvanceCommitIndex() {
-  // AdvanceCommitIndex(i) ==
+  // AdvancePromiseIndex(i) ==
   // /\ state[i] = Leader
   if (role_ != internal::Role::LEADER) { return; }
+
   // /\ LET \* The set of servers that agree up through index.
-  //        Agree(index) == {i} \cup {k \in Server : matchIndex[i][k] >= index}
+  //        Agree(index) == {i} \cup {k \in Server :
+  //                                      matchIndex[i][k] >= index}
   //        \* The maximum indexes for which a quorum agrees
-  //        agreeIndexes == {index \in 1..Len(log[i]) : Agree(index) \in Quorum}
+  //        agreeIndexes == {index \in 1..Len(log[i]) :
+  //                             Agree(index) \in Quorum}
   //        \* New value for commitIndex'[i]
-  //        newCommitIndex == IF /\ agreeIndexes /= {}
-  //                             /\ log[i][Max(agreeIndexes)].term = currentTerm[i]
-  //                          THEN Max(agreeIndexes)
-  //                          ELSE commitIndex[i]
-  //    IN commitIndex' = [commitIndex EXCEPT ![i] = newCommitIndex]
+  //        newPromiseIndex ==
+  //           IF /\ agreeIndexes /= {}
+  //              /\ log[i][Max(agreeIndexes)].term = currentTerm[i]
+  //           THEN
+  //               Max(agreeIndexes)
+  //           ELSE
+  //               promiseIndex[i]
+  //    IN /\ promiseIndex' = [promiseIndex EXCEPT ![i] = newPromiseIndex]
   std::vector<LogIdx> stored;
   std::vector<LogIdx> promised;
   for (auto [peer, replication_state] : leader_.followers) {
@@ -570,6 +593,28 @@ void Raft::MaybeAdvanceCommitIndex() {
   // Don't push promise_idx_ until here, because we may update it above.
   // This matters for size-1 raft groups.
   promised.push_back(promise_idx_);
+  // AdvanceCommitIndex(i) ==
+  // /\ state[i] = Leader \* we already know that we are leader due to check above.
+  //  /\ LET \* The set of servers that agree up through index.
+  //     Agree(index) == {i} \cup {k \in Server :
+  //                                   ackedPromiseIndex[i][k] >= index}
+  //     \* The maximum indexes for which a quorum agrees
+  //     agreeIndexes == {index \in 1..Len(log[i]) :
+  //                         Agree(index) \in Quorum}
+  //     \* New value for commitIndex'[i]
+  //     newCommitIndex ==
+  //       IF /\ agreeIndexes /= {}
+  //           /\ log[i][Max(agreeIndexes)].term = currentTerm[i]
+  //       THEN
+  //           Max(agreeIndexes)
+  //       ELSE
+  //           commitIndex[i]
+  //     newCommittedLog ==
+  //       IF newCommitIndex > 1 THEN 
+  //           [ j \in 1..newCommitIndex |-> log[i][j] ] 
+  //       ELSE 
+  //             << >>
+  // IN /\ commitIndex' = [commitIndex EXCEPT ![i] = newCommitIndex]
   std::sort(promised.begin(), promised.end(), [](uint64_t a, uint64_t b){ return a > b; });
   LogIdx new_commit = promised[membership_quorum_size()-1];  // -1 because zero-indexed
   if (new_commit > commit_idx_) {
@@ -729,6 +774,17 @@ void Raft::HandleAppendRequest(context::Context* ctx, const TermId& msg_term, co
   //                 /\ m.mprevLogTerm = log[i][m.mprevLogIndex].term
   //                 \* Signal TLA+ extension follows
   //                 /\ m.mprevLogHash = log[i][m.mprevLogIndex].hash \* True by (2) in above comment.
+  //                  /\ \/ /\ Len(m.mentries) = 0
+  //                        /\ UNCHANGED hash
+  //                     \/ /\ m.mprevLogIndex < Len(log[i]) \* (3) above ensures no conflict on promised values
+  //                        /\ UNCHANGED hash
+  //                        /\ \/ m.mentries[1].hashChain = log[i][m.mprevLogIndex+1].hashChain
+  //                           \/ \* there's a conflict on a non-promised entry
+  //                              /\ Len(m.mentries) > 0
+  //                              /\ log[i][m.mprevLogIndex+1].term /= m.mentries[1].term
+  //                              /\ promiseIndex[i] < Len(log[i])
+  // \* Divergence from TLA+: Check on hash chain of appended entries is checked below,
+  // \*  inconsitent hash chain still results in failure to append.
   bool log_ok = prev_log_idx == 0 || (our_prev_log.Valid() &&  msg_prev_log_term == our_prev_log_term);
       
   // IN /\ m.mterm <= currentTerm[i]
@@ -794,6 +850,9 @@ void Raft::HandleAppendRequest(context::Context* ctx, const TermId& msg_term, co
     auto iter = log_->At(commit_idx_);
     append->set_match_hash_chain(iter.Valid() ? iter.Entry()->hash_chain() : "");
     append->set_last_log_idx(our_last_idx);
+    //                          mackedPromiseIndex     |-> 0,
+    // This diverges from the TLA+, but HandleAppendEntriesResponse ignores this value
+    // when processing a message with success == false.
     append->set_promise_idx(promise_idx_);
     AddSendableMessage(SendableRaftMessage::Reply(from, out));
     return;
@@ -835,6 +894,10 @@ void Raft::HandleAppendRequest(context::Context* ctx, const TermId& msg_term, co
     // this is a new entry then we will have `msg_entry_log_idx == last + 1`
     if (msg_entry_log_idx == last + 1) {
       auto next_hash = NextHash(msg_entry);
+      // \* This fragment is part of the `logOk` definition in TLA+
+      //                     \/ /\ m.mprevLogIndex = Len(log[i])
+      //                        /\ m.mentries[1].hashChain = hashValue
+      //                        /\ hash' = [hash EXCEPT ![hashInput] = hashValue]
       if (!util::ConstantTimeEquals(next_hash, msg_entry.hash_chain())) {
         LOG(WARNING) << "failed to append log: hash chain mismatch at " << msg_entry_log_idx;
         break;
@@ -884,12 +947,14 @@ void Raft::HandleAppendRequest(context::Context* ctx, const TermId& msg_term, co
   append->set_success(true);
   //           mmatchIndex     |-> m.mprevLogIndex + Len(m.mentries),
   append->set_match_idx(last_processed_idx);
+  //           mmatchHash      |-> log[i][m.mprevLogIndex + Len(m.mentries)].hashChain,
   append->set_match_hash_chain(log_->At(last_processed_idx).Valid() ? log_->At(last_processed_idx).Entry()->hash_chain() : "");
 
   // The only way that last_processed_idx could be less than promise_idx_ is
   // if the leader sent inconsistent log entries at indexes we already had.
   // In this case we only tell the leader that we promise the consistent ones
   // and importantly we do not promise beyond what we have succesfully processed.
+  //           mpromiseIndex   |-> m.mpromiseIndex,
   append->set_promise_idx(std::min(promise_idx_, last_processed_idx));
   append->set_last_log_idx(log_->last_idx());
   AddSendableMessage(SendableRaftMessage::Reply(from, out));
@@ -989,6 +1054,7 @@ void Raft::HandleAppendResponse(context::Context* ctx, const TermId& msg_term, c
       replication.match_idx = msg.match_idx();
     }
     if (msg.promise_idx() > replication.promise_idx) {
+      //       /\ ackedPromiseIndex' = [ackedPromiseIndex EXCEPT ![i][j] = m.mpromiseIndex]
       replication.promise_idx = msg.promise_idx();
     }
     replication.send_probe = false;
