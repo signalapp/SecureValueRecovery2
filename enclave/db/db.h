@@ -14,6 +14,7 @@
 #include "sip/hasher.h"
 #include "context/context.h"
 #include "util/log.h"
+#include "merkle/merkle.h"
 
 namespace svr2::db {
 
@@ -48,9 +49,6 @@ class DB {
   DB() {}
   virtual ~DB() {}
 
-  // Returns a database based on the passed-in version number.
-  static std::unique_ptr<DB> New(enclaveconfig::DatabaseVersion version);
-
   typedef google::protobuf::MessageLite Request;
   typedef google::protobuf::MessageLite Log;
   typedef google::protobuf::MessageLite Response;
@@ -75,10 +73,13 @@ class DB {
     virtual error::Error ValidateClientLog(const Log& log) const = 0;
     // Returns the maximum size of a database row when serialized.
     virtual size_t MaxRowSerializedSize() const = 0;
+    virtual std::unique_ptr<DB> NewDB(merkle::Tree* t) const = 0;
   };
   // P() returns a pointer to a _static_ Protocol object,
   // which will outlast the DB object.
   virtual const Protocol* P() const = 0;
+  // Returns a database protocol based on the passed-in version number.
+  static const DB::Protocol* P(enclaveconfig::DatabaseVersion version);
 
   // Run a client log request and yield a response.
   // The client log should already have been checked with ValidateClientLog;

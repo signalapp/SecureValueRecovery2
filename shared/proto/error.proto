@@ -258,4 +258,8 @@ enum Error {
   AttestationSEV_DebugEnabled = 1714;
   AttestationSEV_MigrationAllowed = 1715;
   AttestationSEV_TCBMinimums = 1716;
+  
+  Merkle_NS = 1800;
+  Merkle_VerifyLeaf = 1801;
+  Merkle_VerifyNode = 1802;
 };

@@ -13,6 +13,7 @@
 #include "util/log.h"
 #include "db/db.h"
 #include "proto/client.pb.h"
+#include "merkle/merkle.h"
 
 namespace svr2::db {
 
@@ -24,7 +25,7 @@ namespace svr2::db {
 class DB2 : public DB {
  public:
   DELETE_COPY_AND_ASSIGN(DB2);
-  DB2() {}
+  DB2(merkle::Tree* t) : merkle_tree_(t) {}
   virtual ~DB2() {}
 
   class Protocol : public DB::Protocol {
@@ -38,6 +39,7 @@ class DB2 : public DB {
     virtual const std::string& LogKey(const Log& r) const;
     virtual error::Error ValidateClientLog(const Log& log) const;
     virtual size_t MaxRowSerializedSize() const;
+    virtual std::unique_ptr<DB> NewDB(merkle::Tree* t) const;
   };
   virtual const DB::Protocol* P() const;
 
@@ -83,7 +85,7 @@ class DB2 : public DB {
 
   static std::pair<BackupID, error::Error> BackupIDFromString(const std::string& s);
   struct Row {
-    Row();
+    Row(merkle::Tree* t);
     e2e::DB2RowState::State state;
     uint8_t tries;
     uint8_t data_size;  // should be MIN_DATA_SIZE <= data_size <= MAX_DATA_SIZE, or 0 if unset
@@ -93,9 +95,11 @@ class DB2 : public DB {
     // three 64-bit pointers if these were std::string.
     std::array<uint8_t, MAX_DATA_SIZE> data;
     std::array<uint8_t, PIN_SIZE> pin;
+    merkle::Leaf merkle_leaf_;
 
     void Clear(e2e::DB2RowState::State s);
   };
+  static std::array<uint8_t, 32> HashRow(const BackupID& id, const Row& row);
 
   // Execute each of the three request types.
   void Backup(const BackupID& id, const client::BackupRequest& request, client::BackupResponse* resp);
@@ -106,8 +110,11 @@ class DB2 : public DB {
   // We use std::map over std::unordered_map because order matters to us.
   // We need a consistently ordered keyspace for data transfers between
   // replicas.
+  merkle::Tree* merkle_tree_;
   std::map<BackupID, Row> rows_;
 };
+
+extern const DB2::Protocol db2_protocol;
 
 }  // namespace svr2::db
 

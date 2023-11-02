@@ -155,6 +155,7 @@ CORE_LIBRARIES_PRE_ENV = \
   timeout \
   client \
   db \
+  merkle \
   raft \
   groupclock \
   peers \

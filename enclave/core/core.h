@@ -233,6 +233,11 @@ class Core {
   std::unique_ptr<peers::PeerManager> peer_manager_;
   std::unique_ptr<client::ClientManager> client_manager_;
 
+  // The merkle tree should only be accessed while holding raft_.mu.
+  // THE SAME HOLDS TRUE FOR ALL OF ITS LEAVES.  We can't correctly
+  // annotate that, but it's important, so I wrote it in capital letters.
+  merkle::Tree merkle_tree_ GUARDED_BY(raft_.mu);
+
   internal::Raft raft_;
   const enclaveconfig::DatabaseVersion db_version_;
   const db::DB::Protocol* const db_protocol_;

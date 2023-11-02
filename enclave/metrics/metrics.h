@@ -29,6 +29,7 @@ class Counter {
   Counter(const std::string& name, std::map<std::string, std::string>&& tags);
   void IncrementBy(uint64_t v);
   inline void Increment() { IncrementBy(1); }
+  inline void Decrement() { IncrementBy(-1); }
   inline uint64_t Value() const { return v_.load(); }
  private:
   friend MetricsPB* AllAsPB(context::Context* ctx);

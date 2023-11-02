@@ -16,13 +16,14 @@
 #include "proto/client3.pb.h"
 #include <sodium/crypto_core_ristretto255.h>
 #include <sodium/crypto_scalarmult_ristretto255.h>
+#include "merkle/merkle.h"
 
 namespace svr2::db {
 
 class DB3 : public DB {
  public:
   DELETE_COPY_AND_ASSIGN(DB3);
-  DB3() {}
+  DB3(merkle::Tree* t) : merkle_tree_(t) {}
   virtual ~DB3() {}
 
   static const size_t BACKUP_ID_SIZE = 16;
@@ -48,6 +49,7 @@ class DB3 : public DB {
     virtual const std::string& LogKey(const DB::Log& r) const;
     virtual error::Error ValidateClientLog(const DB::Log& log) const;
     virtual size_t MaxRowSerializedSize() const;
+    virtual std::unique_ptr<DB> NewDB(merkle::Tree* t) const;
    public_for_test:
     static PrivateKey NewKey();
   };
@@ -94,11 +96,16 @@ class DB3 : public DB {
  private:
   static std::pair<Element, error::Error> BlindEvaluate(context::Context* ctx, const PrivateKey& key, const Element& blinded_element);
 
+  merkle::Tree* merkle_tree_;
   struct Row {
+    Row(merkle::Tree* t);
     PrivateKey priv;
     uint8_t tries;
+    merkle::Leaf merkle_leaf_;
   };
   std::map<BackupID, Row> rows_;
+
+  static std::array<uint8_t, 32> HashRow(const BackupID& id, const Row& row);
 
   void Create(
       context::Context* ctx,
@@ -122,6 +129,8 @@ class DB3 : public DB {
       const client::QueryRequest& req,
       client::QueryResponse* resp) const;
 };
+
+extern const DB3::Protocol db3_protocol;
 
 }  // namespace svr2::db
 

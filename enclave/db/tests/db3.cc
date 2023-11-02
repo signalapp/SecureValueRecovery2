@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 //TESTDEP gtest
+//TESTDEP merkle
 //TESTDEP context
 //TESTDEP env
 //TESTDEP env/test
@@ -34,12 +35,15 @@
 namespace svr2::db {
 
 class DB3Test : public ::testing::Test {
+ public:
+  DB3Test() : db(&merk) {}
  protected:
   static void SetUpTestCase() {
     env::Init(env::SIMULATED);
   }
 
   context::Context ctx;
+  merkle::Tree merk;
   DB3 db;
   static std::string backup_id;
 };
@@ -375,6 +379,55 @@ TEST_F(DB3Test, IETF_A_1_1_2) {
     evaluated_element = r.evaluated_element();
     auto [ee_data, err] = util::StringToByteArray<PUBLIC_KEY_SIZE>(evaluated_element);
     EXPECT_EQ(util::BytesToHex(ee_data.data(), ee_data.size()), evaluation_element_hex);
+  }
+}
+
+TEST_F(DB3Test, LoadRowsThenRecover) {
+  std::string blinded_element;
+  blinded_element.resize(DB3::ELEMENT_SIZE);
+  crypto_core_ristretto255_random(
+      reinterpret_cast<uint8_t*>(blinded_element.data()));
+  std::string evaluated_element;
+  int tries = 3;
+  {
+    client::Log3 log;
+    log.set_backup_id(backup_id);
+    auto b = log.mutable_req()->mutable_create();
+    b->set_max_tries(3);
+    b->set_blinded_element(blinded_element);
+    auto priv = DB3::Protocol::NewKey();
+    log.set_create_privkey(util::ByteArrayToString(priv));
+
+    auto resp = dynamic_cast<client::Response3*>(db.Run(&ctx, log));
+    auto r = resp->create();
+    ASSERT_EQ(client::CreateResponse::OK, r.status());
+    evaluated_element = r.evaluated_element();
+  }
+  merkle::Tree m2;
+  DB3 db2(&m2);
+  // Replicate db->db2.
+  {
+    google::protobuf::RepeatedPtrField<std::string> rows;
+    auto [s, err] = db.RowsAsProtos(&ctx, "", 2, &rows);
+    ASSERT_EQ(error::OK, err);
+    ASSERT_EQ(1, rows.size());
+    ASSERT_EQ("BACKUP7890123456", s);
+
+    auto [s2, err2] = db2.LoadRowsFromProtos(&ctx, rows);
+    ASSERT_EQ(error::OK, err2);
+    ASSERT_EQ("BACKUP7890123456", s2);
+  }
+  {
+    client::Log3 log;
+    log.set_backup_id(backup_id);
+    auto b = log.mutable_req()->mutable_evaluate();
+    b->set_blinded_element(blinded_element);
+
+    auto resp = dynamic_cast<client::Response3*>(db2.Run(&ctx, log));
+    auto r = resp->evaluate();
+    ASSERT_EQ(client::EvaluateResponse::OK, r.status());
+    EXPECT_EQ(r.tries_remaining(), 2);
+    EXPECT_EQ(r.evaluated_element(), evaluated_element);
   }
 }
 

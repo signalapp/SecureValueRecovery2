@@ -18,6 +18,8 @@
 
 namespace svr2::db {
 
+const DB3::Protocol db3_protocol;
+
 DB::Request* DB3::Protocol::RequestPB(context::Context* ctx) const {
   return ctx->Protobuf<client::Request3>();
 }
@@ -79,9 +81,12 @@ error::Error DB3::Protocol::ValidateClientLog(const DB::Log& log_pb) const {
   return error::OK;
 }
 
+std::unique_ptr<DB> DB3::Protocol::NewDB(merkle::Tree* t) const {
+  return std::make_unique<DB3>(t);
+}
+
 const DB::Protocol* DB3::P() const {
-  static DB3::Protocol rr;
-  return &rr;
+  return &db3_protocol;
 }
 
 size_t DB3::Protocol::MaxRowSerializedSize() const {
@@ -171,9 +176,10 @@ std::pair<std::string, error::Error> DB3::LoadRowsFromProtos(context::Context* c
       return std::make_pair("", err2);
     }
 
-    Row r;
+    Row r(merkle_tree_);
     r.tries = row->tries();
     r.priv = priv;
+    r.merkle_leaf_.Update(merkle::HashFrom(HashRow(key, r)));
     rows_.emplace_hint(rows_.end(), key, std::move(r));
     GAUGE(db, rows)->Set(rows_.size());
   }
@@ -185,6 +191,19 @@ std::pair<std::string, error::Error> DB3::LoadRowsFromProtos(context::Context* c
   return std::make_pair(row->backup_id(), error::OK);
 }
 
+std::array<uint8_t, 32> DB3::HashRow(const BackupID& id, const Row& row) {
+  crypto_hash_sha256_state sha;
+  crypto_hash_sha256_init(&sha);
+  uint8_t num[8];
+  crypto_hash_sha256_update(&sha, id.data(), id.size());
+  util::BigEndian64Bytes(row.tries, num);
+  crypto_hash_sha256_update(&sha, num, sizeof(num));
+  crypto_hash_sha256_update(&sha, row.priv.data(), row.priv.size());
+  std::array<uint8_t, 32> out;
+  crypto_hash_sha256_final(&sha, out.data());
+  return out;
+}
+
 std::array<uint8_t, 32> DB3::Hash(context::Context* ctx) const {
   MEASURE_CPU(ctx, cpu_db_hash);
   crypto_hash_sha256_state sha;
@@ -193,10 +212,8 @@ std::array<uint8_t, 32> DB3::Hash(context::Context* ctx) const {
   util::BigEndian64Bytes(rows_.size(), num);
   crypto_hash_sha256_update(&sha, num, sizeof(num));
   for (auto iter = rows_.cbegin(); iter != rows_.cend(); ++iter) {
-    crypto_hash_sha256_update(&sha, iter->first.data(), iter->first.size());
-    util::BigEndian64Bytes(iter->second.tries, num);
-    crypto_hash_sha256_update(&sha, num, sizeof(num));
-    crypto_hash_sha256_update(&sha, iter->second.priv.data(), iter->second.priv.size());
+    auto row_hash = HashRow(iter->first, iter->second);
+    crypto_hash_sha256_update(&sha, row_hash.data(), row_hash.size());
   }
   std::array<uint8_t, 32> out;
   crypto_hash_sha256_final(&sha, out.data());
@@ -244,11 +261,16 @@ void DB3::Create(
     resp->set_status(client::CreateResponse::ERROR);
     return;
   }
-  rows_[id] = {
-    .priv = priv,
-    .tries = (uint8_t) req.max_tries(),
-  };
-  GAUGE(db, rows)->Set(rows_.size());
+  auto find = rows_.find(id);
+  if (find == rows_.end()) {
+    auto e = rows_.emplace(id, merkle_tree_);
+    find = e.first;
+    GAUGE(db, rows)->Set(rows_.size());
+  }
+  Row* r = &find->second;
+  r->priv = priv;
+  r->tries = (uint8_t) req.max_tries();
+  r->merkle_leaf_.Update(merkle::HashFrom(HashRow(id, *r)));
   resp->set_evaluated_element(util::ByteArrayToString(evaluated));
   resp->set_status(client::CreateResponse::OK);
 }
@@ -268,17 +290,24 @@ void DB3::Evaluate(
     resp->set_status(client::EvaluateResponse::MISSING);
     return;
   }
-  auto [evaluated, err2] = BlindEvaluate(ctx, find->second.priv, elt);
+  Row* row = &find->second;
+  if (error::Error err = row->merkle_leaf_.Verify(merkle::HashFrom(HashRow(id, *row))); err != error::OK) {
+    resp->set_status(client::EvaluateResponse::ERROR);
+    LOG(ERROR) << "Error in verifying Merkle root during Evaluate: " << err;
+    return;
+  }
+  auto [evaluated, err2] = BlindEvaluate(ctx, row->priv, elt);
   if (err2 != error::OK) {
     resp->set_status(client::EvaluateResponse::ERROR);
     return;
   }
-  find->second.tries--;
-  resp->set_tries_remaining(find->second.tries);
-  if (find->second.tries == 0) {
+  row->tries--;
+  resp->set_tries_remaining(row->tries);
+  if (row->tries == 0) {
     rows_.erase(find);
     GAUGE(db, rows)->Set(rows_.size());
   }
+  row->merkle_leaf_.Update(merkle::HashFrom(HashRow(id, *row)));
   resp->set_evaluated_element(util::ByteArrayToString(evaluated));
   resp->set_status(client::EvaluateResponse::OK);
 }
@@ -290,6 +319,7 @@ void DB3::Remove(
     client::RemoveResponse* resp) {
   auto find = rows_.find(id);
   if (find != rows_.end()) {
+    // This calls the destructor of row.merkle_leaf_, updating the merkle tree.
     rows_.erase(find);
     GAUGE(db, rows)->Set(rows_.size());
   }
@@ -309,5 +339,7 @@ void DB3::Query(
   resp->set_status(client::QueryResponse::OK);
   resp->set_tries_remaining(row->tries);
 }
+
+DB3::Row::Row(merkle::Tree* t) : merkle_leaf_(t) {}
 
 }  // namespace svr2::db

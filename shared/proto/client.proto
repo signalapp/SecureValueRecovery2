@@ -75,6 +75,7 @@ message RestoreResponse {
     OK = 1;  // successfully restored, [data] will be set
     MISSING = 2;  // db[backup_id] does not exist
     PIN_MISMATCH = 3;  // pin did not match, tries were decremented
+    ERROR = 4;  // error occurred looking up the request
   }
 
   Status status = 1;

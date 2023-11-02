@@ -86,6 +86,9 @@ CREATE_COUNTER(db3, ops_evaluate, ops, ({{"type", "evaluate"}}))
 CREATE_COUNTER(db3, ops_remove, ops, ({{"type", "remove"}}))
 CREATE_COUNTER(db3, ops_query, ops, ({{"type", "query"}}))
 
+CREATE_COUNTER(merkle, nodes, nodes, ({}))
+CREATE_COUNTER(merkle, leaves, leaves, ({}))
+
 CREATE_COUNTER(context, cpu_uncategorized, cpu, ({{"in", "uncategorized"}, {"action", "uncategorized"}}))
 CREATE_COUNTER(context, cpu_client_encrypt, cpu, ({{"in", "client"}, {"action", "encrypt"}}))
 CREATE_COUNTER(context, cpu_client_decrypt, cpu, ({{"in", "client"}, {"action", "decrypt"}}))
@@ -118,6 +121,8 @@ CREATE_COUNTER(context, cpu_core_connecting_to_raft_members, cpu, ({{"in", "core
 CREATE_COUNTER(context, cpu_core_updating_group_time, cpu, ({{"in", "core"}, {"action", "updating_group_time"}}))
 CREATE_COUNTER(context, cpu_core_raft_tick, cpu, ({{"in", "core"}, {"action", "raft_tick"}}))
 CREATE_COUNTER(context, cpu_core_update_env_stats, cpu, ({{"in", "core"}, {"action", "update_env_stats"}}))
+CREATE_COUNTER(context, cpu_raft_merkle_update, cpu, ({{"in", "raft"}, {"action", "merkle_update"}}))
+CREATE_COUNTER(context, cpu_raft_merkle_verify, cpu, ({{"in", "raft"}, {"action", "merkle_verify"}}))
 CREATE_COUNTER(context, cpu_test_database_entries, cpu, ({{"in", "core"}, {"action", "test_database_entries"}}))
 CREATE_COUNTER(context, cpu_env_attest, cpu, ({{"in", "env"}, {"action", "attest"}}))
 CREATE_COUNTER(context, cpu_env_evidence, cpu, ({{"in", "env"}, {"action", "evidence"}}))

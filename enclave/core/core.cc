@@ -52,8 +52,10 @@ error::Error ValidateRaftGroupConfig(const enclaveconfig::RaftGroupConfig& c) {
   if (c.min_voting_replicas() > c.max_voting_replicas()) { return COUNTED_ERROR(Core_RaftGroupConfigMinReplicasGreaterThanMaxReplicas); }
   if (c.min_voting_replicas() < 1) { return COUNTED_ERROR(Core_RaftGroupConfigMinReplicasTooSmall); }
   if (c.attestation_timeout() < 1) { return COUNTED_ERROR(Core_RaftGroupConfigAttestationTimeoutTooSmall); }
-  auto d = db::DB::New(c.db_version());
-  if (d.get() == nullptr) { return COUNTED_ERROR(Core_DBVersionInvalid); }
+  merkle::Tree t;
+  if (db::DB::P(c.db_version()) == nullptr) {
+    return COUNTED_ERROR(Core_DBVersionInvalid);
+  }
   return error::OK;
 }
 
@@ -94,7 +96,11 @@ static bool ContainsMe(const peerid::PeerID& me, const raft::ReplicaGroup& group
 
 }  // namespace
  
-Core::Core(const enclaveconfig::RaftGroupConfig& group_config) : raft_config_template_(group_config), db_version_(group_config.db_version()), db_protocol_(db::DB::New(group_config.db_version())->P()), e2e_txn_id_(0) {
+Core::Core(const enclaveconfig::RaftGroupConfig& group_config)
+    : raft_config_template_(group_config),
+      db_version_(group_config.db_version()),
+      db_protocol_(db::DB::P(group_config.db_version())),
+      e2e_txn_id_(0) {
 }
 
 std::pair<std::unique_ptr<Core>, error::Error> Core::Create(
@@ -402,12 +408,13 @@ void Core::HandleCreateNewRaftGroupRequest(context::Context* ctx, internal::Tran
     .raft = std::make_unique<raft::Raft>(
         group_id,
         peer_manager_->ID(),
+        &merkle_tree_,
         raft::Membership::First(peer_manager_->ID()),
         std::make_unique<raft::Log>(raft_config.log_max_bytes()),
         raft_config,
         false,
         cfg.super_majority()),  // committed_log
-    .db = db::DB::New(db_version_),
+    .db = db_protocol_->NewDB(&merkle_tree_),
     .db_last_applied_log = 0,
   };
   GAUGE(core, last_index_applied_to_db)->Set(0);
@@ -509,7 +516,7 @@ void Core::JoinRaftFromFirstPeer(context::Context* ctx) {
           .group_config = got.group_config(),
           .replica_group = got.replica_group(),
           .log = std::make_unique<raft::Log>(enclave_config(ctx)->raft().log_max_bytes()),
-          .db = db::DB::New(db_version_),
+          .db = db_protocol_->NewDB(&merkle_tree_),
           .mem = std::move(mem),
           .load_from = peer,
           .join_tx = tx,
@@ -582,6 +589,7 @@ void Core::PromoteRaftToLoaded(context::Context* ctx) {
     .raft = std::make_unique<raft::Raft>(
         loading.group_config.group_id(),
         peer_manager_->ID(),
+        &merkle_tree_,
         std::move(loading.mem),
         std::move(loading.log),
         enclave_config(ctx)->raft(),
@@ -977,7 +985,7 @@ error::Error Core::HandleE2E(context::Context* ctx, const peerid::PeerID& from, 
         return error::OK;
       }
       auto callback = std::move(f->second);
-      IDLOG(VERBOSE) << "received response to e2e transaction " << f->first << ": error=" << msg.transaction_response().status();
+      IDLOG(VERBOSE) << "received response to e2e transaction " << f->first << ": " << msg.transaction_response().status();
       outstanding_e2e_transactions_.erase(f);
       timeout_.CancelTimeout(ctx, callback.timeout_cancel);
       lock.unlock();

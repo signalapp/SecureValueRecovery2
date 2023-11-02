@@ -3,6 +3,7 @@
 
 //TESTDEP gtest
 //TESTDEP peerid
+//TESTDEP merkle
 //TESTDEP context
 //TESTDEP hmac
 //TESTDEP sip
@@ -67,6 +68,7 @@ class RaftTest : public ::testing::Test {
       auto r = std::make_unique<Raft>(
           1,  // group
           peer,
+          &merk,
           std::move(memcpy),
           std::move(std::make_unique<Log>(1<<20)),  // 1MB log
           config,
@@ -165,8 +167,9 @@ class RaftTest : public ::testing::Test {
     return *leaders.begin();
   }
 
-  std::map<peerid::PeerID, std::unique_ptr<Raft>> group_;
   context::Context ctx;
+  merkle::Tree merk;
+  std::map<peerid::PeerID, std::unique_ptr<Raft>> group_;
 };
 
 TEST_F(RaftTest, CommitOnAll) {
@@ -284,7 +287,7 @@ TEST_F(RaftTest, RejectInconsistentLogs) {
   auto leader = ElectLeader(config);
   
   // Copy the leader before adding entry
-  auto leader_copy = group_[leader]->Copy();
+  auto leader_copy = group_[leader]->Copy(&merk);
   LOG(INFO) "============== SENDING LOG TO LEADER " << leader;
   auto [loc1, err] = group_[leader]->ClientRequest(&ctx, "abc");
   CommitOnAll(config);

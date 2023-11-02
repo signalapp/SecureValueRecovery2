@@ -18,6 +18,7 @@
 #include "raft/internal.h"
 #include "raft/membership.h"
 #include "context/context.h"
+#include "merkle/merkle.h"
 
 namespace svr2::raft {
 
@@ -79,6 +80,7 @@ class Raft {
   Raft(
       GroupId group,
       const peerid::PeerID& me,
+      merkle::Tree* merk,
       std::unique_ptr<Membership> membership,
       std::unique_ptr<Log> log,
       const enclaveconfig::RaftConfig& config,
@@ -178,7 +180,7 @@ class Raft {
   const Membership& membership() const;
 
  #ifdef IS_TEST
-  std::unique_ptr<Raft> Copy();
+  std::unique_ptr<Raft> Copy(merkle::Tree* t);
 #endif // IS_TEST
 
  private:
@@ -246,8 +248,13 @@ class Raft {
   // Message to request a vote for myself.  Requires role==candidate.
   RaftMessage* RequestVoteMessage(context::Context* ctx);
 
+  // Update the Merkle tree with the current commit and promise indexes.
+  void UpdateMerkleTree(context::Context* ctx);
+  error::Error VerifyMerkleTree(context::Context* ctx);
+
   GroupId group_;
   peerid::PeerID me_;
+  merkle::Tree* merkle_;
   std::unique_ptr<Membership> membership_;
   // uncommitted_memberships_ keeps an ordered list of the uncommitted-but-
   // active memberships based on the log.  We're effectively certain that
@@ -283,9 +290,11 @@ class Raft {
 
   // \* The index of the latest entry in the log the state machine may apply.
   // VARIABLE commitIndex
+  merkle::Leaf commit_leaf_;
   LogIdx commit_idx_;
   // We promise to commit at the given index; we will not truncate our log past
   // this point.
+  merkle::Leaf promise_leaf_;
   LogIdx promise_idx_;
 
   // The list of messages that are generated to send out based on various actions.

@@ -9,19 +9,15 @@
 
 namespace svr2::db {
 
-std::unique_ptr<DB> DB::New(enclaveconfig::DatabaseVersion version) {
-  std::unique_ptr<db::DB> out;
+const DB::Protocol* DB::P(enclaveconfig::DatabaseVersion version) {
   switch (version) {
     case enclaveconfig::DATABASE_VERSION_SVR2:
-      out.reset(new db::DB2());
-      break;
+      return &db2_protocol;
     case enclaveconfig::DATABASE_VERSION_SVR3:
-      out.reset(new db::DB3());
-      break;
+      return &db3_protocol;
     default:
       return nullptr;
   }
-  return out;
 }
 
 }  // namespace svr2::db

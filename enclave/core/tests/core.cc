@@ -8,6 +8,7 @@
 //TESTDEP timeout
 //TESTDEP client
 //TESTDEP db
+//TESTDEP merkle
 //TESTDEP raft
 //TESTDEP peers
 //TESTDEP peerid
@@ -1655,7 +1656,7 @@ TEST_F(CoreTest, Hashes2) {
     ASSERT_EQ(resp.inner_case(), HostToEnclaveResponse::kHashes);
     ASSERT_EQ(resp.status(), error::OK);
     EXPECT_EQ(util::BigEndian64FromBytes(reinterpret_cast<const uint8_t*>(resp.hashes().db_hash().data())),
-              5883775926529965153ULL);
+              2480837777782247874ULL);
     EXPECT_EQ(resp.hashes().commit_idx(), 4);
     EXPECT_EQ(util::BigEndian64FromBytes(reinterpret_cast<const uint8_t*>(resp.hashes().commit_hash_chain().data())),
               17588214037507609329ULL);
@@ -2325,7 +2326,7 @@ TEST_F(CoreTest, Hashes3) {
     ASSERT_EQ(resp.inner_case(), HostToEnclaveResponse::kHashes);
     ASSERT_EQ(resp.status(), error::OK);
     EXPECT_EQ(util::BigEndian64FromBytes(reinterpret_cast<const uint8_t*>(resp.hashes().db_hash().data())),
-              11717402061570123096ULL);
+              16278971866914444404ULL);
     EXPECT_EQ(resp.hashes().commit_idx(), 2);
     EXPECT_EQ(util::BigEndian64FromBytes(reinterpret_cast<const uint8_t*>(resp.hashes().commit_hash_chain().data())),
               4818198584546649367);

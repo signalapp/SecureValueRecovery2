@@ -17,6 +17,8 @@
 
 namespace svr2::db {
 
+const DB2::Protocol db2_protocol;
+
 template <class T>
 static void CopyArrayToString(const T& array, std::string* out) {
   CHECK(array.size() == 0 || sizeof(array[0]) == 1);
@@ -99,9 +101,12 @@ error::Error DB2::Protocol::ValidateClientLog(const DB::Log& req_pb) const {
   return error::OK;
 }
 
+std::unique_ptr<DB> DB2::Protocol::NewDB(merkle::Tree* t) const {
+  return std::make_unique<DB2>(t);
+}
+
 const DB::Protocol* DB2::P() const {
-  static DB2::Protocol rr;
-  return &rr;
+  return &db2_protocol;
 }
 
 DB::Response* DB2::Run(context::Context* ctx, const DB::Log& log_pb) {
@@ -152,12 +157,12 @@ void DB2::Row::Clear(e2e::DB2RowState::State s) {
 }
 
 void DB2::Backup(const BackupID& id, const client::BackupRequest& req, client::BackupResponse* resp) {
-  std::map<std::array<uint8_t, BACKUP_ID_SIZE>, Row>::iterator find = rows_.find(id);
+  auto find = rows_.find(id);
   if (find == rows_.end()) {
     auto e = rows_.emplace(
         std::piecewise_construct,
         std::forward_as_tuple(std::move(id)),
-        std::forward_as_tuple());
+        std::forward_as_tuple(merkle_tree_));
     find = e.first;
     GAUGE(db, rows)->Set(rows_.size());
   }
@@ -167,6 +172,8 @@ void DB2::Backup(const BackupID& id, const client::BackupRequest& req, client::B
   row->data_size = req.data().size();
   row->tries = req.max_tries();
   std::copy(req.pin().begin(), req.pin().end(), row->pin.begin());
+  // We don't verify our merkle tree on backup, since it clears state.  We do update it, though.
+  row->merkle_leaf_.Update(merkle::HashFrom(HashRow(id, *row)));
   resp->set_status(client::BackupResponse::OK);
 }
 
@@ -177,6 +184,13 @@ void DB2::Restore(const BackupID& id, const client::RestoreRequest& req, client:
     return;
   }
   Row* row = &find->second;
+  // First, check that our DB is still valid w.r.t. this row.
+  if (error::Error err = row->merkle_leaf_.Verify(merkle::HashFrom(HashRow(id, *row))); err != error::OK) {
+    resp->set_status(client::RestoreResponse::ERROR);
+    LOG(ERROR) << "Error in verifying Merkle root during Restore: " << err;
+    return;
+  }
+
   if (util::ConstantTimeEquals(req.pin(), row->pin)) {
     resp->set_status(client::RestoreResponse::OK);
     resp->set_tries(row->tries);
@@ -187,11 +201,14 @@ void DB2::Restore(const BackupID& id, const client::RestoreRequest& req, client:
     // We Clear before erasing because erasing just removes the entry from the log, and
     // we want to actually zero out the secret wherever it is in memory.
     row->Clear(e2e::DB2RowState::UNINITIATED);
+    // This removes the row, which also removes it from the Merkle tree.
     rows_.erase(find);
     resp->set_status(client::RestoreResponse::MISSING);
     GAUGE(db, rows)->Set(rows_.size());
     return;
   }
+  // Update the Merkle tree with our new tries.
+  row->merkle_leaf_.Update(merkle::HashFrom(HashRow(id, *row)));
   resp->set_status(client::RestoreResponse::PIN_MISMATCH);
   resp->set_tries(row->tries);
 }
@@ -231,6 +248,12 @@ void DB2::Expose(const BackupID& id, const client::ExposeRequest& req, client::E
     return;
   }
   Row* row = &find->second;
+  // First, check that our DB is still valid w.r.t. this row.
+  if (error::Error err = row->merkle_leaf_.Verify(merkle::HashFrom(HashRow(id, *row))); err != error::OK) {
+    resp->set_status(client::ExposeResponse::ERROR);
+    LOG(ERROR) << "Error in verifying Merkle root during Expose: " << err;
+    return;
+  }
   if (!util::ConstantTimeEqualsPrefix(row->data, req.data(), row->data_size)) {
     resp->set_status(client::ExposeResponse::ERROR);
     return;
@@ -239,6 +262,7 @@ void DB2::Expose(const BackupID& id, const client::ExposeRequest& req, client::E
   case e2e::DB2RowState::POPULATED:
   case e2e::DB2RowState::AVAILABLE:
     row->state = e2e::DB2RowState::AVAILABLE;
+    row->merkle_leaf_.Update(merkle::HashFrom(HashRow(id, *row)));
     resp->set_status(client::ExposeResponse::OK);
     return;
   default:
@@ -288,7 +312,7 @@ std::pair<std::string, error::Error> DB2::RowsAsProtos(context::Context* ctx, co
   return std::make_pair(last_id, error::OK);
 }
 
-DB2::Row::Row() : state(e2e::DB2RowState::UNINITIATED), tries(0), data_size(0), data{0}, pin{0} {}
+DB2::Row::Row(merkle::Tree* t) : state(e2e::DB2RowState::UNINITIATED), tries(0), data_size(0), data{0}, pin{0}, merkle_leaf_(t) {}
 
 std::pair<std::string, error::Error> DB2::LoadRowsFromProtos(context::Context* ctx, const google::protobuf::RepeatedPtrField<std::string>& rows) {
   MEASURE_CPU(ctx, cpu_db_repl_recv);
@@ -314,12 +338,13 @@ std::pair<std::string, error::Error> DB2::LoadRowsFromProtos(context::Context* c
       return std::make_pair("", COUNTED_ERROR(DB2_ReplicationOutOfOrder));
     }
 
-    Row r;
+    Row r(merkle_tree_);
     r.state = row->state();
     std::copy(row->pin().begin(), row->pin().end(), r.pin.begin());
     std::copy(row->data().begin(), row->data().end(), r.data.begin());
     r.data_size = row->data().size();
     r.tries = row->tries();
+    r.merkle_leaf_.Update(merkle::HashFrom(HashRow(key, r)));
     rows_.emplace_hint(rows_.end(), key, std::move(r));
     GAUGE(db, rows)->Set(rows_.size());
   }
@@ -340,6 +365,23 @@ std::pair<DB2::BackupID, error::Error> DB2::BackupIDFromString(const std::string
   return std::make_pair(std::move(out), error::OK);
 }
 
+std::array<uint8_t, 32> DB2::HashRow(const BackupID& id, const Row& row) {
+  std::array<uint8_t, 32> out;
+  crypto_hash_sha256_state sha;
+  crypto_hash_sha256_init(&sha);
+  crypto_hash_sha256_update(&sha, id.data(), id.size());
+  uint8_t num[8];
+  util::BigEndian64Bytes(row.state, num);
+  crypto_hash_sha256_update(&sha, num, sizeof(num));
+  util::BigEndian64Bytes(row.tries, num);
+  crypto_hash_sha256_update(&sha, num, sizeof(num));
+  crypto_hash_sha256_update(&sha, &row.data_size, 1);
+  crypto_hash_sha256_update(&sha, row.data.data(), row.data_size);
+  crypto_hash_sha256_update(&sha, row.pin.data(), row.pin.size());
+  crypto_hash_sha256_final(&sha, out.data());
+  return out;
+}
+
 std::array<uint8_t, 32> DB2::Hash(context::Context* ctx) const {
   MEASURE_CPU(ctx, cpu_db_hash);
   crypto_hash_sha256_state sha;
@@ -348,13 +390,8 @@ std::array<uint8_t, 32> DB2::Hash(context::Context* ctx) const {
   util::BigEndian64Bytes(rows_.size(), num);
   crypto_hash_sha256_update(&sha, num, sizeof(num));
   for (auto iter = rows_.cbegin(); iter != rows_.cend(); ++iter) {
-    util::BigEndian64Bytes(iter->second.state, num);
-    crypto_hash_sha256_update(&sha, num, sizeof(num));
-    crypto_hash_sha256_update(&sha, iter->first.data(), iter->first.size());
-    util::BigEndian64Bytes(iter->second.tries, num);
-    crypto_hash_sha256_update(&sha, num, sizeof(num));
-    crypto_hash_sha256_update(&sha, iter->second.data.data(), iter->second.data_size);
-    crypto_hash_sha256_update(&sha, iter->second.pin.data(), iter->second.pin.size());
+    auto row_hash = HashRow(iter->first, iter->second);
+    crypto_hash_sha256_update(&sha, row_hash.data(), row_hash.size());
   }
   std::array<uint8_t, 32> out;
   crypto_hash_sha256_final(&sha, out.data());

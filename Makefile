@@ -13,8 +13,10 @@ git:
 	git submodule init || true
 	git submodule update || true
 
+ETARGET ?= all
+
 enclave: | git
-	$(MAKE) $(MAKE_ARGS) -C enclave all
+	$(MAKE) $(MAKE_ARGS) -C enclave $(ETARGET)
 
 enclave_test: | git
 	$(MAKE) $(MAKE_ARGS) -C enclave test

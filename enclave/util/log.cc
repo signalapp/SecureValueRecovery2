@@ -37,6 +37,10 @@ uint64_t TimestampMicros() {
 }  // namespace svr2::util
 
 std::ostream& operator<<(std::ostream& os, ::svr2::error::Error err) {
-  os << ::svr2::error::Error_Name(err);
+  if (err == ::svr2::error::OK) {
+    os << "OK";
+  } else {
+    os << "error::" << ::svr2::error::Error_Name(err);
+  }
   return os;
 }

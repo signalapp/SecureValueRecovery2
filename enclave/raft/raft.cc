@@ -19,6 +19,7 @@ namespace svr2::raft {
 Raft::Raft(
     GroupId group,
     const peerid::PeerID& me,
+    merkle::Tree* merk,
     std::unique_ptr<Membership> mem,
     std::unique_ptr<Log> log,
     const enclaveconfig::RaftConfig& config,
@@ -26,25 +27,29 @@ Raft::Raft(
     size_t super_majority)
     : group_(group),
       me_(me),
+      merkle_(merk),
       membership_(std::move(mem)),
       config_(config),
       last_applied_(committed_log ? log->last_idx() : 0),
       current_term_(0),
       log_(std::move(log)),
+      commit_leaf_(merk),
       commit_idx_(committed_log ? log_->last_idx() : 0),
+      promise_leaf_(merk),
       promise_idx_(committed_log ? log_->last_idx() : 0),
       super_majority_(super_majority) {
   SetRole(internal::Role::FOLLOWER);
   follower_.election = RandomElectionTimeout();
   GAUGE(raft, commit_index)->Set(commit_idx_);
   GAUGE(raft, promise_index)->Set(promise_idx_);
+  context::Context ctx;
   if (voting() && membership().voting_replicas().size() == 1) {
     // This is a one-instance replica and I'm voting, become leader.
-    context::Context ctx;
     ElectionTimeout(&ctx);
     MaybeChangeStateAndSendMessages(&ctx);
     CHECK(sendable_messages_.size() == 0);
   }
+  UpdateMerkleTree(&ctx);
 }
 
 size_t Raft::membership_quorum_size() const {
@@ -192,7 +197,7 @@ std::pair<LogLocation, error::Error> Raft::LogAppend(const LogEntry& entry) {
     if (err != error::OK) {
       COUNTER(raft, logs_append_failure)->Increment();
       LOG(ERROR) << "failing to append invalid membership change in Raft uncommitted log at idx="
-          << log_->next_idx() << ", error=" << err;
+          << log_->next_idx() << ", " << err;
       return std::make_pair(LogLocation(), err);
     }
     new_uncommitted_membership = std::move(mem);
@@ -1164,6 +1169,10 @@ void Raft::Receive(context::Context* ctx, const RaftMessage& msg, const peerid::
     LOG(ERROR) << "ignoring invalid Raft message from " << from << " (" << err << "): " << MsgStr(msg);
     return;
   }
+  if (auto err = VerifyMerkleTree(ctx); err != error::OK) {
+    LOG(ERROR) << "verify of merkle tree failed, returning: " << err;
+    return;
+  }
   // Receive(m) ==
   // IN \* Any RPC with a newer term causes the recipient to advance
   //    \* its term first. Responses with stale terms are ignored.
@@ -1232,6 +1241,7 @@ void Raft::MaybeChangeStateAndSendMessages(context::Context* ctx) {
   if (role_ == internal::Role::LEADER && leader_.relinquishing) {
     TryToRelinquishLeadership(ctx);
   }
+  UpdateMerkleTree(ctx);
 }
 
 void Raft::TryToRelinquishLeadership(context::Context* ctx) {
@@ -1352,13 +1362,45 @@ error::Error Raft::FollowerReplicationStatus(const peerid::PeerID& follower, Enc
   return error::OK;
 }
 
+static merkle::Hash MerkleHashFromLogIter(const Log::Iterator& iter) {
+  if (!iter.Valid()) {
+    // This will be the case when commit_idx_ or promise_idx_ is 0.
+    return merkle::zero_hash;
+  }
+  merkle::Hash h;
+  const auto& hashchain = iter.Entry()->hash_chain();
+  CHECK(hashchain.size() >= h.size());
+  std::copy_n(hashchain.begin(), h.size(), h.begin());
+  return h;
+}
+
+void Raft::UpdateMerkleTree(context::Context* ctx) {
+  MEASURE_CPU(ctx, cpu_raft_merkle_update);
+  commit_leaf_.Update(MerkleHashFromLogIter(log_->At(commit_idx_)));
+  promise_leaf_.Update(MerkleHashFromLogIter(log_->At(promise_idx_)));
+}
+
+error::Error Raft::VerifyMerkleTree(context::Context* ctx) {
+  MEASURE_CPU(ctx, cpu_raft_merkle_verify);
+  if (auto err = commit_leaf_.Verify(MerkleHashFromLogIter(log_->At(commit_idx_))); err != error::OK) {
+    LOG(ERROR) << "Merkle verify of commit failed: " << err;
+    return err;
+  }
+  if (auto err = promise_leaf_.Verify(MerkleHashFromLogIter(log_->At(promise_idx_))); err != error::OK) {
+    LOG(ERROR) << "Merkle verify of promise failed: " << err;
+    return err;
+  }
+  return error::OK;
+}
+
 #ifdef IS_TEST
-std::unique_ptr<Raft> Raft::Copy() {
+std::unique_ptr<Raft> Raft::Copy(merkle::Tree* t) {
 
   // copy membership
   auto r =  std::make_unique<Raft>(
           group_,  // group
           me_,
+          t,
           std::make_unique<Membership>(*membership_),
           log_->Copy(),  // 1MB log
           config_,
@@ -1375,6 +1417,8 @@ std::unique_ptr<Raft> Raft::Copy() {
   r->commit_idx_ = commit_idx_;
   r->promise_idx_ = promise_idx_;
   r->super_majority_ = super_majority_;
+  context::Context ctx;
+  r->UpdateMerkleTree(&ctx);
   return r;
 }
 #endif // IS_TEST

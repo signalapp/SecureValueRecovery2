@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 //TESTDEP gtest
+//TESTDEP merkle
 //TESTDEP context
 //TESTDEP env
 //TESTDEP env/test
@@ -24,12 +25,15 @@
 namespace svr2::db {
 
 class DB2Test : public ::testing::Test {
+ public:
+  DB2Test() : db(&merk) {}
  protected:
   static void SetUpTestCase() {
     env::Init(env::SIMULATED);
   }
 
   context::Context ctx;
+  merkle::Tree merk;
   DB2 db;
 };
 
@@ -255,7 +259,7 @@ TEST_F(DB2Test, HashMatch) {
     ASSERT_NE(hash, new_hash);  // hash changes with every database change.
     hash = new_hash;
   }
-  ASSERT_EQ(hash, 784802678439774802ULL);
+  ASSERT_EQ(hash, 177465743664884630ULL);
 }
 
 TEST_F(DB2Test, HashMatchBackwards) {
@@ -277,7 +281,55 @@ TEST_F(DB2Test, HashMatchBackwards) {
     auto resp = dynamic_cast<client::Response*>(db.Run(&ctx, log));
     ASSERT_EQ(client::BackupResponse::OK, resp->backup().status());
   }
-  ASSERT_EQ(util::BigEndian64FromBytes(db.Hash(&ctx).data()), 784802678439774802ULL);
+  ASSERT_EQ(util::BigEndian64FromBytes(db.Hash(&ctx).data()), 177465743664884630ULL);
+}
+
+TEST_F(DB2Test, LoadRowsThenRecover) {
+  {
+    client::Log2 log;
+    auto b = log.mutable_req()->mutable_backup();
+    log.set_backup_id("BACKUP7890123456");
+    b->set_data("DATA56789012345678901234567890123456789012345678");
+    b->set_pin("PIN45678901234567890123456789012");
+    b->set_max_tries(2);
+
+    auto resp = dynamic_cast<client::Response*>(db.Run(&ctx, log));
+    ASSERT_EQ(client::BackupResponse::OK, resp->backup().status());
+  }
+  {
+    client::Log2 log;
+    auto b = log.mutable_req()->mutable_expose();
+    log.set_backup_id("BACKUP7890123456");
+    b->set_data("DATA56789012345678901234567890123456789012345678");
+
+    auto resp = dynamic_cast<client::Response*>(db.Run(&ctx, log));
+    ASSERT_EQ(client::ExposeResponse::OK, resp->expose().status());
+  }
+  merkle::Tree m2;
+  DB2 db2(&m2);
+  // Replicate db->db2.
+  {
+    google::protobuf::RepeatedPtrField<std::string> rows;
+    auto [s, err] = db.RowsAsProtos(&ctx, "", 2, &rows);
+    ASSERT_EQ(error::OK, err);
+    ASSERT_EQ(1, rows.size());
+    ASSERT_EQ("BACKUP7890123456", s);
+
+    auto [s2, err2] = db2.LoadRowsFromProtos(&ctx, rows);
+    ASSERT_EQ(error::OK, err2);
+    ASSERT_EQ("BACKUP7890123456", s2);
+  }
+  {
+    client::Log2 log;
+    auto r = log.mutable_req()->mutable_restore();
+    log.set_backup_id("BACKUP7890123456");
+    r->set_pin("PIN45678901234567890123456789012");
+
+    auto resp = dynamic_cast<client::Response*>(db2.Run(&ctx, log));
+    ASSERT_EQ(client::RestoreResponse::OK, resp->restore().status());
+    ASSERT_EQ("DATA56789012345678901234567890123456789012345678", resp->restore().data());
+    ASSERT_EQ(2, resp->restore().tries());
+  }
 }
 
 }  // namespace svr2::db
