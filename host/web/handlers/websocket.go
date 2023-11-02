@@ -107,7 +107,7 @@ func closeMessage(r *http.Request, err error) []byte {
 
 	var enclaveErr pb.Error
 	if !errors.As(err, &enclaveErr) {
-		logger.Warnw("error processing client request", "err", err)
+		logger.Infow("Non-enclave error processing client request", "err", err)
 		metrics.IncrCounterWithLabels(enclaveErrorCounterName, 1, append(labels, metrics.Label{Name: "err", Value: "non-enclave-err"}))
 		return websocket.FormatCloseMessage(WSInternalError, "")
 	}

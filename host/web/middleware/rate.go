@@ -4,6 +4,7 @@
 package middleware
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
@@ -43,6 +44,10 @@ func (rh *rateLimitHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		retryAfterSecs := int64(retryErr.RetryAfter.Seconds())
 		w.Header().Set("Retry-After", strconv.FormatInt(retryAfterSecs, 10))
 		w.WriteHeader(http.StatusTooManyRequests)
+		return
+	} else if errors.Is(err, context.Canceled) {
+		logger.Infow("context cancelled while updating rate limit", "err", err)
+		w.WriteHeader(499)
 		return
 	} else if err != nil {
 		// still allow request in the case where we can't access the rate limiter

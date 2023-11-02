@@ -22,7 +22,7 @@ type authHandler struct {
 func (a *authHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	user, pass, _ := r.BasicAuth()
 	if err := a.authenticator.Check(user, pass); err != nil {
-		logger.Warnw("basic auth failed", "err", err)
+		logger.Infow("basic auth failed", "err", err)
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
