@@ -105,7 +105,7 @@ class DB3 : public DB {
   };
   std::map<BackupID, Row> rows_;
 
-  static std::array<uint8_t, 32> HashRow(const BackupID& id, const Row& row);
+  static std::array<uint8_t, 16> HashRow(const BackupID& id, const Row& row);
 
   void Create(
       context::Context* ctx,

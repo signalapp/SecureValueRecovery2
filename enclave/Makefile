@@ -8,7 +8,7 @@ include Makefile.base
 	$(QUIET) ./test_deps.sh $(QUIET_OUT)
 include .testdepends
 
-.PHONY: all build sign test clean sign protos validate generatem
+.PHONY: build
 
 build: build/enclave.bin build/enclave.nsm build/enclave.sev
 

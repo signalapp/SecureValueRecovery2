@@ -99,7 +99,7 @@ class DB2 : public DB {
 
     void Clear(e2e::DB2RowState::State s);
   };
-  static std::array<uint8_t, 32> HashRow(const BackupID& id, const Row& row);
+  static std::array<uint8_t, 16> HashRow(const BackupID& id, const Row& row);
 
   // Execute each of the three request types.
   void Backup(const BackupID& id, const client::BackupRequest& request, client::BackupResponse* resp);

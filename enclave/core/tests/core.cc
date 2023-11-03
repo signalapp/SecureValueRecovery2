@@ -1656,7 +1656,7 @@ TEST_F(CoreTest, Hashes2) {
     ASSERT_EQ(resp.inner_case(), HostToEnclaveResponse::kHashes);
     ASSERT_EQ(resp.status(), error::OK);
     EXPECT_EQ(util::BigEndian64FromBytes(reinterpret_cast<const uint8_t*>(resp.hashes().db_hash().data())),
-              2480837777782247874ULL);
+              13042576513027508550ULL);
     EXPECT_EQ(resp.hashes().commit_idx(), 4);
     EXPECT_EQ(util::BigEndian64FromBytes(reinterpret_cast<const uint8_t*>(resp.hashes().commit_hash_chain().data())),
               17588214037507609329ULL);
@@ -2326,7 +2326,7 @@ TEST_F(CoreTest, Hashes3) {
     ASSERT_EQ(resp.inner_case(), HostToEnclaveResponse::kHashes);
     ASSERT_EQ(resp.status(), error::OK);
     EXPECT_EQ(util::BigEndian64FromBytes(reinterpret_cast<const uint8_t*>(resp.hashes().db_hash().data())),
-              1915564167221861629ULL);
+              11866749047687405522ULL);
     EXPECT_EQ(resp.hashes().commit_idx(), 2);
     EXPECT_EQ(util::BigEndian64FromBytes(reinterpret_cast<const uint8_t*>(resp.hashes().commit_hash_chain().data())),
               14462034824530002886ULL);

@@ -14,6 +14,9 @@
 #include "context/context.h"
 #include "metrics/metrics.h"
 #include "proto/clientlog.pb.h"
+extern "C" {
+#include "sip/siphash.h"
+}  // extern "C"
 
 namespace svr2::db {
 
@@ -373,20 +376,31 @@ std::pair<DB2::BackupID, error::Error> DB2::BackupIDFromString(const std::string
   return std::make_pair(std::move(out), error::OK);
 }
 
-std::array<uint8_t, 32> DB2::HashRow(const BackupID& id, const Row& row) {
-  std::array<uint8_t, 32> out;
-  crypto_hash_sha256_state sha;
-  crypto_hash_sha256_init(&sha);
-  crypto_hash_sha256_update(&sha, id.data(), id.size());
-  uint8_t num[8];
-  util::BigEndian64Bytes(row.state, num);
-  crypto_hash_sha256_update(&sha, num, sizeof(num));
-  util::BigEndian64Bytes(row.tries, num);
-  crypto_hash_sha256_update(&sha, num, sizeof(num));
-  crypto_hash_sha256_update(&sha, &row.data_size, 1);
-  crypto_hash_sha256_update(&sha, row.data.data(), row.data_size);
-  crypto_hash_sha256_update(&sha, row.pin.data(), row.pin.size());
-  crypto_hash_sha256_final(&sha, out.data());
+static std::array<uint8_t, 16> db2_sip_hash = {'S', 'V', 'R', 'd', 'b', '2', 0};
+
+std::array<uint8_t, 16> DB2::HashRow(const BackupID& id, const Row& row) {
+  std::array<uint8_t,
+      BACKUP_ID_SIZE +  // id
+      4              +  // state
+      4              +  // tries
+      4              +  // data_size
+      MAX_DATA_SIZE  +  // data
+      PIN_SIZE       +  // pin
+      0> scratch = {0};
+  size_t offset = 0;
+  memcpy(scratch.data() + offset, id.data(), id.size());           offset += BACKUP_ID_SIZE;
+  util::BigEndian32Bytes(row.state, scratch.data() + offset);      offset += 4;
+  util::BigEndian32Bytes(row.tries, scratch.data() + offset);      offset += 4;
+  util::BigEndian32Bytes(row.data_size, scratch.data() + offset);  offset += 4;
+  memcpy(scratch.data() + offset, row.data.data(), row.data_size); offset += MAX_DATA_SIZE;
+  memcpy(scratch.data() + offset, row.pin.data(), row.pin.size()); offset += PIN_SIZE;
+  CHECK(offset == scratch.size());
+
+  std::array<uint8_t, 16> out;
+  siphash(
+      scratch.data(), scratch.size(),
+      db2_sip_hash.data(),  // must be constant to be comparable across replicas.
+      out.data(), out.size());
   return out;
 }
 

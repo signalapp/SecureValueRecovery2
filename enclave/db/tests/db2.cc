@@ -260,7 +260,7 @@ TEST_F(DB2Test, HashMatch) {
     ASSERT_NE(hash, new_hash);  // hash changes with every database change.
     hash = new_hash;
   }
-  ASSERT_EQ(hash, 177465743664884630ULL);
+  ASSERT_EQ(hash, 12265048344932456008ULL);
 }
 
 TEST_F(DB2Test, HashMatchBackwards) {
@@ -282,7 +282,7 @@ TEST_F(DB2Test, HashMatchBackwards) {
     auto resp = dynamic_cast<client::Response*>(db.Run(&ctx, log));
     ASSERT_EQ(client::BackupResponse::OK, resp->backup().status());
   }
-  ASSERT_EQ(util::BigEndian64FromBytes(db.Hash(&ctx).data()), 177465743664884630ULL);
+  ASSERT_EQ(util::BigEndian64FromBytes(db.Hash(&ctx).data()), 12265048344932456008ULL);
 }
 
 TEST_F(DB2Test, LoadRowsThenRecover) {
@@ -330,6 +330,21 @@ TEST_F(DB2Test, LoadRowsThenRecover) {
     ASSERT_EQ(client::RestoreResponse::OK, resp->restore().status());
     ASSERT_EQ("DATA56789012345678901234567890123456789012345678", resp->restore().data());
     ASSERT_EQ(2, resp->restore().tries());
+  }
+}
+
+TEST_F(DB2Test, LoadManyRows) {
+  client::Log2 log;
+  log.set_backup_id("0000000000000000");
+  auto b = log.mutable_req()->mutable_backup();
+  b->set_data("DATA56789012345678901234567890123456789012345678");
+  b->set_pin("PIN45678901234567890123456789012");
+  b->set_max_tries(2);
+  for (size_t i = 0; i <= 10000; i++) {
+    if (i % 1000000 == 0) LOG(INFO) << i;
+    util::BigEndian64Bytes(i, reinterpret_cast<uint8_t*>(log.mutable_backup_id()->data()));
+    auto resp = dynamic_cast<client::Response*>(db.Run(&ctx, log));
+    ASSERT_EQ(client::BackupResponse::OK, resp->backup().status());
   }
 }
 

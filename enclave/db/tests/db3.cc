@@ -294,10 +294,7 @@ TEST_F(DB3Test, EXPAND_MESSAGE_XMD_1) {
   std::string msg{"abc"};
   size_t len_in_bytes = 0x80;
   auto uniform_bytes = ExpandMessageXMD_SHA512<0x80>(msg, dst);
-  LOG(DEBUG) << "here";
   auto hex = util::BytesToHex(uniform_bytes.data(), uniform_bytes.size());
-  LOG(DEBUG) << hex;
-  LOG(DEBUG) << "there";
 
   EXPECT_EQ(util::BytesToHex(uniform_bytes.data(), uniform_bytes.size()), "7f1dddd13c08b543f2e2037b14cefb255b44c83cc397c1786d975653e36a6b11bdd7732d8b38adb4a0edc26a0cef4bb45217135456e58fbca1703cd6032cb1347ee720b87972d63fbf232587043ed2901bce7f22610c0419751c065922b488431851041310ad659e4b23520e1772ab29dcdeb2002222a363f0c2b1c972b3efe1");
 }
@@ -429,6 +426,71 @@ TEST_F(DB3Test, LoadRowsThenRecover) {
     ASSERT_EQ(client::EvaluateResponse::OK, r.status());
     EXPECT_EQ(r.tries_remaining(), 2);
     EXPECT_EQ(r.evaluated_element(), evaluated_element);
+  }
+}
+
+TEST_F(DB3Test, LoadManyRows) {
+  std::string blinded_element;
+  blinded_element.resize(DB3::ELEMENT_SIZE);
+  crypto_core_ristretto255_random(
+      reinterpret_cast<uint8_t*>(blinded_element.data()));
+  std::string evaluated_element;
+  client::Log3 log;
+  log.set_backup_id(backup_id);
+  auto b = log.mutable_req()->mutable_create();
+  b->set_max_tries(3);
+  b->set_blinded_element(blinded_element);
+  auto priv = DB3::Protocol::NewKey();
+  log.set_create_privkey(util::ByteArrayToString(priv));
+  for (size_t i = 0; i <= 10000; i++) {
+    if (i % 1000000 == 0) LOG(INFO) << i;
+    util::BigEndian64Bytes(i, reinterpret_cast<uint8_t*>(log.mutable_backup_id()->data()));
+    auto resp = dynamic_cast<client::Response3*>(db.Run(&ctx, log));
+    auto r = resp->create();
+    ASSERT_EQ(client::CreateResponse::OK, r.status());
+    evaluated_element = r.evaluated_element();
+  }
+}
+
+TEST_F(DB3Test, ReplicateManyRows) {
+  std::string blinded_element;
+  blinded_element.resize(DB3::ELEMENT_SIZE);
+  crypto_core_ristretto255_random(
+      reinterpret_cast<uint8_t*>(blinded_element.data()));
+  std::string evaluated_element;
+  int tries = 3;
+  {
+    client::Log3 log;
+    log.set_backup_id(backup_id);
+    auto b = log.mutable_req()->mutable_create();
+    b->set_max_tries(3);
+    b->set_blinded_element(blinded_element);
+    auto priv = DB3::Protocol::NewKey();
+    log.set_create_privkey(util::ByteArrayToString(priv));
+
+    auto resp = dynamic_cast<client::Response3*>(db.Run(&ctx, log));
+    auto r = resp->create();
+    ASSERT_EQ(client::CreateResponse::OK, r.status());
+    evaluated_element = r.evaluated_element();
+  }
+  merkle::Tree m2;
+  DB3 db2(&m2);
+  // Replicate db->db2.
+  google::protobuf::RepeatedPtrField<std::string> rows;
+  auto [s, err] = db.RowsAsProtos(&ctx, "", 2, &rows);
+  ASSERT_EQ(error::OK, err);
+  ASSERT_EQ(1, rows.size());
+  ASSERT_EQ("BACKUP7890123456", s);
+
+  e2e::DB3RowState rowstate;
+  ASSERT_TRUE(rowstate.ParseFromString(rows.Get(0)));
+
+  for (size_t i = 0; i < 10000; i++) {
+    if (i % 1000000 == 0) LOG(INFO) << i;
+    util::BigEndian64Bytes(i, reinterpret_cast<uint8_t*>(rowstate.mutable_backup_id()->data()));
+    rowstate.SerializeToString(rows.Mutable(0));
+    auto [s2, err2] = db2.LoadRowsFromProtos(&ctx, rows);
+    ASSERT_EQ(error::OK, err2);
   }
 }
 

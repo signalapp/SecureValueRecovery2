@@ -1,5 +1,8 @@
 dockall: docker_all
 
+.PHONY: host
+.PHONY: enclave
+
 all: validate host enclave control
 
 MAKE_ARGS ?=
@@ -15,7 +18,7 @@ git:
 
 ETARGET ?= all
 
-enclave: | git
+enclave: enclave_test | git
 	$(MAKE) $(MAKE_ARGS) -C enclave $(ETARGET)
 
 enclave_test: | git
@@ -74,4 +77,3 @@ enclave_releaser: enclave host  # depends on 'host' so its tests will run
 	cp -vn enclave/build/enclave.signed "enclave/releases/sgx/default.$$(/opt/openenclave/bin/oesign dump -e enclave/build/enclave.signed | fgrep -i mrenclave | cut -d '=' -f2)"
 	cp -vn enclave/build/enclave.small "enclave/releases/sgx/small.$$(/opt/openenclave/bin/oesign dump -e enclave/build/enclave.small | fgrep -i mrenclave | cut -d '=' -f2)"
 
-.PHONY: all clean enclave host dockersh docker dockerbase git validate enclave_testbin control enclave_release enclave_releaser
