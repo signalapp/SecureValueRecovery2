@@ -213,7 +213,7 @@ class Raft {
   void MaybeBecomeLeader(context::Context* ctx);
   // Check if, given the information we have, we can advance the commit index.
   // Part of MaybeChangeStateAndSendMessages.
-  void MaybeAdvanceCommitIndex();
+  void MaybeAdvanceCommitIndex(context::Context* ctx);
   // Try to find a worthy replica to take over as leader.  If one is found,
   // send it a timeout_now to become the new leader.
   void TryToRelinquishLeadership(context::Context* ctx);

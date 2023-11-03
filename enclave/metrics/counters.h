@@ -103,6 +103,8 @@ CREATE_COUNTER(context, cpu_db_client_request, cpu, ({{"in", "db"}, {"action", "
 CREATE_COUNTER(context, cpu_db_repl_send, cpu, ({{"in", "db"}, {"action", "repl_send"}}))
 CREATE_COUNTER(context, cpu_db_repl_recv, cpu, ({{"in", "db"}, {"action", "repl_recv"}}))
 CREATE_COUNTER(context, cpu_db_hash, cpu, ({{"in", "db"}, {"action", "hash"}}))
+CREATE_COUNTER(context, cpu_db_repl_merkle_hash, cpu, ({{"in", "db"}, {"action", "repl_merkle_hash"}}))
+CREATE_COUNTER(context, cpu_db_repl_merkle_update, cpu, ({{"in", "db"}, {"action", "repl_merkle_update"}}))
 CREATE_COUNTER(context, cpu_db3_new_keys, cpu, ({{"in", "db3"}, {"action", "new_keys"}}))
 CREATE_COUNTER(context, cpu_db3_blind_evaluate, cpu, ({{"in", "db3"}, {"action", "blind_evaluate"}}))
 CREATE_COUNTER(context, cpu_core_client_msg, cpu, ({{"in", "core"}, {"action", "client_msg"}}))

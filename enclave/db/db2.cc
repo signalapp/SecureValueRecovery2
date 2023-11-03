@@ -344,7 +344,15 @@ std::pair<std::string, error::Error> DB2::LoadRowsFromProtos(context::Context* c
     std::copy(row->data().begin(), row->data().end(), r.data.begin());
     r.data_size = row->data().size();
     r.tries = row->tries();
-    r.merkle_leaf_.Update(merkle::HashFrom(HashRow(key, r)));
+    merkle::Hash h;
+    {
+      MEASURE_CPU(ctx, cpu_db_repl_merkle_hash);
+      h = merkle::HashFrom(HashRow(key, r));
+    }
+    {
+      MEASURE_CPU(ctx, cpu_db_repl_merkle_update);
+      r.merkle_leaf_.Update(h);
+    }
     rows_.emplace_hint(rows_.end(), key, std::move(r));
     GAUGE(db, rows)->Set(rows_.size());
   }

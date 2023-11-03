@@ -3,6 +3,7 @@
 
 //TESTDEP gtest
 //TESTDEP merkle
+//TESTDEP sip
 //TESTDEP context
 //TESTDEP env
 //TESTDEP env/test

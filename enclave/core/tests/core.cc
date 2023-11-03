@@ -401,7 +401,7 @@ static void BackupRestoreTest(ReplicaGroupConfig cfg, CoreRole connect_to, bool 
   replica_group.CreatePartition(partition);
 
   // run long enough to elect a new leader
-  for(size_t i = 0; i < 4*cfg.ecfg.raft().election_ticks(); ++i) {
+  for(size_t i = 0; i < 100*cfg.ecfg.raft().election_ticks(); ++i) {
     replica_group.TickTock(false);
   }
 
@@ -2326,10 +2326,10 @@ TEST_F(CoreTest, Hashes3) {
     ASSERT_EQ(resp.inner_case(), HostToEnclaveResponse::kHashes);
     ASSERT_EQ(resp.status(), error::OK);
     EXPECT_EQ(util::BigEndian64FromBytes(reinterpret_cast<const uint8_t*>(resp.hashes().db_hash().data())),
-              16278971866914444404ULL);
+              1915564167221861629ULL);
     EXPECT_EQ(resp.hashes().commit_idx(), 2);
     EXPECT_EQ(util::BigEndian64FromBytes(reinterpret_cast<const uint8_t*>(resp.hashes().commit_hash_chain().data())),
-              4818198584546649367);
+              14462034824530002886ULL);
   }
 }
 

@@ -43,13 +43,13 @@ Raft::Raft(
   GAUGE(raft, commit_index)->Set(commit_idx_);
   GAUGE(raft, promise_index)->Set(promise_idx_);
   context::Context ctx;
+  UpdateMerkleTree(&ctx);
   if (voting() && membership().voting_replicas().size() == 1) {
     // This is a one-instance replica and I'm voting, become leader.
     ElectionTimeout(&ctx);
     MaybeChangeStateAndSendMessages(&ctx);
     CHECK(sendable_messages_.size() == 0);
   }
-  UpdateMerkleTree(&ctx);
 }
 
 size_t Raft::membership_quorum_size() const {
@@ -549,7 +549,7 @@ std::pair<LogLocation, error::Error> Raft::ReplicaGroupChange(context::Context* 
 // \* This is done as a separate step from handling AppendEntries responses,
 // \* in part to minimize atomic regions, and in part so that leaders of
 // \* single-server clusters are able to mark entries committed.
-void Raft::MaybeAdvanceCommitIndex() {
+void Raft::MaybeAdvanceCommitIndex(context::Context* ctx) {
   // AdvancePromiseIndex(i) ==
   // /\ state[i] = Leader
   if (role_ != internal::Role::LEADER) { return; }
@@ -920,6 +920,14 @@ void Raft::HandleAppendRequest(context::Context* ctx, const TermId& msg_term, co
              << " last=" << last_processed_idx;
   // TLA+... and we're back!
   // /\ commitIndex' = [commitIndex EXCEPT ![i] = m.mcommitIndex]
+  bool update_merkle = false;
+  if (leader_commit > commit_idx_ || leader_promise > promise_idx_) {
+    if (auto err = VerifyMerkleTree(ctx); err != error::OK) {
+      LOG(ERROR) << "VerifyMerkleTree failed in HandleAppendEntriesResponse: " << err;
+      return;
+    }
+    update_merkle = true;
+  }
   if (leader_commit > commit_idx_) {
     LOG(VERBOSE) << "committed transactions from " << commit_idx_ << " to " << leader_commit;
     COUNTER(raft, logs_committed)->IncrementBy(leader_commit - commit_idx_);
@@ -934,6 +942,9 @@ void Raft::HandleAppendRequest(context::Context* ctx, const TermId& msg_term, co
     COUNTER(raft, logs_promised)->IncrementBy(leader_promise - promise_idx_);
     promise_idx_ = leader_promise;
     GAUGE(raft, promise_index)->Set(promise_idx_);
+  }
+  if (update_merkle) {
+    UpdateMerkleTree(ctx);
   }
 
   auto out = ctx->Protobuf<RaftMessage>();
@@ -1235,10 +1246,6 @@ void Raft::Receive(context::Context* ctx, const RaftMessage& msg, const peerid::
     LOG(ERROR) << "ignoring invalid Raft message from " << from << " (" << err << "): " << MsgStr(msg);
     return;
   }
-  if (auto err = VerifyMerkleTree(ctx); err != error::OK) {
-    LOG(ERROR) << "verify of merkle tree failed, returning: " << err;
-    return;
-  }
   // Receive(m) ==
   // IN \* Any RPC with a newer term causes the recipient to advance
   //    \* its term first. Responses with stale terms are ignored.
@@ -1299,7 +1306,12 @@ void Raft::Receive(context::Context* ctx, const RaftMessage& msg, const peerid::
 
 void Raft::MaybeChangeStateAndSendMessages(context::Context* ctx) {
   MaybeBecomeLeader(ctx);
-  MaybeAdvanceCommitIndex();
+  if (auto err = VerifyMerkleTree(ctx); err == error::OK) {
+    MaybeAdvanceCommitIndex(ctx);
+    UpdateMerkleTree(ctx);
+  } else {
+    LOG(ERROR) << "verify of merkle tree failed, refusing to advance commit index: " << err;
+  }
   for (auto peer : membership().all_replicas()) {
     if (peer == me_) { continue; }
     AppendEntries(ctx, peer);
@@ -1307,7 +1319,6 @@ void Raft::MaybeChangeStateAndSendMessages(context::Context* ctx) {
   if (role_ == internal::Role::LEADER && leader_.relinquishing) {
     TryToRelinquishLeadership(ctx);
   }
-  UpdateMerkleTree(ctx);
 }
 
 void Raft::TryToRelinquishLeadership(context::Context* ctx) {
@@ -1449,11 +1460,11 @@ void Raft::UpdateMerkleTree(context::Context* ctx) {
 error::Error Raft::VerifyMerkleTree(context::Context* ctx) {
   MEASURE_CPU(ctx, cpu_raft_merkle_verify);
   if (auto err = commit_leaf_.Verify(MerkleHashFromLogIter(log_->At(commit_idx_))); err != error::OK) {
-    LOG(ERROR) << "Merkle verify of commit failed: " << err;
+    MELOG(ERROR) << "Merkle verify of commit failed: " << err;
     return err;
   }
   if (auto err = promise_leaf_.Verify(MerkleHashFromLogIter(log_->At(promise_idx_))); err != error::OK) {
-    LOG(ERROR) << "Merkle verify of promise failed: " << err;
+    MELOG(ERROR) << "Merkle verify of promise failed: " << err;
     return err;
   }
   return error::OK;

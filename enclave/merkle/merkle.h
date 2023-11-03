@@ -117,6 +117,7 @@ extern const Hash zero_hash;
 //   merkle::Tree tree;
 //   {
 //     merkle::Leaf lf1(&tree);
+//     // Note:  a call to Update after a leaf is created is _necessary_
 //     lf1.Update(hash_value);
 //     lf1.Verify(hash_value);
 //   }  // lf1 falls out of scope and is removed from the tree.
@@ -133,6 +134,18 @@ extern const Hash zero_hash;
 //     };
 //     std::map<RowKey, Row> rows_;  // later in the class, so cleaned up first.
 //   };
+//
+// This tree, as currently implemented, stores the computed hash for each
+// `Part` of the tree (leaf or node) in the `Node` parent of that `Part`.
+// The `Part` contains a hash pointer (`hptr_`) that points to where its
+// hash is stored.  This allows for each `Node` to store all hashes for its
+// children contiguously, which both provides better cash concurrency during
+// hashing and allows us to expand our use of hashing algorithms to those
+// that are implemented to only hash a contiguous section of memory (like
+// SipHash, our current hash).  The exception to this is the `root_` node
+// of the tree, which doesn't have a parent and thus can't store its hash
+// within it.  The `root`'s `hptr_` instead points to `roothash_` in the
+// `Tree`.
 
 class Tree;
 class Node;
@@ -152,12 +165,13 @@ class Part {
   virtual ~Part();
   Part(const Part& copy_from) = delete;
   Part(Node* parent);
-  Part(Node* parent, const Hash& hash);
-  const Hash& hash() const { return hash_; }
+  Part(Hash* hptr);
+  Part();
+  const Hash& hash() const { return *hptr_; }
   Node* parent() const { return parent_; }  // nullptr for root.
  protected:
   Node* parent_;
-  Hash hash_;
+  Hash* hptr_;
 };
 
 // Leaf class, should be embedded within the DB datastructure.
@@ -165,9 +179,13 @@ class Leaf : public Part {
  public:
   virtual ~Leaf();
 
-  // Constructs a new leaf.  The hash on creation is `zero_hash`, so an
-  // `Update` should probably be called directly after creation with the
-  // actual hash associated with this leaf.
+  // Constructs a new leaf.  When a leaf is initially added to a tree,
+  // it does not update the tree's hashes until its first `Update` is
+  // called, so it's very important that every leaf creation is followed
+  // immediately by an `Update` call to both associate a hash with this
+  // leaf and update the rest of the tree based on that hash.  If a leaf
+  // is created without an associated `Update` call, it may make a future
+  // `Verify` call (on this leaf or another one) fail.
   Leaf(Tree* t);
 
   // No copy allowed, since this would break parent/child relationships.
@@ -198,17 +216,18 @@ enum class NodeFlag {
 class Node : public Part {
  public:
   Node(Node* parent);
+  Node(Hash* hptr);
   virtual ~Node();
   bool Full() const { return Parts() == MERKLE_NODE_SIZE; }
   bool Empty() const { return Parts() == 0; }
   // Add the given part to this node.  Will CHECK-fail if this node
   // is currently Full(), or if part->parent() is not already set
   // to this node.
-  void Insert(Part* part);
+  Hash* Insert(Part* part);
   // Replace the given part with the new one.  Will CHECK-fail if
   // b->parent() is not already this node, if `a` is not a child of
   // this node, or if a->hash() != b->hash().  Used for Part move constructor.
-  void Replace(Part* a, Part* b);
+  Hash* Replace(Part* a, Part* b);
   // Remove the given part from this node.  Will CHECK-fail if `part`
   // is not a current child of this node.
   void Remove(Part* part);
@@ -222,12 +241,14 @@ class Node : public Part {
   // that:
   //    n->ComputeCurrent(&h);
   //    h == n->hash();
+  // Returns true if hash is changed by this call.
   void ComputeCurrent(Hash* hash) const;
  private:
   // Allow the tree to set and clear flags.
   friend class Tree;
   void SetFlag(NodeFlag f) { flags_ |= static_cast<uint8_t>(f); }
   void ClearFlag(NodeFlag f) { flags_ &= ~static_cast<uint8_t>(f); }
+  void Init();
 
   size_t Parts() const;
   void UpdateCurrent();
@@ -236,6 +257,7 @@ class Node : public Part {
   // An empty child will be nullptr, and a nullptr child will be treated as
   // having the hash `zero_hash` (defined at global scope, all zeros).
   std::array<Part*, MERKLE_NODE_SIZE> children_;
+  std::array<Hash, MERKLE_NODE_SIZE> hashes_;
   uint8_t flags_;
 };
 
@@ -253,6 +275,7 @@ class Tree {
   Node* CurrentWithSpace();
 
  private:
+  Hash roothash_;
   Node* root_;
   Node* curr_;
 };
