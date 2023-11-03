@@ -14,13 +14,16 @@ namespace svr2::merkle {
 // Bytes of a hash to use for internal integrity checking.
 #define MERKLE_HASH_SIZE 8
 
-// Number of children in each node.  We set this to 13 since
+// Number of children in each node.  We set this to 5 since
 // the node also has:
 //   - parent (8 bytes)
 //   - hash (8 bytes)
 //   - flags (1 byte)
-// so with 13 nodes, it should fit in 16*8 bytes, and powers of 2 are cool.
-#define MERKLE_NODE_SIZE 13
+// so with 5 nodes, it should fit in 8*8 bytes, and powers of 2 are cool.
+// This also seems to be near a sweet spot; fewer than this creates depths
+// that lower performance, and using 13 instead of 5 was roughly 35% slower
+// on the test machine.
+#define MERKLE_NODE_SIZE 5
 
 typedef std::array<uint8_t, MERKLE_HASH_SIZE> Hash;
 extern const Hash zero_hash;
