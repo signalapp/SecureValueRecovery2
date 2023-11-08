@@ -35,7 +35,8 @@ clean:
 	$(MAKE) $(MAKE_ARGS) -C host clean
 
 dockerbase: | git
-	docker build -f docker/Dockerfile -t svr2_buildenv --target=builder .
+	[ "" != "$(SKIP_DOCKER_BUILD)" ] || \
+	    docker build -f docker/Dockerfile -t svr2_buildenv --target=builder .
 
 PARALLEL ?= $(shell cat /proc/cpuinfo | grep '^cpu cores' | awk 'BEGIN { sum = 1 } { sum += $$4 } END { print sum }')
 DOCKER_MAKE_ARGS ?= -j$(PARALLEL) MAKE_ARGS="$(MAKE_ARGS)"

@@ -1,7 +1,7 @@
 // Copyright 2023 Signal Messenger, LLC
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Package client provides client implementations for SVR2Client endpoints
+// Package client provides client implementations for SVRClient endpoints
 package client
 
 import (
@@ -14,48 +14,57 @@ import (
 	pb "github.com/signalapp/svr2/proto"
 )
 
-type SVR2Client struct {
+type SVRClient struct {
 	c       *websocket.Conn
 	encrypt *noise.CipherState
 	decrypt *noise.CipherState
 	PubKey  []byte
 }
 
-func (sc *SVR2Client) Close() {
+func (sc *SVRClient) Close() {
 	sc.c.Close()
 }
 
-func (sc *SVR2Client) Send(req *pb.Request) (*pb.Response, error) {
+func (sc *SVRClient) send(req, resp proto.Message) error {
 	bs, err := proto.Marshal(req)
 	if err != nil {
-		return nil, fmt.Errorf("marshal: %w", err)
+		return fmt.Errorf("marshal: %w", err)
 	}
 
 	var ciphertext []byte
 	if ciphertext, err = sc.encrypt.Encrypt(ciphertext, nil, bs); err != nil {
-		return nil, fmt.Errorf("encrypt: %w", err)
+		return fmt.Errorf("encrypt: %w", err)
 	}
 	if err = sc.c.WriteMessage(websocket.BinaryMessage, ciphertext); err != nil {
-		return nil, fmt.Errorf("writews: %w", err)
+		return fmt.Errorf("writews: %w", err)
 	}
 
 	_, msg, err := sc.c.ReadMessage()
 	if err != nil {
-		return nil, fmt.Errorf("readws: %w", err)
+		return fmt.Errorf("readws: %w", err)
 	}
 
 	var plaintext []byte
 	if plaintext, err = sc.decrypt.Decrypt(plaintext, nil, msg); err != nil {
-		return nil, fmt.Errorf("decrypt: %w", err)
+		return fmt.Errorf("decrypt: %w", err)
 	}
-	var m pb.Response
-	if err := proto.Unmarshal(plaintext, &m); err != nil {
-		return nil, fmt.Errorf("unmarshal: %w", err)
+	if err := proto.Unmarshal(plaintext, resp); err != nil {
+		return fmt.Errorf("unmarshal: %w", err)
 	}
-	return &m, nil
+	return nil
 }
 
-func NewClient(c *websocket.Conn) (*SVR2Client, error) {
+func (sc *SVRClient) Send2(req *pb.Request) (*pb.Response, error) {
+	var resp pb.Response
+	return &resp, sc.send(req, &resp)
+}
+
+func (sc *SVRClient) Send3(req *pb.Request3) (*pb.Response3, error) {
+	var resp pb.Response3
+	return &resp, sc.send(req, &resp)
+}
+
+func NewClient(c *websocket.Conn) (*SVRClient, error) {
 	// extract the server public key
 	_, msg, err := c.ReadMessage()
 	if err != nil {
@@ -95,5 +104,5 @@ func NewClient(c *websocket.Conn) (*SVR2Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("handshake read: %w", err)
 	}
-	return &SVR2Client{c, encrypt, decrypt, start.TestOnlyPubkey}, nil
+	return &SVRClient{c, encrypt, decrypt, start.TestOnlyPubkey}, nil
 }

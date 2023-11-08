@@ -97,7 +97,7 @@ RUN wget https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOB
   && mv ${PROTOBUF_BASE} /opt/protobuf
 
 ARG GOLANG_PLATFORM=linux-amd64
-ARG GOLANG_VERSION=1.20.2
+ARG GOLANG_VERSION=1.21.3
 ARG GOLANG_TAR_GZ=go${GOLANG_VERSION}.${GOLANG_PLATFORM}.tar.gz
 
 RUN wget https://go.dev/dl/${GOLANG_TAR_GZ} \

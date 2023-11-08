@@ -1,6 +1,8 @@
 module github.com/signalapp/svr2
 
-go 1.19
+go 1.21
+
+toolchain go1.21.0
 
 require (
 	github.com/alicebob/miniredis/v2 v2.31.0
@@ -8,6 +10,7 @@ require (
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/go-redis/redis_rate/v9 v9.1.2
 	github.com/google/go-sev-guest v0.9.3
+	github.com/gtank/ristretto255 v0.1.2
 	github.com/mdlayher/vsock v1.2.1
 	golang.org/x/exp v0.0.0-20231006140011-7918f672742d
 	golang.org/x/sync v0.4.0

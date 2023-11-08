@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -19,6 +20,7 @@ import (
 	"sync/atomic"
 
 	"github.com/gorilla/websocket"
+	"github.com/gtank/ristretto255"
 	"github.com/signalapp/svr2/auth"
 	"github.com/signalapp/svr2/web/client"
 
@@ -26,10 +28,6 @@ import (
 )
 
 var (
-	backupCmd   = flag.NewFlagSet("backup", flag.ExitOnError)
-	exposeCmd   = flag.NewFlagSet("expose", flag.ExitOnError)
-	restoreCmd  = flag.NewFlagSet("restore", flag.ExitOnError)
-	deleteCmd   = flag.NewFlagSet("delete", flag.ExitOnError)
 	loadtestCmd = flag.NewFlagSet("loadtest", flag.ExitOnError)
 
 	user                     = toUser("test123")
@@ -38,16 +36,12 @@ var (
 )
 
 var subcommands = map[string]*flag.FlagSet{
-	backupCmd.Name():   backupCmd,
-	exposeCmd.Name():   exposeCmd,
-	restoreCmd.Name():  restoreCmd,
-	deleteCmd.Name():   deleteCmd,
 	loadtestCmd.Name(): loadtestCmd,
 }
 
 func main() {
 	for _, fs := range subcommands {
-		fs.StringVar(&host, "host", "svr2.staging.signal.org", "endpoint to connect to")
+		fs.StringVar(&host, "host", "backend1.svr3.staging.signal.org", "endpoint to connect to")
 		fs.StringVar(&enclaveID, "enclaveId", "7d44d147f38d102c2874ffcd92302398ac2b38592633bb20c75dce9c171fe877", "mrenclave to use")
 		fs.StringVar(&authKey, "authKey", "", "base64 encoded shared svr auth key")
 		fs.Func("user", "basic auth username. If it's not a 32 character hex string it will be hashed", func(s string) error {
@@ -58,32 +52,6 @@ func main() {
 	}
 
 	switch os.Args[1] {
-	case backupCmd.Name():
-		backupCmd.Parse(os.Args[2:])
-		if err := runBackup(user); err != nil {
-			fmt.Fprint(os.Stderr, err.Error())
-			os.Exit(1)
-		}
-	case exposeCmd.Name():
-		exposeCmd.Parse(os.Args[2:])
-		if err := runExpose(user); err != nil {
-			fmt.Fprint(os.Stderr, err.Error())
-			os.Exit(1)
-		}
-	case restoreCmd.Name():
-		var pin string
-		restoreCmd.StringVar(&pin, "pin", "", "pin")
-		restoreCmd.Parse(os.Args[2:])
-		if err := runRestore(pin); err != nil {
-			fmt.Fprint(os.Stderr, err.Error())
-			os.Exit(1)
-		}
-	case deleteCmd.Name():
-		deleteCmd.Parse(os.Args[2:])
-		if err := runDelete(); err != nil {
-			fmt.Fprint(os.Stderr, err.Error())
-			os.Exit(1)
-		}
 	case loadtestCmd.Name():
 		parallel := loadtestCmd.Int("parallel", 1, "amount of parallelization")
 		count := loadtestCmd.Int("count", 1, "total count to run")
@@ -130,32 +98,15 @@ func newClient(username string) (*client.SVRClient, error) {
 	return client.NewClient(c)
 }
 
-func runRestore(hexPin string) error {
-	c, err := newClient(user)
-	if err != nil {
-		return err
-	}
-	pin, err := hex.DecodeString(hexPin)
-	if err != nil {
-		return err
-	}
-
-	r, err := c.Send2(&pb.Request{Inner: &pb.Request_Restore{
-		Restore: &pb.RestoreRequest{
-			Pin: pin,
-		},
-	}})
-	if err != nil {
-		return err
-	}
-	log.Print(r)
-	return nil
-
-}
-
 func runLoadTest(parallel, count int) error {
 	countU32 := int32(count)
 	var wg sync.WaitGroup
+	var randBytes [64]byte
+	if _, err := io.ReadFull(rand.Reader, randBytes[:]); err != nil {
+		return fmt.Errorf("reading random bytes: %w", err)
+	}
+	e := ristretto255.NewElement().FromUniformBytes(randBytes[:])
+	eBytes := e.Encode(nil)
 	for i := 0; i < parallel; i++ {
 		wg.Add(1)
 		go func() {
@@ -168,8 +119,9 @@ func runLoadTest(parallel, count int) error {
 					log.Printf("running %d/%d", count-int(u), count)
 				}
 				user := toUser(fmt.Sprintf("%s_%d", user, u))
-				if err := runBackup(user); err != nil {
-					log.Printf("user %d failed backup: %v", u, err)
+				// Use the same precomputed element everywhere to avoid CPU load on balancer side.
+				if err := runCreate(user, eBytes); err != nil {
+					log.Printf("user %d failed create: %v", u, err)
 				}
 			}
 		}()
@@ -183,78 +135,29 @@ func bytesForUser(username string) []byte {
 	return h[:]
 }
 
-func runBackup(username string) error {
+func runCreate(username string, blinded []byte) error {
 	c, err := newClient(username)
 	if err != nil {
 		return err
 	}
 
 	b := bytesForUser(username)
-	r, err := c.Send2(&pb.Request{Inner: &pb.Request_Backup{
-		Backup: &pb.BackupRequest{
-			Data:     b,
-			Pin:      b,
-			MaxTries: 5,
+	r, err := c.Send3(&pb.Request3{Inner: &pb.Request3_Create{
+		Create: &pb.CreateRequest{
+			MaxTries:       5,
+			BlindedElement: blinded,
 		},
 	}})
 	if err != nil {
 		return err
 	}
-	br, ok := r.Inner.(*pb.Response_Backup)
+	br, ok := r.Inner.(*pb.Response3_Create)
 	if !ok {
 		return fmt.Errorf("unexpected response : %v", r)
 	}
-	if br.Backup.Status != pb.BackupResponse_OK {
-		return fmt.Errorf("backup request not successful: %v", br.Backup.Status)
+	if br.Create.Status != pb.CreateResponse_OK {
+		return fmt.Errorf("backup request not successful: %v", br.Create.Status)
 	}
 	log.Printf("successful: data=pin=%x", b)
 	return nil
-}
-
-func runExpose(username string) error {
-	c, err := newClient(username)
-	if err != nil {
-		return err
-	}
-
-	b := bytesForUser(username)
-	r, err := c.Send2(&pb.Request{Inner: &pb.Request_Expose{
-		Expose: &pb.ExposeRequest{
-			Data: b,
-		},
-	}})
-	if err != nil {
-		return err
-	}
-	br, ok := r.Inner.(*pb.Response_Expose)
-	if !ok {
-		return fmt.Errorf("unexpected response : %v", r)
-	}
-	if br.Expose.Status != pb.ExposeResponse_OK {
-		return fmt.Errorf("backup request not successful: %v", br.Expose.Status)
-	}
-	log.Printf("successful")
-	return nil
-}
-
-func runDelete() error {
-	c, err := newClient(user)
-	if err != nil {
-		return err
-	}
-
-	r, err := c.Send2(&pb.Request{Inner: &pb.Request_Delete{Delete: &pb.DeleteRequest{}}})
-	if err != nil {
-		return err
-	}
-	log.Print(r)
-	return nil
-}
-
-func randBytes(count int) []byte {
-	bs := make([]byte, count)
-	if _, err := rand.Read(bs); err != nil {
-		log.Fatalf("rand: %v", err)
-	}
-	return bs
 }

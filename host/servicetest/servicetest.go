@@ -20,11 +20,11 @@ import (
 
 type TestClient struct {
 	t  *testing.T
-	Sc *client.SVR2Client
+	Sc *client.SVRClient
 }
 
 func (tc *TestClient) Send(req *pb.Request) *pb.Response {
-	res, err := tc.Sc.Send(req)
+	res, err := tc.Sc.Send2(req)
 	if err != nil {
 		tc.t.Fatalf(err.Error())
 	}
