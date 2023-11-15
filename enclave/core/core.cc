@@ -52,7 +52,6 @@ error::Error ValidateRaftGroupConfig(const enclaveconfig::RaftGroupConfig& c) {
   if (c.min_voting_replicas() > c.max_voting_replicas()) { return COUNTED_ERROR(Core_RaftGroupConfigMinReplicasGreaterThanMaxReplicas); }
   if (c.min_voting_replicas() < 1) { return COUNTED_ERROR(Core_RaftGroupConfigMinReplicasTooSmall); }
   if (c.attestation_timeout() < 1) { return COUNTED_ERROR(Core_RaftGroupConfigAttestationTimeoutTooSmall); }
-  merkle::Tree t;
   if (db::DB::P(c.db_version()) == nullptr) {
     return COUNTED_ERROR(Core_DBVersionInvalid);
   }
@@ -416,7 +415,9 @@ void Core::HandleCreateNewRaftGroupRequest(context::Context* ctx, internal::Tran
         cfg.super_majority()),  // committed_log
     .db = db_protocol_->NewDB(&merkle_tree_),
     .db_last_applied_log = 0,
+    .db_last_applied_log_leaf = std::make_unique<merkle::Leaf>(&merkle_tree_),
   };
+  raft_.loaded.UpdateLastAppliedLog(ctx, 0);
   GAUGE(core, last_index_applied_to_db)->Set(0);
   RaftStep(ctx);
   ReplyWithError(ctx, tx, error::OK);
@@ -596,8 +597,10 @@ void Core::PromoteRaftToLoaded(context::Context* ctx) {
         true,
         loading.group_config.super_majority()),  // committed_log
     .db = std::move(loading.db),
-    .db_last_applied_log = db_last_applied_log,
+    .db_last_applied_log = 0,
+    .db_last_applied_log_leaf = std::make_unique<merkle::Leaf>(&merkle_tree_),
   };
+  raft_.loaded.UpdateLastAppliedLog(ctx, db_last_applied_log);
   GAUGE(core, last_index_applied_to_db)->Set(db_last_applied_log);
   RaftRequestMembership(ctx, loading.join_tx);
 }
@@ -1581,7 +1584,12 @@ void Core::RaftHandleCommittedLogs(context::Context* ctx) {
       // There's no additional logs, we're done!
       return;
     }
-    raft_.loaded.db_last_applied_log = idx;
+    // We CHECK-fail here, since we've already taken the log, so we MUST apply it.
+    if (error::Error err = raft_.loaded.VerifyLastAppliedLog(ctx); err != error::OK) {
+      LOG(ERROR) << "Failed to verify last applied log idx: " << err;
+      CHECK(nullptr == "failed to verify last applied log idx");
+    }
+    raft_.loaded.UpdateLastAppliedLog(ctx, idx);
     LOG(VERBOSE) << "at db_last_applied_log " << idx;
     GAUGE(core, last_index_applied_to_db)->Set(idx);
     if (entry.has_membership_change()) {
@@ -1717,6 +1725,29 @@ void Core::SendE2ETransaction(
     .timeout_cancel = tc,
   };
 }
+
+namespace internal {
+
+error::Error Loaded::VerifyLastAppliedLog(context::Context* ctx) {
+  MEASURE_CPU(ctx, cpu_core_verify_last_applied_merkle);
+  merkle::Hash h{0};
+  CHECK(h.size() >= 8);
+  CHECK(db_last_applied_log_leaf.get() != nullptr);
+  util::BigEndian64Bytes(db_last_applied_log, h.data());
+  return db_last_applied_log_leaf->Verify(h);
+}
+
+void Loaded::UpdateLastAppliedLog(context::Context* ctx, raft::LogIdx idx) {
+  MEASURE_CPU(ctx, cpu_core_update_last_applied_merkle);
+  merkle::Hash h{0};
+  CHECK(h.size() >= 8);
+  CHECK(db_last_applied_log_leaf.get() != nullptr);
+  db_last_applied_log = idx;
+  util::BigEndian64Bytes(db_last_applied_log, h.data());
+  db_last_applied_log_leaf->Update(h);
+}
+
+}  // namespace internal
 
 }  // namespace svr2::core
 

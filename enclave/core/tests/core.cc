@@ -1450,6 +1450,21 @@ TEST_F(CoreTest, ReplicatingRowsWithMultiplePackets) {
   EXPECT_TRUE(core1->leader());
   EXPECT_TRUE(core2->serving());
   EXPECT_FALSE(core2->leader());
+
+  {
+    LOG(INFO) << "\n\nRequest to core2";
+    client::Request req;
+    std::array<uint8_t, 16> backup_id = {0xff, 0xff, 0xff, 0xff};
+
+    auto b = req.mutable_backup();
+    b->set_data("12345678901234567890123456789012");
+    b->set_pin("12345678901234567890123456789012");
+    b->set_max_tries(10);
+    client::Response resp;
+    ClientRequest(cores, core2.get(), req, &resp, util::ByteArrayToString(backup_id));
+    ASSERT_EQ(client::Response::kBackup, resp.inner_case());
+    ASSERT_EQ(client::BackupResponse::OK, resp.backup().status());
+  }
 }
 
 TEST_F(CoreTest, ReplicatingRowsWithTruncatedLog) {
@@ -2329,7 +2344,7 @@ TEST_F(CoreTest, Hashes3) {
               3876169380840546657ULL);
     EXPECT_EQ(resp.hashes().commit_idx(), 2);
     EXPECT_EQ(util::BigEndian64FromBytes(reinterpret_cast<const uint8_t*>(resp.hashes().commit_hash_chain().data())),
-              14462034824530002886ULL);
+              17913729631638562691ULL);
   }
 }
 

@@ -123,6 +123,8 @@ CREATE_COUNTER(context, cpu_core_connecting_to_raft_members, cpu, ({{"in", "core
 CREATE_COUNTER(context, cpu_core_updating_group_time, cpu, ({{"in", "core"}, {"action", "updating_group_time"}}))
 CREATE_COUNTER(context, cpu_core_raft_tick, cpu, ({{"in", "core"}, {"action", "raft_tick"}}))
 CREATE_COUNTER(context, cpu_core_update_env_stats, cpu, ({{"in", "core"}, {"action", "update_env_stats"}}))
+CREATE_COUNTER(context, cpu_core_update_last_applied_merkle, cpu, ({{"in", "core"}, {"action", "update_last_applied_merkle"}}))
+CREATE_COUNTER(context, cpu_core_verify_last_applied_merkle, cpu, ({{"in", "core"}, {"action", "verify_last_applied_merkle"}}))
 CREATE_COUNTER(context, cpu_raft_merkle_update, cpu, ({{"in", "raft"}, {"action", "merkle_update"}}))
 CREATE_COUNTER(context, cpu_raft_merkle_verify, cpu, ({{"in", "raft"}, {"action", "merkle_verify"}}))
 CREATE_COUNTER(context, cpu_test_database_entries, cpu, ({{"in", "core"}, {"action", "test_database_entries"}}))

@@ -39,6 +39,10 @@ struct Loaded {
   std::unique_ptr<raft::Raft> raft;
   std::unique_ptr<db::DB> db;
   raft::LogIdx db_last_applied_log;
+  std::unique_ptr<merkle::Leaf> db_last_applied_log_leaf;
+
+  error::Error VerifyLastAppliedLog(context::Context* ctx);
+  void UpdateLastAppliedLog(context::Context* ctx, raft::LogIdx idx);
 };
 struct Raft {
   Raft() { ClearState(); }
@@ -63,6 +67,7 @@ struct Raft {
       .raft = nullptr,
       .db = nullptr,
       .db_last_applied_log = 0,
+      .db_last_applied_log_leaf = nullptr,
     };
   }
   mutable util::mutex mu;  // protects everything else in this struct.
