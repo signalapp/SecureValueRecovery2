@@ -157,7 +157,10 @@ func (p *PeerClient) getOrCreateSender(msg *pb.PeerMessage, peerID peerid.PeerID
 	// check if we've had a sender for this peer in the past
 	if p.abandonedPeers[peerID] {
 		// This is a peer we previously decided to abandon.
-		if !isEstablishing(msg) {
+		if isReset(msg) {
+			// We can ignore a RST to an already abandoned peer.
+			return nil, fmt.Errorf("dropping reset to already abandoned peer %v", peerID)
+		} else if !isEstablishing(msg) {
 			// We can resume talking to it, but any new communication
 			// must first establish a new enclave connection
 			logger.Warnw("attempting to send non-establishing message to previously abandoned peer",
@@ -211,7 +214,16 @@ func (p *PeerClient) getOrCreateSender(msg *pb.PeerMessage, peerID peerid.PeerID
 
 func isEstablishing(msg *pb.PeerMessage) bool {
 	switch msg.Inner.(type) {
-	case *pb.PeerMessage_Syn, *pb.PeerMessage_Synack, *pb.PeerMessage_Rst:
+	case *pb.PeerMessage_Syn, *pb.PeerMessage_Synack:
+		return true
+	default:
+		return false
+	}
+}
+
+func isReset(msg *pb.PeerMessage) bool {
+	switch msg.Inner.(type) {
+	case *pb.PeerMessage_Rst:
 		return true
 	default:
 		return false
@@ -354,7 +366,7 @@ func (p *peerSender) lookupPeerAddr(ctx context.Context) (string, error) {
 // or false if the buffer is full.
 func (p *peerSender) queueMessage(msg *pb.PeerMessage) bool {
 	var c chan *pb.PeerMessage
-	if isEstablishing(msg) {
+	if isEstablishing(msg) || isReset(msg) {
 		// these messages indicate we don't care about previous messages, we can replace our
 		// send channel with a fresh one
 		c = make(chan *pb.PeerMessage, p.cfg.BufferSize)

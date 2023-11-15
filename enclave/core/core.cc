@@ -194,6 +194,7 @@ error::Error Core::Receive(context::Context* ctx, const UntrustedMessage& msg) {
       HandleTimerTick(ctx, msg.timer_tick());
       return error::OK;
     case UntrustedMessage::kResetPeer:{
+      MEASURE_CPU(ctx, cpu_core_peer_rst);
       peerid::PeerID peer_id;
       RETURN_IF_ERROR(peer_id.FromString(msg.reset_peer().peer_id()));
       return peer_manager_->ResetPeer(ctx, peer_id);

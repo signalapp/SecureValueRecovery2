@@ -109,6 +109,7 @@ CREATE_COUNTER(context, cpu_db3_new_keys, cpu, ({{"in", "db3"}, {"action", "new_
 CREATE_COUNTER(context, cpu_db3_blind_evaluate, cpu, ({{"in", "db3"}, {"action", "blind_evaluate"}}))
 CREATE_COUNTER(context, cpu_core_client_msg, cpu, ({{"in", "core"}, {"action", "client_msg"}}))
 CREATE_COUNTER(context, cpu_core_peer_msg, cpu, ({{"in", "core"}, {"action", "peer_msg"}}))
+CREATE_COUNTER(context, cpu_core_peer_rst, cpu, ({{"in", "core"}, {"action", "peer_rst"}}))
 CREATE_COUNTER(context, cpu_core_host_msg, cpu, ({{"in", "core"}, {"action", "host_msg"}}))
 CREATE_COUNTER(context, cpu_core_raft_msg, cpu, ({{"in", "core"}, {"action", "raft_msg"}}))
 CREATE_COUNTER(context, cpu_core_e2e_txn_req, cpu, ({{"in", "core"}, {"action", "e2e_txn_req"}}))

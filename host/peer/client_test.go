@@ -486,20 +486,34 @@ func TestProdigalPeer(t *testing.T) {
 	server := errorServer{seqno: sequenceNumber{1, 9}, id: serverID, ln: ln}
 	go func() { serverDone <- server.run(fsOk, 1) }()
 
-	// should allow an RST message
+	// a RST shouldn't reset the enclave, since the RST came from the enclave and
+	// means that it has already reset this peer.
 	rstMsg := &pb.PeerMessage{
 		PeerId: serverID[:],
 		Inner:  &pb.PeerMessage_Rst{Rst: true},
 	}
-	if err = peerClient.Send(rstMsg); err != nil {
-		t.Fatalf("Send(rst) = %v, want %v", err, nil)
+	if err = peerClient.Send(rstMsg); err == nil {
+		// for an abandoned client, we drop a rst with an error message to avoid
+		// spinning up a TCP connection with the peer just to send it an "I don't
+		// like you" message.
+		t.Fatalf("Send(rst) = nil, want err")
+	} else if !reflect.DeepEqual(resetter, testResetter{}) {
+		t.Fatalf("Send(rst) reset serverID: %v %v", resetter, serverID)
 	}
 
+	// a SYN should recreate the connection
+	synMsg := &pb.PeerMessage{
+		PeerId: serverID[:],
+		Inner:  &pb.PeerMessage_Syn{Syn: []byte{1, 2, 3}},
+	}
+	if err = peerClient.Send(synMsg); err != nil {
+		t.Fatalf("Send(syn) = %v, want nil", err)
+	}
 	if err := <-serverDone; err != nil {
 		t.Fatalf("server failed with: %v", err)
 	}
 
-	if expected := (sequenceNumber{1, 10}); server.seqno != expected {
+	if expected := (sequenceNumber{2, 0}); server.seqno != expected {
 		t.Fatalf("server recieved seqno=%v, want %v", server.seqno, expected)
 	}
 	if len(resetter) != 0 {
