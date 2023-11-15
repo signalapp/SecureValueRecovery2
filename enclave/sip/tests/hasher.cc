@@ -19,10 +19,10 @@
 
 namespace svr2::sip {
 
-class HashInts : public Hasher {
+class HashInts : public Half {
  public:
   size_t operator()(const uint32_t& a) const {
-    return Hash(&a, sizeof(a));
+    return HashU64(&a, sizeof(a));
   }
 };
 

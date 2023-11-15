@@ -15,7 +15,7 @@ namespace svr2::peerid {
 static std::array<uint8_t, 32> zero_id = {0};
 
 size_t PeerIDHasher::operator()(const PeerID& id) const {
-  return Hash(id.id_.data(), id.id_.size());
+  return HashU64(id.id_.data(), id.id_.size());
 }
 
 PeerID::PeerID(const uint8_t array[32]) {

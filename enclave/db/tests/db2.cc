@@ -260,7 +260,7 @@ TEST_F(DB2Test, HashMatch) {
     ASSERT_NE(hash, new_hash);  // hash changes with every database change.
     hash = new_hash;
   }
-  ASSERT_EQ(hash, 12265048344932456008ULL);
+  ASSERT_EQ(hash, 12543638464623320991ULL);
 }
 
 TEST_F(DB2Test, HashMatchBackwards) {
@@ -282,7 +282,7 @@ TEST_F(DB2Test, HashMatchBackwards) {
     auto resp = dynamic_cast<client::Response*>(db.Run(&ctx, log));
     ASSERT_EQ(client::BackupResponse::OK, resp->backup().status());
   }
-  ASSERT_EQ(util::BigEndian64FromBytes(db.Hash(&ctx).data()), 12265048344932456008ULL);
+  ASSERT_EQ(util::BigEndian64FromBytes(db.Hash(&ctx).data()), 12543638464623320991ULL);
 }
 
 TEST_F(DB2Test, LoadRowsThenRecover) {

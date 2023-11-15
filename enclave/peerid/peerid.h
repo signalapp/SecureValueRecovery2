@@ -16,7 +16,7 @@ namespace svr2::peerid {
 
 class PeerID;
 
-class PeerIDHasher : public sip::Hasher {
+class PeerIDHasher : public sip::Half {
  public:
   size_t operator()(const PeerID& id) const;
 };

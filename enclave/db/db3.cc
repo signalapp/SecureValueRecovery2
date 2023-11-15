@@ -15,9 +15,7 @@
 #include "context/context.h"
 #include "metrics/metrics.h"
 #include "proto/clientlog.pb.h"
-extern "C" {
-#include "sip/siphash.h"
-}  // extern "C"
+#include "sip/hasher.h"
 
 namespace svr2::db {
 
@@ -202,8 +200,6 @@ std::pair<std::string, error::Error> DB3::LoadRowsFromProtos(context::Context* c
   return std::make_pair(row->backup_id(), error::OK);
 }
 
-static std::array<uint8_t, 16> db3_sip_hash = {'S', 'V', 'R', 'd', 'b', '3', 0};
-
 std::array<uint8_t, 16> DB3::HashRow(const BackupID& id, const Row& row) {
   std::array<uint8_t,
       BACKUP_ID_SIZE +  // id
@@ -216,12 +212,7 @@ std::array<uint8_t, 16> DB3::HashRow(const BackupID& id, const Row& row) {
   memcpy(scratch.data() + offset, row.priv.data(), row.priv.size()); offset += SCALAR_SIZE;
   CHECK(offset == scratch.size());
 
-  std::array<uint8_t, 16> out;
-  siphash(
-      scratch.data(), scratch.size(),
-      db3_sip_hash.data(),  // must be constant to be comparable across replicas.
-      out.data(), out.size());
-  return out;
+  return sip::FullZero.Hash16(scratch.data(), scratch.size());
 }
 
 std::array<uint8_t, 32> DB3::Hash(context::Context* ctx) const {

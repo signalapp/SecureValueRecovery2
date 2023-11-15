@@ -10,19 +10,20 @@
 #include "util/constant.h"
 #include "metrics/metrics.h"
 #include "env/env.h"
-extern "C" {
-#include "sip/siphash.h"
-}  // extern "C"
+#include "sip/hasher.h"
 
 namespace svr2::merkle {
 
 const Hash zero_hash = {0};
-static std::array<uint8_t, 16> sip_key = {0};
+static std::array<uint8_t, 16> initial_sip_key = {0};
+static sip::Full sip_full(initial_sip_key);
 
 static std::once_flag sip_key_once;
 static void SetSIPKey() {
   LOG(INFO) << "Setting SIP key to random bytes";
-  env::environment->RandomBytes(sip_key.data(), sip_key.size());
+  std::array<uint8_t, 16> new_sip_key;
+  env::environment->RandomBytes(new_sip_key.data(), new_sip_key.size());
+  sip_full.ResetKey(new_sip_key);
 }
 
 Part::Part(Node* parent) : parent_(parent) {
@@ -32,11 +33,7 @@ Part::Part(Hash* hptr) : parent_(nullptr), hptr_(hptr) {}
 Part::Part() : parent_(nullptr), hptr_(nullptr) {}
 
 void Node::ComputeCurrent(Hash* hash) const {
-  CHECK(MERKLE_HASH_SIZE == 8);
-  siphash(
-      hashes_[0].data(), MERKLE_NODE_SIZE * MERKLE_HASH_SIZE,
-      sip_key.data(),
-      hash->data(), hash->size());
+  *hash = sip_full.Hash8(hashes_[0].data(), MERKLE_HASH_SIZE * MERKLE_NODE_SIZE);
 }
 
 void Node::Init() {
