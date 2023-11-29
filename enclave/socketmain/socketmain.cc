@@ -104,9 +104,9 @@ error::Error AcceptSocket(int sock_type, int port, int* afd) {
   shutdown(fd, SHUT_RDWR);
   close(fd);
   int tcp_nodelay = 1;
-  RETURN_ERRNO_ERROR_UNLESS(
-      0 == setsockopt(*afd, IPPROTO_TCP, TCP_NODELAY, &tcp_nodelay, sizeof(tcp_nodelay)),
-      SocketMain_SocketSetOpt);
+  if (sock_type == AF_INET) {
+    RETURN_ERRNO_ERROR_UNLESS(0 == setsockopt(*afd, IPPROTO_TCP, TCP_NODELAY, &tcp_nodelay, sizeof(tcp_nodelay)), SocketMain_SocketSetOpt);
+  }
   LOG(INFO) << "Sucessfully accepted connection on FD=" << *afd;
   return error::OK;
 }
