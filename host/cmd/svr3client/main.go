@@ -18,6 +18,7 @@ import (
 	"os"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/gtank/ristretto255"
@@ -29,6 +30,7 @@ import (
 
 var (
 	loadtestCmd = flag.NewFlagSet("loadtest", flag.ExitOnError)
+	testKeyCmd  = flag.NewFlagSet("testkey", flag.ExitOnError)
 
 	user                     = toUser("test123")
 	host, enclaveID, authKey string
@@ -37,6 +39,7 @@ var (
 
 var subcommands = map[string]*flag.FlagSet{
 	loadtestCmd.Name(): loadtestCmd,
+	testKeyCmd.Name():  testKeyCmd,
 }
 
 func main() {
@@ -57,6 +60,12 @@ func main() {
 		count := loadtestCmd.Int("count", 1, "total count to run")
 		loadtestCmd.Parse(os.Args[2:])
 		if err := runLoadTest(*parallel, *count); err != nil {
+			fmt.Fprint(os.Stderr, err.Error())
+			os.Exit(1)
+		}
+	case testKeyCmd.Name():
+		testKeyCmd.Parse(os.Args[2:])
+		if err := runTestKey(); err != nil {
 			fmt.Fprint(os.Stderr, err.Error())
 			os.Exit(1)
 		}
@@ -130,12 +139,24 @@ func runLoadTest(parallel, count int) error {
 	return nil
 }
 
+func runTestKey() error {
+	var randBytes [64]byte
+	if _, err := io.ReadFull(rand.Reader, randBytes[:]); err != nil {
+		return fmt.Errorf("reading random bytes: %w", err)
+	}
+	e := ristretto255.NewElement().FromUniformBytes(randBytes[:])
+	eBytes := e.Encode(nil)
+	fmt.Printf("Test key: %x\n", eBytes)
+	return nil
+}
+
 func bytesForUser(username string) []byte {
 	h := sha256.Sum256([]byte(username))
 	return h[:]
 }
 
 func runCreate(username string, blinded []byte) error {
+	start := time.Now()
 	c, err := newClient(username)
 	if err != nil {
 		return err
@@ -158,6 +179,6 @@ func runCreate(username string, blinded []byte) error {
 	if br.Create.Status != pb.CreateResponse_OK {
 		return fmt.Errorf("backup request not successful: %v", br.Create.Status)
 	}
-	log.Printf("successful: data=pin=%x", b)
+	log.Printf("successful in %v: data=pin=%x", time.Since(start), b)
 	return nil
 }

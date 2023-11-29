@@ -494,4 +494,22 @@ TEST_F(DB3Test, ReplicateManyRows) {
   }
 }
 
+TEST_F(DB3Test, KnownKey) {
+  // std::string blinded_element("\xa8\xca\x6c\x4f\x49\x7d\xc1\x0a\x01\x77\xf7\x44\x76\x15\xd7\x46\xc4\xf6\x0f\xc7\x0e\x4f\xee\xd5\x63\x0c\x71\x27\x08\x75\x81\x54", 32);
+  std::string blinded_element("\x46\x32\x3c\xfb\xf6\x3c\x3f\x7b\x59\xcb\x43\xba\x7b\x14\x2e\xae\x7b\x09\x02\xff\xc2\x20\x85\x90\x9b\x52\x74\xde\x9b\xce\xad\x72", 32);
+  {
+    client::Log3 log;
+    log.set_backup_id(backup_id);
+    auto b = log.mutable_req()->mutable_create();
+    b->set_max_tries(3);
+    b->set_blinded_element(blinded_element);
+    auto priv = DB3::Protocol::NewKey();
+    log.set_create_privkey(util::ByteArrayToString(priv));
+
+    auto resp = dynamic_cast<client::Response3*>(db.Run(&ctx, log));
+    auto r = resp->create();
+    ASSERT_EQ(client::CreateResponse::OK, r.status());
+  }
+}
+
 }  // namespace svr2::db

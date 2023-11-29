@@ -3,7 +3,7 @@ dockall: docker_all
 .PHONY: host
 .PHONY: enclave
 
-all: validate host enclave control
+all: validate host enclave cmds
 
 MAKE_ARGS ?=
 
@@ -27,8 +27,8 @@ enclave_test: | git
 host: enclave | git
 	$(MAKE) $(MAKE_ARGS) -C host all
 
-control: | git
-	$(MAKE) $(MAKE_ARGS) -C host control
+cmds: | git
+	$(MAKE) $(MAKE_ARGS) -C host cmds
 
 clean:
 	$(MAKE) $(MAKE_ARGS) -C enclave clean
