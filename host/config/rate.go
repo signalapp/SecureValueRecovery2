@@ -15,9 +15,14 @@ type RateLimitConfig struct {
 	LeakRateScalar int `yaml:"leakRateScalar"`
 	// The period at which LeakRateScalar additional requests will be allowed
 	LeakRateDuration time.Duration `yaml:"leakRateDuration"`
+	// If true, do no rate limiting.
+	SkipLimiting bool `yaml:"skipLimiting"`
 }
 
 func (r *RateLimitConfig) validate() []string {
+	if r.SkipLimiting {
+		return nil
+	}
 	var errs []string
 	if r.BucketSize < 0 {
 		errs = append(errs, fmt.Sprintf("invalid BucketSize: %v", r.BucketSize))

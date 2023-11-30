@@ -32,8 +32,11 @@ type Limiter interface {
 	Limit(ctx context.Context, key string) error
 }
 
-// NewRedisLimiter returns a Limiter backed by redis
-func NewRedisLimiter(cfg *config.Config) Limiter {
+// NewConfiguredLimiter returns a Limiter backed by redis
+func NewConfiguredLimiter(cfg *config.Config) Limiter {
+	if cfg.Limit.SkipLimiting {
+		return AlwaysAllow
+	}
 	return &redisLimiter{
 		fmt.Sprintf("%s::leaky_bucket", cfg.Redis.Name),
 		redis_rate.Limit{

@@ -18,7 +18,7 @@ func testLimiter(t *testing.T, limitConfig config.RateLimitConfig) Limiter {
 	cfg.Limit = limitConfig
 	s := miniredis.RunT(t)
 	cfg.Redis.Addrs = []string{s.Addr()}
-	return NewRedisLimiter(cfg)
+	return NewConfiguredLimiter(cfg)
 }
 
 func TestRedisLimiter(t *testing.T) {

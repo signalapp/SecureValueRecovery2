@@ -90,7 +90,7 @@ func Start(ctx context.Context, hconfig *config.Config, authenticator auth.Auth,
 	// now that everything's wired up, start processing enclave requests
 	g.Go(func() error { return dispatcher.Run(ctx, peerClient) })
 
-	rateLimiter := rate.NewRedisLimiter(hconfig)
+	rateLimiter := rate.NewConfiguredLimiter(hconfig)
 
 	// set up http server
 	clientMux := http.NewServeMux()
