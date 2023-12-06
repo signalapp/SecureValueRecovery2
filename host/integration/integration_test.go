@@ -49,6 +49,37 @@ const (
 	enclaveNitro = "nitro"
 )
 
+type prefixWriter struct {
+	written bool
+	prefix  []byte
+	to      io.Writer
+}
+
+func (p *prefixWriter) Write(bs []byte) (int, error) {
+	lastStart := 0
+	for i, b := range bs {
+		if !p.written {
+			if n, err := p.to.Write(bs[lastStart:i]); err != nil {
+				return lastStart + n, err
+			}
+			lastStart = i
+			if _, err := p.to.Write(p.prefix); err != nil {
+				return i, err
+			}
+			p.written = true
+		} else if b == '\n' {
+			p.written = false
+		}
+	}
+	if n, err := p.to.Write(bs[lastStart:]); err != nil {
+		return lastStart + n, err
+	}
+	return len(bs), nil
+}
+func newPrefixWriter(s string, to io.Writer) io.Writer {
+	return &prefixWriter{to: to, prefix: []byte(s)}
+}
+
 func userName(i int) string {
 	return fmt.Sprintf("%032x", i)
 }
@@ -316,18 +347,15 @@ func start(enclaveType string) group {
 			args...)
 		cmd.Env = append(cmd.Env, "AUTH_SECRET="+base64.StdEncoding.EncodeToString([]byte(authSecret)))
 
-		stderr, err := cmd.StderrPipe()
-		if err != nil {
-			log.Fatal(err)
-		}
+		w := newPrefixWriter(fmt.Sprintf("[%d] ", i), os.Stderr)
+		cmd.Stdout = w
+		cmd.Stderr = w
+
 		if err = cmd.Start(); err != nil {
 			log.Fatalf("cmd start: %v", err)
 		}
 
-		peerIndex := i
 		eg.Go(func() error {
-			slurp, _ := io.ReadAll(stderr)
-			log.Printf("peer(%v): %s\n", peerIndex, slurp)
 			return cmd.Wait()
 		})
 	}
