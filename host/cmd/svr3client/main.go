@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -34,9 +35,9 @@ var (
 	loadtestCmd = flag.NewFlagSet("loadtest", flag.ExitOnError)
 	testKeyCmd  = flag.NewFlagSet("testkey", flag.ExitOnError)
 
-	user                                   = toUser("test123")
-	host, enclaveID, authKey, statFilename string
-	useTLS                                 bool
+	user                                    = toUser("test123")
+	hosts, enclaveID, authKey, statFilename string
+	useTLS                                  bool
 )
 
 var subcommands = map[string]*flag.FlagSet{
@@ -46,7 +47,7 @@ var subcommands = map[string]*flag.FlagSet{
 
 func main() {
 	for _, fs := range subcommands {
-		fs.StringVar(&host, "host", "backend1.svr3.staging.signal.org", "endpoint to connect to")
+		fs.StringVar(&hosts, "host", "backend1.svr3.staging.signal.org", "endpoint(s) to connect to (comma separated)")
 		fs.StringVar(&enclaveID, "enclaveId", "7d44d147f38d102c2874ffcd92302398ac2b38592633bb20c75dce9c171fe877", "mrenclave to use")
 		fs.StringVar(&authKey, "authKey", "", "base64 encoded shared svr auth key")
 		fs.Func("user", "basic auth username. If it's not a 32 character hex string it will be hashed", func(s string) error {
@@ -62,7 +63,8 @@ func main() {
 		parallel := loadtestCmd.Int("parallel", 1, "amount of parallelization")
 		count := loadtestCmd.Int("count", 1, "total count to run")
 		loadtestCmd.Parse(os.Args[2:])
-		if err := runLoadTest(*parallel, *count); err != nil {
+		hs := newHostSet(strings.Split(hosts, ","))
+		if err := runLoadTest(*parallel, *count, hs); err != nil {
 			fmt.Fprint(os.Stderr, err.Error())
 			os.Exit(1)
 		}
@@ -84,7 +86,44 @@ func toUser(usernameRaw string) string {
 	return hex.EncodeToString(h[:16])
 }
 
-func newClient(username string) (*client.SVRClient, error) {
+type hostSet struct {
+	mu    sync.Mutex
+	hosts map[string]uint64
+}
+
+func newHostSet(hosts []string) *hostSet {
+	hs := &hostSet{hosts: map[string]uint64{}}
+	for _, h := range hosts {
+		hs.hosts[h] = 0
+	}
+	return hs
+}
+
+func (h *hostSet) getHost() string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	min := uint64(math.MaxUint64)
+	out := ""
+	for host, c := range h.hosts {
+		if min > c {
+			min = c
+			out = host
+		}
+	}
+	min++
+	h.hosts[out] = min
+	log.Printf("using host %q (now %d outstanding)", out, min)
+	return out
+}
+func (h *hostSet) returnHost(host string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.hosts[host] -= 1
+}
+
+func newClient(username string, hs *hostSet) (*client.SVRClient, error) {
+	host := hs.getHost()
+	defer hs.returnHost(host)
 	u := url.URL{Scheme: "wss", Host: host, Path: fmt.Sprintf("v1/%s", enclaveID)}
 	if !useTLS {
 		u.Scheme = "ws"
@@ -110,7 +149,7 @@ func newClient(username string) (*client.SVRClient, error) {
 	return client.NewClient(c)
 }
 
-func runLoadTest(parallel, count int) error {
+func runLoadTest(parallel, count int, hs *hostSet) error {
 	count32 := int32(count)
 	create_latencies := make([]int64, count)
 	restore_latencies := make([]int64, count)
@@ -138,7 +177,7 @@ func runLoadTest(parallel, count int) error {
 				user := toUser(fmt.Sprintf("%s_%d", user, u))
 				// Use the same precomputed element everywhere to avoid CPU load on balancer side.
 				var start = time.Now()
-				if err := runCreate(user, eBytes); err != nil {
+				if err := runCreate(user, eBytes, hs); err != nil {
 					log.Printf("user %d failed create: %v", u, err)
 				}
 				latency := time.Since(start).Microseconds()
@@ -165,7 +204,7 @@ func runLoadTest(parallel, count int) error {
 				user := toUser(fmt.Sprintf("%s_%d", user, u))
 				// Use the same precomputed element everywhere to avoid CPU load on balancer side.
 				var start = time.Now()
-				if err := runRestore(user, eBytes); err != nil {
+				if err := runRestore(user, eBytes, hs); err != nil {
 					log.Printf("user %d failed restore: %v", u, err)
 				}
 
@@ -248,9 +287,9 @@ func bytesForUser(username string) []byte {
 	return h[:]
 }
 
-func runCreate(username string, blinded []byte) error {
+func runCreate(username string, blinded []byte, hs *hostSet) error {
 	start := time.Now()
-	c, err := newClient(username)
+	c, err := newClient(username, hs)
 	if err != nil {
 		return err
 	}
@@ -276,9 +315,9 @@ func runCreate(username string, blinded []byte) error {
 	return nil
 }
 
-func runRestore(username string, blinded []byte) error {
+func runRestore(username string, blinded []byte, hs *hostSet) error {
 	start := time.Now()
-	c, err := newClient(username)
+	c, err := newClient(username, hs)
 	if err != nil {
 		return err
 	}
