@@ -160,6 +160,7 @@ CORE_LIBRARIES_PRE_ENV = \
   groupclock \
   peers \
   peerid \
+  minimums \
   sender \
   util \
   context \

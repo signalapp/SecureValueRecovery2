@@ -7,6 +7,7 @@
 //TESTDEP env
 //TESTDEP env/test
 //TESTDEP context
+//TESTDEP minimums
 //TESTDEP metrics
 //TESTDEP proto
 //TESTDEP protobuf-lite
@@ -44,7 +45,7 @@ class AttestSEVTest : public ::testing::Test {
 TEST_F(AttestSEVTest, Validate) {
   auto [report, err1] = ReportFromUnverifiedAttestation(attestation_);
   ASSERT_EQ(error::OK, err1);
-  auto [key, err2] = KeyFromVerifiedAttestation(report, attestation_, valid_timestamp_);
+  auto [data, err2] = DataFromVerifiedAttestation(report, attestation_, valid_timestamp_);
   ASSERT_EQ(error::OK, err2);
 }
 
@@ -58,7 +59,7 @@ TEST_F(AttestSEVTest, SigningDetectsBitFlips) {
     for (uint8_t b = 1; b > 0; b<<=1) {
       e2e::Attestation a = attestation_;
       (*a.mutable_evidence())[i] ^= b;
-      auto [key, err] = KeyFromVerifiedAttestation(report, a, valid_timestamp_);
+      auto [data, err] = DataFromVerifiedAttestation(report, a, valid_timestamp_);
       ASSERT_NE(err, error::OK);
     }
   }
@@ -67,7 +68,7 @@ TEST_F(AttestSEVTest, SigningDetectsBitFlips) {
 TEST_F(AttestSEVTest, SigningPastTimestamp) {
   auto [report, err1] = ReportFromUnverifiedAttestation(attestation_);
   ASSERT_EQ(error::OK, err1);
-  auto [key, err2] = KeyFromVerifiedAttestation(report, attestation_, valid_timestamp_ - 86400 * 7);
+  auto [data, err2] = DataFromVerifiedAttestation(report, attestation_, valid_timestamp_ - 86400 * 7);
   ASSERT_EQ(error::AttestationSEV_CertificateChainVerify, err2);
 }
 
@@ -78,7 +79,7 @@ TEST_F(AttestSEVTest, InvalidASKSignature) {
   ASSERT_TRUE(sse.SerializeToString(attestation_.mutable_endorsements()));
   auto [report, err1] = ReportFromUnverifiedAttestation(attestation_);
   ASSERT_EQ(error::OK, err1);
-  auto [key, err2] = KeyFromVerifiedAttestation(report, attestation_, valid_timestamp_);
+  auto [data, err2] = DataFromVerifiedAttestation(report, attestation_, valid_timestamp_);
   ASSERT_EQ(error::AttestationSEV_CertificateChainVerify, err2);
 }
 
@@ -89,7 +90,7 @@ TEST_F(AttestSEVTest, InvalidVCEKSignature) {
   ASSERT_TRUE(sse.SerializeToString(attestation_.mutable_endorsements()));
   auto [report, err1] = ReportFromUnverifiedAttestation(attestation_);
   ASSERT_EQ(error::OK, err1);
-  auto [key, err2] = KeyFromVerifiedAttestation(report, attestation_, valid_timestamp_);
+  auto [data, err2] = DataFromVerifiedAttestation(report, attestation_, valid_timestamp_);
   ASSERT_EQ(error::AttestationSEV_CertificateChainVerify, err2);
 }
 

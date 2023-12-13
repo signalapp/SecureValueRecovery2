@@ -10,6 +10,7 @@
 
 #include "peers/peers.h"
 #include "util/macros.h"
+#include "util/bytes.h"
 #include "env/env.h"
 #include "sip/halfsiphash.h"
 #include "util/endian.h"
@@ -165,13 +166,14 @@ error::Error Peer::FinishConnection(
   }
   auto remote_attestation = conn->attestation();
   auto ts = parent_->CurrentTime();
-  auto [att_key, att_err] = env::environment->Attest(ctx, ts, remote_attestation);
-  if(att_err != error::OK) {
-    return att_err;
-  }
-  if(!util::ConstantTimeEquals(att_key, this->ID().Get())) {
+  auto [att, att_err] = env::environment->Attest(ctx, ts, remote_attestation);
+  RETURN_IF_ERROR(att_err);
+  auto [key, key_err] = util::StringToByteArray<32>(att.public_key());
+  RETURN_IF_ERROR(key_err);
+  if (!util::ConstantTimeEquals(key, this->ID().Get())) {
     return error::Peers_FinishIDMismatch; 
   }
+  RETURN_IF_ERROR(parent_->Minimums()->CheckValues(ctx, att.minimum_values()));
 
   NoiseBuffer buf = noise::BufferInputFromString(conn->mutable_handshake());
   if (NOISE_ERROR_NONE != noise_handshakestate_read_message(local_handshake.get(), &buf, nullptr)) {
@@ -186,6 +188,7 @@ error::Error Peer::FinishConnection(
     return COUNTED_ERROR(Peers_FinishSplit);
   }
 
+  minimums_ = att.minimum_values();
   tx_.reset(tx);
   rx_.reset(rx);
   auto e2e_message = ctx->Protobuf<e2e::EnclaveToEnclaveMessage>();
@@ -292,13 +295,14 @@ error::Error Peer::Accept(
   // validate the attestation
   auto remote_attestation = conn_request->attestation();
   auto ts = parent_->CurrentTime();
-  auto [att_key, att_err] = env::environment->Attest(ctx, ts, remote_attestation);
+  auto [att, att_err] = env::environment->Attest(ctx, ts, remote_attestation);
   if(att_err != error::OK) {
     return att_err;
   }
-  if(!util::ConstantTimeEquals(att_key, this->ID().Get())) {
+  if(!util::ConstantTimeEquals(att.public_key(), this->ID().Get())) {
     return error::Peers_AcceptIDMismatch; 
   }
+  RETURN_IF_ERROR(parent_->Minimums()->CheckValues(ctx, att.minimum_values()));
 
   NoiseBuffer read_buf = noise::BufferInputFromString(conn_request->mutable_handshake());
   int err = 0;
@@ -331,6 +335,7 @@ error::Error Peer::Accept(
   if (NOISE_ERROR_NONE != noise_handshakestate_split(local_handshake.get(), &tx, &rx)) {
     return COUNTED_ERROR(Peers_AcceptSplit);
   }
+  minimums_ = att.minimum_values();
   tx_.reset(tx);
   rx_.reset(rx);
 
@@ -368,6 +373,7 @@ void Peer::InternalDisconnect() {
   tx_.reset(nullptr);
   rx_.reset(nullptr);
   last_attestation_ = 0;
+  minimums_.Clear();
 }
 
 void Peer::SendRst(context::Context* ctx, const peerid::PeerID& id) {
@@ -407,14 +413,15 @@ error::Error Peer::Reset(const noise::DHState& priv, int noise_role) {
 
 error::Error Peer::CheckNextAttestation(context::Context* ctx, const e2e::Attestation& a) {
   auto now = parent_->CurrentTime();
-  auto [key, err] = env::environment->Attest(ctx, now, a);
+  auto [att, err] = env::environment->Attest(ctx, now, a);
   RETURN_IF_ERROR(err);
-  if (!util::ConstantTimeEquals(key, id_.Get())) {
+  if (!util::ConstantTimeEquals(att.public_key(), id_.Get())) {
     LOG(ERROR) << "Peer " << id_ << " sent attestation with incorrect key";
     return COUNTED_ERROR(Peers_AttestationKeyChanged);
   }
   LOG(DEBUG) << "Peer " << id_ << " re-attested at " << now;
   last_attestation_ = now;
+  minimums_ = att.minimum_values();
   return error::OK;
 }
 
@@ -441,10 +448,20 @@ void Peer::PopulateConnectionStatus(context::Context* ctx, ConnectionStatus* sta
   status->set_last_attestation_unix_secs(last_attestation_);
 }
 
-PeerManager::PeerManager()
+void Peer::CheckMinimums(context::Context* ctx) {
+  ACQUIRE_LOCK(mu_, ctx, lock_peer);
+  if (auto err = parent_->Minimums()->CheckValues(ctx, minimums_); err != error::OK) {
+    LOG(WARNING) << "Minimums for " << id_ << " failed, disconnecting: " << err;
+    InternalDisconnect();
+    SendRst(ctx, id_);
+  }
+}
+
+PeerManager::PeerManager(minimums::Minimums* mins)
     : dhstate_(noise::WrapDHState(nullptr)),
       init_success_(false),
-      time_(0) {}
+      time_(0),
+      minimums_(mins) {}
 PeerManager::~PeerManager() {}
 
 PeerState PeerManager::PeerState(context::Context* ctx, const peerid::PeerID& id) const {
@@ -470,7 +487,10 @@ error::Error PeerManager::Init(context::Context* ctx) {
     return COUNTED_ERROR(Peers_NewKeyPublic);
   }
 
-  auto [evidence_and_endorsements, err] = env::environment->Evidence(ctx, public_key, enclaveconfig::RaftGroupConfig());
+  enclaveconfig::AttestationData data;
+  *data.mutable_public_key() = util::ByteArrayToString(public_key);
+  // It's assumed that env->Evidence will fill in data.minimums.
+  auto [evidence_and_endorsements, err] = env::environment->Evidence(ctx, data);
   RETURN_IF_ERROR(err);
 
   ACQUIRE_LOCK(mu_, ctx, lock_peermanager);
@@ -491,7 +511,10 @@ const peerid::PeerID& PeerManager::ID() const {
 }
 
 error::Error PeerManager::RefreshAttestation(context::Context* ctx) {
-  auto [evidence_and_endorsements, err] = env::environment->Evidence(ctx, ID().Get(), enclaveconfig::RaftGroupConfig());
+  enclaveconfig::AttestationData att;
+  *att.mutable_public_key() = util::ByteArrayToString(ID().Get());
+  // It's assumed that env->Evidence will fill in data.minimums.
+  auto [evidence_and_endorsements, err] = env::environment->Evidence(ctx, att);
   if (err != error::OK) {
     COUNTER(peers, attestation_refresh_failure)->Increment();
     return err;
@@ -674,6 +697,13 @@ void PeerManager::SetPeerAttestationTimestamp(context::Context* ctx, util::UnixS
   ACQUIRE_LOCK(mu_, ctx, lock_peermanager);
   for (auto iter = peers_.begin(); iter != peers_.end(); ++iter) {
     iter->second->MaybeDisconnectIfAttestationTooOld(ctx, secs, attestation_timeout);
+  }
+}
+
+void PeerManager::MinimumsUpdated(context::Context* ctx) {
+  ACQUIRE_LOCK(mu_, ctx, lock_peermanager);
+  for (auto iter = peers_.begin(); iter != peers_.end(); ++iter) {
+    iter->second->CheckMinimums(ctx);
   }
 }
 

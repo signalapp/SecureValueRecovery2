@@ -139,7 +139,7 @@ error::Error Core::Init(context::Context* ctx, const enclaveconfig::EnclaveConfi
   // The PeerManager will create a key pair, set the public key as its ID, and obtain attestation
   // evidence and endorsements as needed.
   LOG(INFO) << "Setting up peer DHState";
-  auto peer_manager = std::make_unique<peers::PeerManager>();
+  auto peer_manager = std::make_unique<peers::PeerManager>(&minimums_);
   RETURN_IF_ERROR(peer_manager->Init(ctx));
 
   LOG(INFO) << "Setting up remaining core";
@@ -154,6 +154,7 @@ error::Error Core::Init(context::Context* ctx, const enclaveconfig::EnclaveConfi
 
   SendTimestampToAll(ctx);
 
+  LOG(INFO) << "Core::Init success";
   return error::OK;
 }
 
@@ -1593,10 +1594,20 @@ void Core::RaftHandleCommittedLogs(context::Context* ctx) {
     raft_.loaded.UpdateLastAppliedLog(ctx, idx);
     LOG(VERBOSE) << "at db_last_applied_log " << idx;
     GAUGE(core, last_index_applied_to_db)->Set(idx);
-    if (entry.has_membership_change()) {
-      HandleRaftMembershipChange(ctx, idx, entry.term(), entry.membership_change());
+    db::DB::Response* response = nullptr;
+    switch (entry.inner_case()) {
+      case raft::LogEntry::kMembershipChange: {
+        HandleRaftMembershipChange(ctx, idx, entry.term(), entry.membership_change());
+      } break;
+      case raft::LogEntry::kData: {
+        response = RaftApplyLogToDatabase(ctx, idx, entry);
+      } break;
+      case raft::LogEntry::kMinimums: {
+        HandleRaftMinimumsChange(ctx, idx, entry.term(), entry.minimums());
+      } break;
+      case raft::LogEntry::INNER_NOT_SET: {
+      } break;
     }
-    db::DB::Response* response = RaftApplyLogToDatabase(ctx, idx, entry);
     // Unless this log contained a valid client transaction,
     // [response] will be null at this point.
     HandleLogTransactionsForRaftLog(ctx, idx, entry, response);
@@ -1635,16 +1646,22 @@ void Core::HandleRaftMembershipChange(
   }
 }
 
+void Core::HandleRaftMinimumsChange(
+    context::Context* ctx,
+    raft::LogIdx idx,
+    raft::TermId term,
+    const minimums::MinimumLimits& minimums) {
+  if (auto err = minimums_.UpdateSet(ctx, minimums); err != error::OK) {
+    LOG(ERROR) << "Failed to update minimums from raft group: " << err;
+    CHECK(nullptr == "failed to update minimums from raft group");
+  }
+  peer_manager_->MinimumsUpdated(ctx);
+}
+
 db::DB::Response* Core::RaftApplyLogToDatabase(
     context::Context* ctx,
     raft::LogIdx idx,
     const raft::LogEntry& committed_entry) {
-  if (committed_entry.data().size() == 0) {
-    // This is an internal-to-Raft log, we don't need to care.
-    // These are generated on leader election, and will eventually
-    // be used for membership changes as well.
-    return nullptr;
-  }
   auto client_log = db_protocol_->LogPB(ctx);
   if (!client_log->ParseFromString(committed_entry.data())) {
     LOG(ERROR) << "raft log message does not parse: " << idx;

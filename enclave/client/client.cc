@@ -217,16 +217,18 @@ error::Error ClientManager::RefreshAttestation(context::Context* ctx, const encl
 }
 
 std::pair<e2e::Attestation, error::Error> ClientManager::GetAttestation(context::Context* ctx, const noise::DHState& dhstate, const enclaveconfig::RaftGroupConfig& config) {
+  enclaveconfig::AttestationData att;
+  att.mutable_public_key()->resize(32);
   e2e::Attestation attestation;
   // get attestation for its public key
-  uint8_t public_key[32];
-  if (NOISE_ERROR_NONE != noise_dhstate_get_public_key(dhstate.get(), public_key, sizeof(public_key))) {
+  if (NOISE_ERROR_NONE != noise_dhstate_get_public_key(
+      dhstate.get(),
+      reinterpret_cast<uint8_t*>(att.mutable_public_key()->data()),
+      32)) {
     return std::make_pair(attestation, error::Peers_NewKeyPublic);
   }
-
-  env::PublicKey public_key_array {};
-  std::copy(std::begin(public_key), std::end(public_key), std::begin(public_key_array));
-  return env::environment->Evidence(ctx, public_key_array, config);
+  att.mutable_group_config()->MergeFrom(config);
+  return env::environment->Evidence(ctx, att);
 }
 
 std::pair<noise::DHState, e2e::Attestation> ClientManager::ClientArgs(context::Context* ctx) const {

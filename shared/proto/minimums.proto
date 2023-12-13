@@ -1,0 +1,19 @@
+// Copyright 2023 Signal Messenger, LLC
+// SPDX-License-Identifier: AGPL-3.0-only
+
+syntax = "proto3";
+
+package svr2.minimums;
+option go_package = "github.com/signalapp/svr2/proto";
+option optimize_for = LITE_RUNTIME;
+
+message MinimumLimits {
+  // Minimums have the following rules:
+  // - Once a minimum is added to the set, its key cannot be removed
+  // - A minimum's value can only increase over time
+  map<string, bytes> lim = 1;
+}
+
+message MinimumValues {
+  map<string, bytes> val = 1;
+}

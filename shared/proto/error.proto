@@ -71,6 +71,7 @@ enum Error {
   Env_MissingMRENCLAVE = 312;
   Env_SerializeConfigForEvidence = 313;
   Env_MallinfoFailure = 314;
+  Env_SerializeMinimumsForEvidence = 315;
 
   Peers_NS = 400;
   Peers_SendBeforeConnect = 401;
@@ -262,4 +263,14 @@ enum Error {
   Merkle_NS = 1800;
   Merkle_VerifyLeaf = 1801;
   Merkle_VerifyNode = 1802;
+
+  Minimums_NS = 1900;
+  Minimums_KeyMissing = 1901;
+  Minimums_LimitDecreased = 1902;
+  Minimums_SizeMismatch = 1903;
+  Minimums_EntryEmpty = 1904;
+  Minimums_KeyEmpty = 1905;
+  Minimums_ValueTooLow = 1906;
+  Minimums_ValueSize = 1907;
+  Minimums_ValueEmpty = 1908;
 };

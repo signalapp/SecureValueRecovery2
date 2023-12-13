@@ -12,6 +12,7 @@
 //TESTDEP env
 //TESTDEP env/test
 //TESTDEP util
+//TESTDEP minimums
 //TESTDEP metrics
 //TESTDEP proto
 //TESTDEP protobuf-lite
@@ -47,8 +48,8 @@ class PeerManagerTest : public ::testing::Test {
   }
 
   void SetUp() {
-    mgr1 = std::make_unique<PeerManager>();
-    mgr2 = std::make_unique<PeerManager>();
+    mgr1 = std::make_unique<PeerManager>(&min1);
+    mgr2 = std::make_unique<PeerManager>(&min2);
     ASSERT_EQ(error::OK, mgr1->Init(&ctx));
     ASSERT_EQ(error::OK, mgr2->Init(&ctx));
     mgr1->SetPeerAttestationTimestamp(&ctx, now, ATTESTATION_TIMEOUT);
@@ -77,6 +78,8 @@ class PeerManagerTest : public ::testing::Test {
   }
 
   google::protobuf::Arena arena;
+  minimums::Minimums min1;
+  minimums::Minimums min2;
   std::unique_ptr<PeerManager> mgr1;
   std::unique_ptr<PeerManager> mgr2;
   util::UnixSecs now = 1000;
@@ -136,7 +139,7 @@ TEST_F(PeerManagerTest, ReInit) {
 }
 
 TEST_F(PeerManagerTest, NoInit) {
-  mgr1 = std::make_unique<PeerManager>();
+  mgr1 = std::make_unique<PeerManager>(&min1);
   e2e::EnclaveToEnclaveMessage* e2e;
   ASSERT_EQ(error::Peers_NoInit, mgr1->ConnectToPeer(&ctx, mgr2->ID()));
   PeerMessage msg;

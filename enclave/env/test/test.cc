@@ -20,10 +20,10 @@ class Environment : public ::svr2::env::Environment {
   DELETE_COPY_AND_ASSIGN(Environment);
   Environment() : ::svr2::env::Environment() {}
   virtual ~Environment() {}
-  virtual std::pair<e2e::Attestation, error::Error> Evidence(context::Context* ctx, const PublicKey& key, const enclaveconfig::RaftGroupConfig& config) const {
+  virtual std::pair<e2e::Attestation, error::Error> Evidence(context::Context* ctx, const enclaveconfig::AttestationData& data) const {
     MEASURE_CPU(ctx, cpu_env_evidence);
     e2e::Attestation attestation;
-    attestation.set_evidence(evidence_prefix + std::string(reinterpret_cast<const char*>(key.data()), key.size()));
+    attestation.set_evidence(evidence_prefix + data.SerializeAsString());
     return std::make_pair(attestation, error::OK);
   }
 
@@ -40,17 +40,19 @@ class Environment : public ::svr2::env::Environment {
     return error::OK;
   }
 
-  virtual std::pair<PublicKey, error::Error> Attest(
+  virtual std::pair<enclaveconfig::AttestationData, error::Error> Attest(
       context::Context* ctx,
       util::UnixSecs now,
       const e2e::Attestation& attestation) const {
     MEASURE_CPU(ctx, cpu_env_attest);
-    PublicKey out = {0};
-    if (attestation.evidence().size() != strlen(evidence_prefix) + out.size()
-        || attestation.evidence().substr(0, strlen(evidence_prefix)) != evidence_prefix) {
+    enclaveconfig::AttestationData out;
+    const size_t prefix_len = strlen(evidence_prefix);
+    if (attestation.evidence().size() < prefix_len) {
       return std::make_pair(out, COUNTED_ERROR(Env_AttestationFailure));
     }
-    memcpy(out.data(), attestation.evidence().data() + strlen(evidence_prefix), out.size());
+    if (!out.ParseFromArray(attestation.evidence().data() + prefix_len, attestation.evidence().size() - prefix_len)) {
+      return std::make_pair(out, COUNTED_ERROR(Env_AttestationFailure));
+    }
     return std::make_pair(out, error::OK);
   }
 

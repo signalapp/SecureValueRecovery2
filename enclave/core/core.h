@@ -24,6 +24,7 @@
 #include "util/ticks.h"
 #include "timeout/timeout.h"
 #include "groupclock/groupclock.h"
+#include "minimums/minimums.h"
 
 namespace svr2::core {
 
@@ -198,6 +199,12 @@ class Core {
           raft::LogIdx idx,
           raft::TermId term,
           const raft::ReplicaGroup& membership_change) REQUIRES(raft_.mu);
+      // Handle a Raft log that changes minimums.
+      void HandleRaftMinimumsChange(
+          context::Context* ctx,
+          raft::LogIdx idx,
+          raft::TermId term,
+          const minimums::MinimumLimits& minimums) REQUIRES(raft_.mu);
       // Attempt to apply the committed log entry to the db::DB.  On success,
       // return a db::DB::Response (owned by [ctx]).  On failure, return
       // nullptr.  Regardless, [committed_entry] is considered to be successfully
@@ -227,6 +234,8 @@ class Core {
   mutable util::mutex config_mu_;
   enclaveconfig::EnclaveConfig enclave_config_ GUARDED_BY(config_mu_);
   const enclaveconfig::RaftGroupConfig raft_config_template_;
+
+  minimums::Minimums minimums_;
 
   enclaveconfig::EnclaveConfig* enclave_config(context::Context* ctx) const EXCLUDES(config_mu_);
 

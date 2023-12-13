@@ -18,7 +18,7 @@ git:
 
 ETARGET ?= all
 
-enclave: enclave_test | git
+enclave: | git
 	$(MAKE) $(MAKE_ARGS) -C enclave $(ETARGET)
 
 enclave_test: | git

@@ -21,6 +21,7 @@
 #include "peerid/peerid.h"
 #include "groupclock/groupclock.h"
 #include "util/mutex.h"
+#include "minimums/minimums.h"
 
 // Within the peer manager, peers can make the following state transitions.  The normal
 // transition paths are:
@@ -109,6 +110,8 @@ class Peer {
   // Send a `rst` to the given peer ID.
   static void SendRst(context::Context* ctx, const peerid::PeerID& id) EXCLUDES(mu_);
 
+  void CheckMinimums(context::Context* ctx) EXCLUDES(mu_);
+
  private:
   // Resets state to DISCONNECTED.
   void InternalDisconnect() REQUIRES(mu_);
@@ -141,6 +144,7 @@ class Peer {
   noise::CipherState rx_ GUARDED_BY(mu_);
   const PeerManager* const parent_;
   util::UnixSecs last_attestation_ GUARDED_BY(mu_);
+  minimums::MinimumValues minimums_ GUARDED_BY(mu_);
 };
 
 // PeerManager allows messages to be sent to and received from peers.
@@ -173,7 +177,7 @@ class Peer {
 class PeerManager {
  public:
   DELETE_COPY_AND_ASSIGN(PeerManager);
-  PeerManager();
+  PeerManager(minimums::Minimums* mins);  // *mins must outlive *this.
   ~PeerManager();
 
   error::Error Init(context::Context* ctx) EXCLUDES(mu_);
@@ -231,8 +235,11 @@ class PeerManager {
   void PeerStatus(context::Context* ctx, const peerid::PeerID& id, ConnectionStatus* status) const;
 
   void SetPeerAttestationTimestamp(context::Context* ctx, util::UnixSecs secs, util::UnixSecs attestation_timeout) EXCLUDES(mu_);
+  void MinimumsUpdated(context::Context* ctx) EXCLUDES(mu_);
 
   util::UnixSecs CurrentTime() const { return time_.load(); }
+
+  minimums::Minimums* Minimums() const { return minimums_; }  // minimums_ does its own locking.
 
  private:
   std::pair<noise::DHState, e2e::Attestation*> ConnectionArgs(context::Context* ctx) EXCLUDES(mu_);
@@ -254,6 +261,7 @@ class PeerManager {
   e2e::Attestation most_recent_attestation_ GUARDED_BY(mu_);
   std::atomic<bool> init_success_;
   std::atomic<util::UnixSecs> time_;
+  minimums::Minimums* minimums_;
 };
 
 }  // namespace svr2::peers

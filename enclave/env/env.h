@@ -26,10 +26,9 @@ class Environment {
   // Given a 32-byte key, return evidence of that key (an OpenEnclave report).
   virtual std::pair<e2e::Attestation, error::Error> Evidence(
       context::Context* ctx,
-      const PublicKey& key,
-      const enclaveconfig::RaftGroupConfig& config) const = 0;
+      const enclaveconfig::AttestationData& attestation) const = 0;
   // Given evidence and endorsements, extract the key.
-  virtual std::pair<PublicKey, error::Error> Attest(
+  virtual std::pair<enclaveconfig::AttestationData, error::Error> Attest(
       context::Context* ctx,
       util::UnixSecs now,
       const e2e::Attestation& attestation) const = 0;

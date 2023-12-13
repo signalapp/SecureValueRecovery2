@@ -17,6 +17,7 @@
 #include "svr2/svr2_t.h"
 #include "util/constant.h"
 #include "util/log.h"
+#include "util/bytes.h"
 
 namespace svr2::env {
 namespace sgx {
@@ -24,6 +25,8 @@ namespace sgx {
 static const char* unattested_evidence_prefix = "UNATTESTED EVIDENCE:";
 static const char* custom_claim_pk = "pk";
 static const char* custom_claim_config = "config";
+static const char* custom_claim_minimum_limits = "minimum_limits";
+
 class Environment : public ::svr2::env::Environment {
  public:
   DELETE_COPY_AND_ASSIGN(Environment);
@@ -44,19 +47,20 @@ class Environment : public ::svr2::env::Environment {
 
   virtual std::pair<e2e::Attestation, error::Error> Evidence(
       context::Context* ctx,
-      const PublicKey& key,
-      const enclaveconfig::RaftGroupConfig& config) const {
+      const enclaveconfig::AttestationData& attestation) const {
     MEASURE_CPU(ctx, cpu_env_evidence);
-    e2e::Attestation attestation;
+    e2e::Attestation out;
     if (simulated_) {
-      attestation.set_evidence(
-          unattested_evidence_prefix +
-          std::string(reinterpret_cast<const char*>(key.data()), key.size()));
-      return std::make_pair(attestation, error::OK);
+      out.set_evidence(unattested_evidence_prefix + attestation.SerializeAsString());
+      return std::make_pair(out, error::OK);
     }
     std::string serialized_config;
-    if (!config.SerializeToString(&serialized_config)) {
+    if (!attestation.group_config().SerializeToString(&serialized_config)) {
       return std::make_pair(e2e::Attestation(), COUNTED_ERROR(Env_SerializeConfigForEvidence));
+    }
+    std::string serialized_minimums;
+    if (!attestation.minimum_limits().SerializeToString(&serialized_minimums)) {
+      return std::make_pair(e2e::Attestation(), COUNTED_ERROR(Env_SerializeMinimumsForEvidence));
     }
 
     uint8_t* custom_claims_buffer = NULL;
@@ -64,13 +68,18 @@ class Environment : public ::svr2::env::Environment {
     oe_claim_t custom_claims[] = {
         {
           .name = const_cast<char*>(custom_claim_pk),
-          .value = const_cast<uint8_t*>(key.data()),
-          .value_size = key.size(),
+          .value = reinterpret_cast<uint8_t*>(const_cast<char*>(attestation.public_key().data())),
+          .value_size = attestation.public_key().size(),
         },
         {
           .name = const_cast<char*>(custom_claim_config),
           .value = reinterpret_cast<uint8_t*>(serialized_config.data()),
           .value_size = serialized_config.size(),
+        },
+        {
+          .name = const_cast<char*>(custom_claim_minimum_limits),
+          .value = reinterpret_cast<uint8_t*>(serialized_minimums.data()),
+          .value_size = serialized_minimums.size(),
         },
     };
     if (OE_OK != oe_serialize_custom_claims(custom_claims, sizeof(custom_claims) / sizeof(custom_claims[0]),
@@ -103,9 +112,9 @@ class Environment : public ::svr2::env::Environment {
     std::string endorsements((char*)endorsements_buffer,
                              endorsements_buffer_size);
 
-    attestation.set_evidence(evidence);
-    attestation.set_endorsements(endorsements);
-    return std::make_pair(attestation, error::OK);
+    out.set_evidence(evidence);
+    out.set_endorsements(endorsements);
+    return std::make_pair(out, error::OK);
   }
 
   virtual error::Error RandomBytes(void* bytes, size_t size) const {
@@ -116,21 +125,23 @@ class Environment : public ::svr2::env::Environment {
     return error::OK;
   }
 
-  virtual std::pair<PublicKey, error::Error> Attest(
+  virtual std::pair<enclaveconfig::AttestationData, error::Error> Attest(
       context::Context* ctx,
       util::UnixSecs now,
       const e2e::Attestation& attestation) const {
     MEASURE_CPU(ctx, cpu_env_attest);
-    PublicKey out = {0};
+    enclaveconfig::AttestationData out;
 
     if (simulated_) {
-      if (attestation.evidence().size() != strlen(unattested_evidence_prefix) + out.size() ||
-          attestation.evidence().substr(0, strlen(unattested_evidence_prefix)) !=
-              unattested_evidence_prefix) {
+      const size_t prefix_len = strlen(unattested_evidence_prefix);
+      if (attestation.evidence().substr(0, prefix_len) != unattested_evidence_prefix) {
+        LOG(ERROR) << "Failed to find attestation prefix in simulated environment";
         return std::make_pair(out, error::Env_AttestationFailure);
       }
-      memcpy(out.data(), attestation.evidence().data() + strlen(unattested_evidence_prefix),
-             out.size());
+      if (!out.ParseFromArray(attestation.evidence().data() + prefix_len, attestation.evidence().size() - prefix_len)) {
+        LOG(ERROR) << "Failed to parse evidence in simulated environment";
+        return std::make_pair(out, error::Env_AttestationFailure);
+      }
       return std::make_pair(out, error::OK);
     }
     const uint8_t* evidence_data =
@@ -170,8 +181,9 @@ class Environment : public ::svr2::env::Environment {
       return std::make_pair(out, err);
     }
 
-    err = attestation::ReadKeyFromVerifiedClaims(claims, claims_length, out);
-
+    PublicKey key;
+    err = attestation::ReadKeyFromVerifiedClaims(claims, claims_length, &key);
+    out.set_public_key(util::ByteArrayToString(key));
     return std::make_pair(out, err);
   }
 
@@ -206,7 +218,9 @@ class Environment : public ::svr2::env::Environment {
   std::string expected_mrenclave_;
   error::Error GetMRENCLAVE() {
     context::Context ctx;
-    auto [attestation, err] = Evidence(&ctx, PublicKey{0}, enclaveconfig::RaftGroupConfig());
+    enclaveconfig::AttestationData data;
+    data.mutable_public_key()->resize(sizeof(env::PublicKey));
+    auto [attestation, err] = Evidence(&ctx, data);
     if (err != error::OK) {
       return err;
     }

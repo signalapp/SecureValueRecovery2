@@ -21,6 +21,7 @@
 #include "proto/error.pb.h"
 #include "metrics/metrics.h"
 #include "sevtypes/sevtypes.h"
+#include "minimums/minimums.h"
 
 namespace svr2::attestation::sev {
 namespace {
@@ -152,39 +153,7 @@ const bssl::UniquePtr<STACK_OF(X509)> roots_of_trust = RootsOfTrust();
 const uint32_t FLAGS_KEY_MASK = (0x04 | 0x08);
 const uint32_t FLAGS_KEY_VCEK = 0x00;
 
-// Rather than dynamically handle firmware updates, which sounds hard,
-// we currently do a much easier thing:  we compile in a lower limit of
-// all TCB parts, then check against that.  Clients know our lower
-// limits, since they're compiled in, and if there are necessary updates
-// in the future, those are reflected in a compilation change and a
-// new enclave release.
-//
-// Note that we cannot simply compare local vs. remote TCBs for equality,
-// since cloud providers may update firmware at any time.
-//
-// These constants are currently "the highest numbers we've seen in
-// the wild", and we've had difficulty finding any canonical sources
-// linking these to specific CVEs, dates, etc.
-const int16_t MIN_TCB_BOOT_LOADER = 0x03;
-const int16_t MIN_TCB_TEE         = 0x00;
-const int16_t MIN_TCB_SNP         = 0x08;
-const int16_t MIN_TCB_MICROCODE   = 0xA8;
-
-error::Error ValidateTCB(const tcb_version& tcb) {
-  // We use int16_t in order to set MIN_x constants to zero without causing
-  // compiler failures due to tautological comparisons (0u8 < 0u8)
-  if (static_cast<int16_t>(tcb.boot_loader) < MIN_TCB_BOOT_LOADER ||
-      static_cast<int16_t>(tcb.tee) < MIN_TCB_TEE ||
-      static_cast<int16_t>(tcb.snp) < MIN_TCB_SNP ||
-      static_cast<int16_t>(tcb.microcode) < MIN_TCB_MICROCODE) {
-    return COUNTED_ERROR(AttestationSEV_TCBMinimums);
-  }
-  return error::OK;
-}
-
 error::Error ValidateReport(const attestation_report& report) {
-  RETURN_IF_ERROR(ValidateTCB(report.platform_version));
-  RETURN_IF_ERROR(ValidateTCB(report.reported_tcb));
   if (report.policy & POLICY_MIGRATE_MA_MASK) {
     return COUNTED_ERROR(AttestationSEV_MigrationAllowed);
   } else if (report.policy & POLICY_DEBUG_MASK) {
@@ -209,6 +178,20 @@ error::Error AllowRemote(const attestation_report& local, const attestation_repo
 }
 
 }  // namespace
+
+minimums::MinimumValues MinimumsFromReport(const attestation_report& report) {
+  minimums::MinimumValues v;
+  auto map = *v.mutable_val();
+  map["sev_platform_version_boot_loader"] = minimums::Minimums::U64(report.platform_version.boot_loader);
+  map["sev_platform_version_tee"] = minimums::Minimums::U64(report.platform_version.tee);
+  map["sev_platform_version_snp"] = minimums::Minimums::U64(report.platform_version.snp);
+  map["sev_platform_version_microcode"] = minimums::Minimums::U64(report.platform_version.microcode);
+  map["sev_reported_tcb_boot_loader"] = minimums::Minimums::U64(report.reported_tcb.boot_loader);
+  map["sev_reported_tcb_tee"] = minimums::Minimums::U64(report.reported_tcb.tee);
+  map["sev_reported_tcb_snp"] = minimums::Minimums::U64(report.reported_tcb.snp);
+  map["sev_reported_tcb_microcode"] = minimums::Minimums::U64(report.reported_tcb.microcode);
+  return v;
+}
 
 bool EndorsementsFromFile(const char* filename, SevSnpEndorsements* endorsements) {
   int f = open(filename, O_RDONLY | O_CLOEXEC);
@@ -303,9 +286,9 @@ std::pair<attestation_report, error::Error> ReportFromUnverifiedAttestation(cons
   return std::make_pair(out, ValidateReport(out));
 }
 
-std::pair<env::PublicKey, error::Error> KeyFromVerifiedAttestation(const attestation_report& local, const e2e::Attestation& attestation, util::UnixSecs now) {
+std::pair<enclaveconfig::AttestationData, error::Error> DataFromVerifiedAttestation(const attestation_report& local, const e2e::Attestation& attestation, util::UnixSecs now) {
   auto [report, err] = ReportFromUnverifiedEvidence(attestation.evidence());
-  env::PublicKey out;
+  enclaveconfig::AttestationData out;
   if (err != error::OK) {
     return std::make_pair(out, err);
   }
@@ -389,7 +372,10 @@ std::pair<env::PublicKey, error::Error> KeyFromVerifiedAttestation(const attesta
     return std::make_pair(out, COUNTED_ERROR(AttestationSEV_SignatureVerify));
   }
 
-  memcpy(out.data(), report->report_data, out.size());
+  out.mutable_public_key()->resize(sizeof(env::PublicKey));
+  memcpy(out.mutable_public_key()->data(), report->report_data, sizeof(env::PublicKey));
+  minimums::MinimumValues mins = minimums::Minimums::CombineValues(out.minimum_values(), MinimumsFromReport(*report));
+  *out.mutable_minimum_values() = std::move(mins);
   return std::make_pair(out, error::OK);
 }
 

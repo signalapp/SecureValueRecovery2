@@ -34,7 +34,7 @@ const oe_claim_t* FindClaim(const oe_claim_t* claims, size_t claims_size,
  *     Env_AttestationPubkeyMissing, Env_AttestationPubkeyInvalidSize
  */
 error::Error ReadKeyFromVerifiedClaims(oe_claim_t* claims, size_t claims_length,
-                                       std::array<uint8_t, 32>& out);
+                                       std::array<uint8_t, 32>* out);
 
 /**
  * Verifies evidence and endorsements and returns the parsed array

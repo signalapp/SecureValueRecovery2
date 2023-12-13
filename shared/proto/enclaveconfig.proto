@@ -7,6 +7,8 @@ package svr2.enclaveconfig;
 option go_package = "github.com/signalapp/svr2/proto";
 option optimize_for = LITE_RUNTIME;
 
+import "minimums.proto";
+
 // Should match <openenclave/log.h>'s oe_log_level_t
 // (https://github.com/openenclave/openenclave/blob/master/include/openenclave/log.h)
 enum EnclaveLogLevel {
@@ -69,6 +71,17 @@ message RaftGroupConfig {
   uint32 attestation_timeout = 6;
   // Whether this is a real SGX or simulated SGX environment.
   bool simulated = 7;
+}
+
+message AttestationData {
+  bytes public_key = 1;
+  RaftGroupConfig group_config = 2;
+  // This is the set of limits that this replica enforces on its peers.
+  minimums.MinimumLimits minimum_limits = 3;
+  // This is the set of values associated with a peer.  These are not sent
+  // over the wire, but are rather added on by env->Attest as part of the
+  // attestation process.
+  minimums.MinimumValues minimum_values = 4;
 }
 
 message InitConfig {

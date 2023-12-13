@@ -6,6 +6,8 @@ syntax = "proto3";
 package svr2.raft;
 option optimize_for = LITE_RUNTIME;
 
+import "minimums.proto";
+
 message Replica {
   bytes peer_id = 1;
   bool voting = 2;
@@ -68,6 +70,7 @@ message LogEntry {
   oneof inner {
     bytes data = 2;
     ReplicaGroup membership_change = 3;
+    minimums.MinimumLimits minimums = 5;
   }
   bytes hash_chain = 4;
 }

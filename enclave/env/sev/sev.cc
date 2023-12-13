@@ -57,12 +57,12 @@ class Environment : public ::svr2::env::socket::Environment {
   // this report.
   virtual std::pair<e2e::Attestation, error::Error> Evidence(
       context::Context* ctx,
-      const PublicKey& key,
-      const enclaveconfig::RaftGroupConfig& config) const {
+      const enclaveconfig::AttestationData& data) const {
     MEASURE_CPU(ctx, cpu_env_evidence);
     e2e::Attestation out;
+    std::string serialized = data.SerializeAsString();
     if (simulated_) {
-      out.set_evidence(SIMULATED_REPORT_PREFIX + util::ByteArrayToString(key));
+      out.set_evidence(SIMULATED_REPORT_PREFIX + serialized);
       return std::make_pair(out, error::OK);
     }
 
@@ -78,13 +78,11 @@ class Environment : public ::svr2::env::socket::Environment {
     req.certs_address = reinterpret_cast<__u64>(&certs[0]);
     req.certs_len = sizeof(certs);
 
-    CHECK(sizeof(req.data.user_data) >= key.size() + crypto_hash_sha256_BYTES);
-    memcpy(req.data.user_data, key.data(), key.size());
-    std::string extra_data = config.SerializeAsString();
+    CHECK(sizeof(req.data.user_data) >= crypto_hash_sha256_BYTES);
     crypto_hash_sha256_state sha256;
     crypto_hash_sha256_init(&sha256);
-    crypto_hash_sha256_update(&sha256, reinterpret_cast<const uint8_t*>(extra_data.data()), extra_data.size());
-    crypto_hash_sha256_final(&sha256, req.data.user_data + sizeof(PublicKey));
+    crypto_hash_sha256_update(&sha256, reinterpret_cast<const uint8_t*>(serialized.data()), serialized.size());
+    crypto_hash_sha256_final(&sha256, req.data.user_data);
 
     guest_req.msg_version = 1;
     guest_req.req_data = reinterpret_cast<__u64>(&req);
@@ -114,7 +112,7 @@ class Environment : public ::svr2::env::socket::Environment {
     }
     out.mutable_evidence()->resize(sizeof(report_resp->report));
     memcpy(out.mutable_evidence()->data(), reinterpret_cast<const char*>(&report_resp->report), sizeof(report_resp->report));
-    *out.mutable_evidence() += extra_data;
+    *out.mutable_evidence() += serialized;
     out.set_endorsements(endorsements.SerializeAsString());
 
     LOG(DEBUG) << "Attestation:"
@@ -125,20 +123,23 @@ class Environment : public ::svr2::env::socket::Environment {
   }
 
   // Given evidence and endorsements, extract the key.
-  virtual std::pair<PublicKey, error::Error> Attest(
+  virtual std::pair<enclaveconfig::AttestationData, error::Error> Attest(
       context::Context* ctx,
       util::UnixSecs now,
       const e2e::Attestation& attestation) const {
     MEASURE_CPU(ctx, cpu_env_attest);
-    std::array<uint8_t, 32> out = {0};
+    enclaveconfig::AttestationData out;
     if (simulated_) {
       if (attestation.evidence().rfind(SIMULATED_REPORT_PREFIX, 0) != 0) {
         return std::make_pair(out, error::Env_AttestationFailure);
       }
-      memcpy(out.data(), attestation.evidence().data() + strlen(SIMULATED_REPORT_PREFIX), out.size());
+      size_t prefix_len = strlen(SIMULATED_REPORT_PREFIX);
+      if (!out.ParseFromArray(attestation.evidence().data() + prefix_len, attestation.evidence().size() - prefix_len)) {
+        return std::make_pair(out, error::Env_AttestationFailure);
+      }
       return std::make_pair(out, error::OK);
     }
-    return attestation::sev::KeyFromVerifiedAttestation(report_, attestation, now);
+    return attestation::sev::DataFromVerifiedAttestation(report_, attestation, now);
   }
 
   // Given a string of size N, rewrite all bytes in that string with
@@ -189,10 +190,10 @@ class Environment : public ::svr2::env::socket::Environment {
       LOG(INFO) << "Successfully pulled base endorsements from '" << base_endorsements_file << "'";
     }
 
-    PublicKey k = {'i', 'n', 'i', 't', 0};
-    enclaveconfig::RaftGroupConfig c;
     context::Context ctx;
-    auto [attest, err] = Evidence(&ctx, k, c);
+    enclaveconfig::AttestationData data;
+    data.mutable_public_key()->resize(sizeof(env::PublicKey));
+    auto [attest, err] = Evidence(&ctx, data);
     CHECK(err == error::OK);
     auto [report, err2] = attestation::sev::ReportFromUnverifiedAttestation(attest);
     CHECK(err2 == error::OK);

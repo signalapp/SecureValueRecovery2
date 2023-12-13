@@ -31,7 +31,7 @@ const oe_claim_t* FindClaim(const oe_claim_t* claims, size_t claims_size,
 }
 
 error::Error ReadKeyFromVerifiedClaims(oe_claim_t* claims, size_t claims_length,
-                                       std::array<uint8_t, 32>& out) {
+                                       std::array<uint8_t, 32>* out) {
   const oe_claim_t* claim;
   oe_claim_t* custom_claims = nullptr;
   size_t custom_claims_length = 0;
@@ -61,12 +61,12 @@ error::Error ReadKeyFromVerifiedClaims(oe_claim_t* claims, size_t claims_length,
     return COUNTED_ERROR(Env_AttestationPubkeyMissing);
   }
 
-  if (custom_claims[0].value_size != out.size()) {
+  if (custom_claims[0].value_size != out->size()) {
     return COUNTED_ERROR(Env_AttestationPubkeyInvalidSize);
   }
 
   std::copy(custom_claims[0].value,
-            custom_claims[0].value + custom_claims[0].value_size, out.begin());
+            custom_claims[0].value + custom_claims[0].value_size, out->begin());
   return error::OK;
 }
 

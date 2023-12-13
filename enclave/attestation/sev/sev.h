@@ -8,6 +8,7 @@
 #include <stdint.h>
 #include "proto/error.pb.h"
 #include "proto/sev.pb.h"
+#include "proto/minimums.pb.h"
 #include "env/env.h"
 #include "util/ticks.h"
 
@@ -31,7 +32,9 @@ std::pair<attestation_report, error::Error> ReportFromUnverifiedAttestation(cons
 // as much as possible in the process.  Will return an error if the attestation
 // is invalid, does not match the given local attestation in the necessary ways,
 // or does not verify against known AMD public keys.
-std::pair<env::PublicKey, error::Error> KeyFromVerifiedAttestation(const attestation_report& local, const e2e::Attestation& attestation, util::UnixSecs now);
+std::pair<enclaveconfig::AttestationData, error::Error> DataFromVerifiedAttestation(const attestation_report& local, const e2e::Attestation& attestation, util::UnixSecs now);
+
+minimums::MinimumValues MinimumsFromReport(const attestation_report& report);
 
 }  // namespace svr2::attestation::sev
 

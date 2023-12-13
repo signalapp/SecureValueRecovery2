@@ -480,6 +480,10 @@ std::array<uint8_t, 32> Raft::NextHash(const LogEntry& next_entry) {
       std::string serialized = next_entry.membership_change().SerializeAsString();
       return hmac::HmacSha256(previous_hash, "\002" + idx_term + serialized);
     }
+    case LogEntry::kMinimums: {
+      std::string serialized = next_entry.minimums().SerializeAsString();
+      return hmac::HmacSha256(previous_hash, "\004" + idx_term + serialized);
+    }
     case LogEntry::INNER_NOT_SET:
       return hmac::HmacSha256(previous_hash, "\003" + idx_term);
   }

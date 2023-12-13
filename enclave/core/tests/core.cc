@@ -16,6 +16,7 @@
 //TESTDEP util
 //TESTDEP context
 //TESTDEP hmac
+//TESTDEP minimums
 //TESTDEP noise
 //TESTDEP noise-c
 //TESTDEP noisewrap
@@ -1809,7 +1810,8 @@ TEST_F(CoreTest, Replicator) {
   ASSERT_TRUE(core->ID().Valid());
   CoreMap cores;
   cores[core->ID()] = core.get();
-  peers::PeerManager pm;
+  minimums::Minimums m;
+  peers::PeerManager pm(&m);
   ASSERT_EQ(error::OK, pm.Init(ctx));
 
   LOG(INFO) << "\n\nCreating Raft group";
