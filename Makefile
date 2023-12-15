@@ -63,6 +63,7 @@ dockersh: dockerbase
 enclave_release: docker_enclave_releaser
 	docker build -f docker/Dockerfile -t svr2_nsmrun --target=nsmrun .
 	docker build -f docker/Dockerfile -t svr2_nsmeif --target=nsmeif .
+	docker build -f docker/Dockerfile -t svr2_nsmhost --target=nsmhost .
 	docker build -f docker/Dockerfile -t svr2_sgxrun --target=sgxrun .
 	docker run --rm \
     -v /var/run/docker.sock:/var/run/docker.sock \

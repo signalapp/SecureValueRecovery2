@@ -82,15 +82,12 @@ RUN mkdir /src && \
       cmake \
     && break; done
 
-COPY docker/check_hash.sh docker/sha256.* ./
-
 ARG PROTOBUF_PLATFORM=linux-x86_64
 ARG PROTOBUF_VERSION=21.8
 ARG PROTOBUF_BASE=protoc-${PROTOBUF_VERSION}-${PROTOBUF_PLATFORM}
 
-RUN wget https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOBUF_VERSION}/${PROTOBUF_BASE}.zip \
-	&& /bin/bash ./check_hash.sh ${PROTOBUF_BASE}.zip \
-	&& mkdir -p ${PROTOBUF_BASE} \
+ADD --checksum=sha256:f90d0dd59065fef94374745627336d622702b67f0319f96cee894d41a974d47a https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOBUF_VERSION}/${PROTOBUF_BASE}.zip ./
+RUN mkdir -p ${PROTOBUF_BASE} \
 	&& cd ${PROTOBUF_BASE} \
   && unzip -o ../${PROTOBUF_BASE}.zip \
   && cd .. \
@@ -100,9 +97,8 @@ ARG GOLANG_PLATFORM=linux-amd64
 ARG GOLANG_VERSION=1.21.3
 ARG GOLANG_TAR_GZ=go${GOLANG_VERSION}.${GOLANG_PLATFORM}.tar.gz
 
-RUN wget https://go.dev/dl/${GOLANG_TAR_GZ} \
-  && /bin/bash ./check_hash.sh ${GOLANG_TAR_GZ} \
-	&& tar xzf ${GOLANG_TAR_GZ} \
+ADD --checksum=sha256:1241381b2843fae5a9707eec1f8fb2ef94d827990582c7c7c32f5bdfbfd420c8 https://go.dev/dl/${GOLANG_TAR_GZ} ./
+RUN tar xzf ${GOLANG_TAR_GZ} \
   && mv go /opt/
 
 ENV PATH="/opt/openenclave/bin:/opt/go/bin:/opt/protobuf/bin:${PATH}"
@@ -158,3 +154,25 @@ ENV OUTPUT_FILE /tmp/svr2.eif
 ENV CHOWN_TO 0:0
 COPY docker/build_eif.sh build_eif.sh
 ENTRYPOINT ./build_eif.sh
+
+FROM public.ecr.aws/amazonlinux/amazonlinux@sha256:94e7183b0739140dbd5b639fb7600f0a2299cec5df8780c26d9cb409da5315a9 AS nsmhost
+RUN yum install -y \
+    aws-nitro-enclaves-cli.x86_64 \
+    jq
+ADD --checksum=sha256:cf3098950cb4d853ad95c0841f1f9c6d3dc102dccfcacd521d93925208b76ac8 https://www.openssl.org/source/openssl-1.1.1w.tar.gz /tmp/
+RUN cd /tmp && \
+    yum install -y perl tar && \
+    tar xvzf openssl-1.1.1w.tar.gz && \
+    cd openssl-1.1.1w && \
+    ./config && \
+    make -j16 && \
+    make install -j16 && \
+    echo /usr/local/lib64 | tee /etc/ld.so.conf.d/openssl.conf && \
+    ldconfig && \
+    yum remove -y perl tar && \
+    rm -rf /tmp/openssl*
+COPY docker/nitro_start.sh nitro_start.sh
+RUN mkdir /releases
+COPY enclave/releases/nitro/* /releases
+COPY host/main /bin/svr2
+ENTRYPOINT ["./nitro_start.sh"]
