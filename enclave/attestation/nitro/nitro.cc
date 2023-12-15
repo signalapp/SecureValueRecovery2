@@ -381,6 +381,7 @@ error::Error Verify(const AttestationDoc& doc, const CoseSign1& from, util::Unix
 
   // ... and finally we verify the message digest against signature.
   EC_KEY* ec_key_not_owned = EVP_PKEY_get0_EC_KEY(pkey.get());
+  if (ec_key_not_owned == nullptr) return COUNTED_ERROR(AttestationNitro_CertificateNotEC);
   if (1 != ECDSA_do_verify(md, md_size, sig.get(), ec_key_not_owned)) {
     return COUNTED_ERROR(AttestationNitro_CoseSignatureVerify);
   }

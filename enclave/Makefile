@@ -226,6 +226,7 @@ SEV_LIBRARIES = \
   env/sev \
   env/socket \
   attestation/sev \
+  attestation/tpm2 \
   socketwrap \
   $(CORE_LIBRARIES_POST_ENV) \
   boringssl \

@@ -24,6 +24,11 @@ inline uint32_t BigEndian32FromBytes(const uint8_t in[4]) {
          ((uint32_t)in[3]) << (8*0);
 }
 
+inline uint16_t BigEndian16FromBytes(const uint8_t in[2]) {
+  return ((uint16_t)in[0]) << (8*1) |
+         ((uint16_t)in[1]) << (8*0);
+}
+
 inline uint64_t BigEndian64FromBytes(const char* in) {
   return BigEndian64FromBytes(reinterpret_cast<const uint8_t*>(in));
 }

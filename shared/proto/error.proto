@@ -236,6 +236,7 @@ enum Error {
   AttestationNitro_CertificateChainVerify = 1508;
   AttestationNitro_CryptoMessageDigest = 1509;
   AttestationNitro_CoseSignatureVerify = 1510;
+  AttestationNitro_CertificateNotEC = 1511;
 
   Sev_NS = 1600;
   Sev_ReportIOCTLFailure = 1601;
@@ -273,4 +274,15 @@ enum Error {
   Minimums_ValueTooLow = 1906;
   Minimums_ValueSize = 1907;
   Minimums_ValueEmpty = 1908;
+
+  AttestationTPM2_NS = 2000;
+  AttestationTPM2_ParseReport = 2001;
+  AttestationTPM2_ParsePCRs = 2002;
+  AttestationTPM2_ParseSignature = 2003;
+  AttestationTPM2_CryptoAllocate = 2004;
+  AttestationTPM2_CertificateNotRSA = 2005;
+  AttestationTPM2_SignatureVerify = 2006;
+  AttestationTPM2_SignatureDigest = 2007;
+  AttestationTPM2_PCRDigest = 2008;
+  AttestationTPM2_PCRVerify = 2009;
 };
