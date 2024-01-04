@@ -97,8 +97,6 @@ class Environment : public ::svr2::env::socket::Environment {
         !out.ParseFromArray(attestation_doc.user_data.data(), attestation_doc.user_data.size())) {
       return std::make_pair(out, COUNTED_ERROR(Env_AttestationFailure));
     }
-    out.mutable_public_key()->resize(attestation_doc.public_key.size());
-    std::copy(attestation_doc.public_key.begin(), attestation_doc.public_key.end(), out.mutable_public_key()->begin());
     return std::make_pair(out, error::OK);
   }
 

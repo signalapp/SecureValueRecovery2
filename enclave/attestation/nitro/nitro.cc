@@ -20,6 +20,10 @@ namespace svr2::attestation::nitro {
 
 namespace {
 
+// There may be time skew across Nitro nodes.  We allow this many second
+// in either direction when checking for x509 veracity.
+const uint32_t allowable_time_skew_seconds = 3600;
+
 std::pair<TextString, error::Error> CborTextString(CborValue* v) {
   TextString out;
   size_t size = 0;
@@ -337,18 +341,30 @@ error::Error Verify(const AttestationDoc& doc, const CoseSign1& from, util::Unix
   ASSIGN_OR_RETURN(cabundle, doc.CABundle());
   ASSIGN_OR_RETURN(data_to_verify, from.SigningBytes());
 
-  bssl::UniquePtr<X509_STORE_CTX> ctx(X509_STORE_CTX_new());
-  bssl::UniquePtr<X509_STORE> store(X509_STORE_new());
-  if (!ctx || !store) return COUNTED_ERROR(AttestationNitro_CryptoAllocate);
+  bool verified = false;
+  util::UnixSecs times[3] = {now + allowable_time_skew_seconds, now, now - allowable_time_skew_seconds};
+  int cert_errs[3] = {0, 0, 0};
+  for (size_t i = 0; i < 3; i++) {
+    auto t = times[i];
+    bssl::UniquePtr<X509_STORE_CTX> ctx(X509_STORE_CTX_new());
+    bssl::UniquePtr<X509_STORE> store(X509_STORE_new());
+    if (!ctx || !store) return COUNTED_ERROR(AttestationNitro_CryptoAllocate);
 
-  if (!X509_STORE_CTX_init(ctx.get(), store.get(), certificate.get(), cabundle.get())) return COUNTED_ERROR(AttestationNitro_CryptoStoreInit);
-  // X509_STORE_CTX_set0_trusted_stack does not take ownership of roots_of_trust stack.
-  X509_STORE_CTX_set0_trusted_stack(ctx.get(), roots_of_trust.get());
-  X509_VERIFY_PARAM *param = X509_STORE_CTX_get0_param(ctx.get());
-  X509_VERIFY_PARAM_set_time_posix(param, now);
-  if (1 != X509_verify_cert(ctx.get())) {
-    auto err = X509_STORE_CTX_get_error(ctx.get());
-    LOG(ERROR) << "nitro attestation verify_cert err=" << err << ": " << X509_verify_cert_error_string(err);
+    if (!X509_STORE_CTX_init(ctx.get(), store.get(), certificate.get(), cabundle.get())) return COUNTED_ERROR(AttestationNitro_CryptoStoreInit);
+    // X509_STORE_CTX_set0_trusted_stack does not take ownership of roots_of_trust stack.
+    X509_STORE_CTX_set0_trusted_stack(ctx.get(), roots_of_trust.get());
+    X509_VERIFY_PARAM *param = X509_STORE_CTX_get0_param(ctx.get());
+    X509_VERIFY_PARAM_set_time_posix(param, t);
+    if (1 == X509_verify_cert(ctx.get())) {
+      verified = true;
+      break;
+    }
+    cert_errs[i] = X509_STORE_CTX_get_error(ctx.get());
+  }
+  if (!verified) {
+    for (size_t i = 0; i < 3; i++) {
+      LOG(ERROR) << "Verifying cert chain error at " << times[i] << " (now=" << now << "), err=" << cert_errs[i] << " - " << X509_verify_cert_error_string(cert_errs[i]);
+    }
     return COUNTED_ERROR(AttestationNitro_CertificateChainVerify);
   }
 

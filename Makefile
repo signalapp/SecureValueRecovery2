@@ -63,7 +63,6 @@ dockersh: dockerbase
 enclave_release: docker_enclave_releaser
 	docker build -f docker/Dockerfile -t svr2_nsmrun --target=nsmrun .
 	docker build -f docker/Dockerfile -t svr2_nsmeif --target=nsmeif .
-	docker build -f docker/Dockerfile -t svr2_nsmhost --target=nsmhost .
 	docker build -f docker/Dockerfile -t svr2_sgxrun --target=sgxrun .
 	docker run --rm \
     -v /var/run/docker.sock:/var/run/docker.sock \
@@ -74,6 +73,7 @@ enclave_release: docker_enclave_releaser
     -e "OUTPUT_DIR=/out" \
     -e "CHOWN_TO=$$(id -u):$$(id -g)" \
     svr2_nsmeif:latest
+	docker build -f docker/Dockerfile -t svr2_nsmhost --target=nsmhost .
 
 enclave_releaser: enclave host  # depends on 'host' so its tests will run
 	cp -vn enclave/build/enclave.signed "enclave/releases/sgx/default.$$(/opt/openenclave/bin/oesign dump -e enclave/build/enclave.signed | fgrep -i mrenclave | cut -d '=' -f2)"

@@ -11,6 +11,7 @@
 #include "peers/peers.h"
 #include "util/macros.h"
 #include "util/bytes.h"
+#include "util/hex.h"
 #include "env/env.h"
 #include "sip/halfsiphash.h"
 #include "util/endian.h"
@@ -300,6 +301,7 @@ error::Error Peer::Accept(
     return att_err;
   }
   if(!util::ConstantTimeEquals(att.public_key(), this->ID().Get())) {
+    LOG(ERROR) << "ID mismatch with peer, want " << this->ID() << ", have " << util::ToHex(att.public_key());
     return error::Peers_AcceptIDMismatch; 
   }
   RETURN_IF_ERROR(parent_->Minimums()->CheckValues(ctx, att.minimum_values()));
