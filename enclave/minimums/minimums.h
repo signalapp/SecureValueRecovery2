@@ -21,7 +21,7 @@ class Minimums {
     util::unique_lock cl(cpy.mu_);
     s_.MergeFrom(cpy.s_);
   }
-  error::Error UpdateSet(context::Context* ctx, const MinimumLimits& s);
+  error::Error UpdateLimits(context::Context* ctx, const MinimumLimits& s);
   error::Error CheckValues(context::Context* ctx, const MinimumValues& values) const;
   static std::string U64(uint64_t value) {
     std::string v(8, '\0');

@@ -244,6 +244,16 @@ error::Error TestingCore::DeleteBackup(const std::string& client_authenticated_i
   return error::OK;
 }
 
+error::Error TestingCore::UpdateMinimums(const minimums::MinimumLimits& lim) {
+  LOG(VERBOSE) << "update_minimums " << core_->ID();
+  UntrustedMessage msg;
+  auto host = msg.mutable_h2e_request();
+  host->set_request_id(next_request_id());
+  host->mutable_update_minimums()->MergeFrom(lim);
+  input_messages_.emplace_back(std::move(msg));
+  return error::OK;
+}
+
 error::Error TestingCore::NewClientRequest(
     TestingClient* client, std::string client_authenticated_id) {
   LOG(VERBOSE) << "newclient " << core_->ID();

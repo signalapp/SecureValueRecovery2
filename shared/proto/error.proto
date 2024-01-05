@@ -55,6 +55,8 @@ enum Error {
   Core_RaftGroupConfigMinReplicasTooSmall = 238;
   Core_DBVersionInvalid = 239;
   Core_RaftGroupConfigAttestationTimeoutTooSmall = 240;
+  Core_SerializeRaftWrite = 241;
+  Core_DeserializeRaftWrite = 242;
 
   Env_NS = 300;
   Env_SerializeCustomClaims = 301;

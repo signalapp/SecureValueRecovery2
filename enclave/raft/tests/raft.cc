@@ -46,7 +46,7 @@ class RaftTest : public ::testing::Test {
 
   void SetUpRaft(int size, enclaveconfig::RaftConfig config) {
     SetUpRaftWithSupermajority(size, 0, config);
-  } 
+  }
 
   void SetUpRaftWithSupermajority(int size, int super_majority, enclaveconfig::RaftConfig config) {
     // Create a size-3 raft group
@@ -167,6 +167,12 @@ class RaftTest : public ::testing::Test {
     return *leaders.begin();
   }
 
+  LogEntry* ClientRequest(const std::string& data) {
+    auto log_entry = ctx.Protobuf<LogEntry>();
+    log_entry->set_data(data);
+    return log_entry;
+  }
+
   context::Context ctx;
   merkle::Tree merk;
   std::map<peerid::PeerID, std::unique_ptr<Raft>> group_;
@@ -178,7 +184,7 @@ TEST_F(RaftTest, CommitOnAll) {
   // Get a leader
   peerid::PeerID leader = ElectLeader(config);
   LOG(INFO) "============== SENDING LOG TO LEADER " << leader;
-  auto [loc, err] = group_[leader]->ClientRequest(&ctx, "abc");
+  auto [loc, err] = group_[leader]->LogRequest(&ctx, ClientRequest("abc"));
   ASSERT_EQ(error::OK, err);
   EXPECT_GE(loc.term(), 1);  // may have been a few terms to elect leader
   EXPECT_GE(loc.idx(), 1);  // leader election adds entry to log
@@ -207,7 +213,7 @@ TEST_F(RaftTest, CommitIfOneDown) {
   group_.erase(group_.begin());
   peerid::PeerID leader = ElectLeader(config);
   LOG(INFO) "============== SENDING LOG TO LEADER " << leader;
-  auto [loc, err] = group_[leader]->ClientRequest(&ctx, "abc");
+  auto [loc, err] = group_[leader]->LogRequest(&ctx, ClientRequest("abc"));
   ASSERT_EQ(error::OK, err);
   EXPECT_GE(loc.term(), 1);  // may have been a few terms to elect leader
   EXPECT_GE(loc.idx(), 1);  // leader election adds entry to log
@@ -234,7 +240,7 @@ TEST_F(RaftTest, SingleReplicaGroup) {
   SetUpRaft(1, DefaultConfig());
   peerid::PeerID leader = ElectLeader(config);
   LOG(INFO) "============== SENDING LOG TO LEADER " << leader;
-  auto [loc, err] = group_[leader]->ClientRequest(&ctx, "abc");
+  auto [loc, err] = group_[leader]->LogRequest(&ctx, ClientRequest("abc"));
   ASSERT_EQ(error::OK, err);
   EXPECT_GE(loc.term(), 1);  // may have been a few terms to elect leader
   EXPECT_GE(loc.idx(), 1);  // leader election adds entry to log
@@ -289,7 +295,7 @@ TEST_F(RaftTest, RejectInconsistentLogs) {
   // Copy the leader before adding entry
   auto leader_copy = group_[leader]->Copy(&merk);
   LOG(INFO) "============== SENDING LOG TO LEADER " << leader;
-  auto [loc1, err] = group_[leader]->ClientRequest(&ctx, "abc");
+  auto [loc1, err] = group_[leader]->LogRequest(&ctx, ClientRequest("abc"));
   CommitOnAll(config);
 
   ASSERT_EQ(group_[leader]->commit_idx(), loc1.idx());
@@ -297,7 +303,7 @@ TEST_F(RaftTest, RejectInconsistentLogs) {
   LOG(INFO) << "Rolling back leader ";
   group_[leader] = std::move(leader_copy);
 
-  auto [loc2, err2] = group_[leader]->ClientRequest(&ctx, "zyx");
+  auto [loc2, err2] = group_[leader]->LogRequest(&ctx, ClientRequest("zyx"));
   ASSERT_EQ(loc2.idx(), loc1.idx());
   ASSERT_EQ(loc2.term(), loc1.term());
   ASSERT_NE(loc2.hash_chain(), loc1.hash_chain());

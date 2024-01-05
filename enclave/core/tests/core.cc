@@ -2388,4 +2388,79 @@ TEST_F(CoreTest, RequestMetricsEnvStats) {
   }
 }
 
+TEST_F(CoreTest, AcceptsAndRejectsMinimums) {
+  ReplicaGroup replica_group;
+  replica_group.Init(valid_init_config, 3, 0, 0);
+  auto leader = replica_group.get_leader_core();
+  leader->take_host_to_enclave_responses();  // clear out any prior responses
+  {
+    minimums::MinimumLimits lims;
+    (*lims.mutable_lim())["minimums_test_version"] = minimums::Minimums::U64(env::test::minimums_test_version-1);
+    leader->UpdateMinimums(lims);
+    replica_group.PassMessagesUntilQuiet();
+    auto h2e_msgs = leader->take_host_to_enclave_responses();
+    ASSERT_EQ(h2e_msgs.size(), 1);
+    auto& h2e_response = h2e_msgs[0];
+    ASSERT_EQ(h2e_response.inner_case(), HostToEnclaveResponse::kStatus);
+    ASSERT_EQ(h2e_response.status(), error::OK);
+  }
+  {
+    minimums::MinimumLimits lims;
+    (*lims.mutable_lim())["minimums_test_version"] = minimums::Minimums::U64(env::test::minimums_test_version-2);
+    leader->UpdateMinimums(lims);
+    replica_group.PassMessagesUntilQuiet();
+    auto h2e_msgs = leader->take_host_to_enclave_responses();
+    ASSERT_EQ(h2e_msgs.size(), 1);
+    auto& h2e_response = h2e_msgs[0];
+    ASSERT_EQ(h2e_response.inner_case(), HostToEnclaveResponse::kStatus);
+    ASSERT_EQ(h2e_response.status(), error::Minimums_LimitDecreased);
+  }
+  {
+    minimums::MinimumLimits lims;
+    (*lims.mutable_lim())["minimums_test_version"] = minimums::Minimums::U64(env::test::minimums_test_version+1);
+    leader->UpdateMinimums(lims);
+    replica_group.PassMessagesUntilQuiet();
+    auto h2e_msgs = leader->take_host_to_enclave_responses();
+    ASSERT_EQ(h2e_msgs.size(), 1);
+    auto& h2e_response = h2e_msgs[0];
+    ASSERT_EQ(h2e_response.inner_case(), HostToEnclaveResponse::kStatus);
+    ASSERT_EQ(h2e_response.status(), error::Minimums_ValueTooLow);
+  }
+  auto follower = replica_group.get_voting_nonleader_core();
+  follower->take_host_to_enclave_responses();  // clear out any prior responses
+  {
+    minimums::MinimumLimits lims;
+    (*lims.mutable_lim())["minimums_test_version"] = minimums::Minimums::U64(env::test::minimums_test_version);
+    follower->UpdateMinimums(lims);
+    replica_group.PassMessagesUntilQuiet();
+    auto h2e_msgs = follower->take_host_to_enclave_responses();
+    ASSERT_EQ(h2e_msgs.size(), 1);
+    auto& h2e_response = h2e_msgs[0];
+    ASSERT_EQ(h2e_response.inner_case(), HostToEnclaveResponse::kStatus);
+    ASSERT_EQ(h2e_response.status(), error::OK);
+  }
+  {
+    minimums::MinimumLimits lims;
+    (*lims.mutable_lim())["minimums_test_version"] = minimums::Minimums::U64(env::test::minimums_test_version-1);
+    follower->UpdateMinimums(lims);
+    replica_group.PassMessagesUntilQuiet();
+    auto h2e_msgs = follower->take_host_to_enclave_responses();
+    ASSERT_EQ(h2e_msgs.size(), 1);
+    auto& h2e_response = h2e_msgs[0];
+    ASSERT_EQ(h2e_response.inner_case(), HostToEnclaveResponse::kStatus);
+    ASSERT_EQ(h2e_response.status(), error::Minimums_LimitDecreased);
+  }
+  {
+    minimums::MinimumLimits lims;
+    (*lims.mutable_lim())["minimums_test_version"] = minimums::Minimums::U64(env::test::minimums_test_version+1);
+    follower->UpdateMinimums(lims);
+    replica_group.PassMessagesUntilQuiet();
+    auto h2e_msgs = follower->take_host_to_enclave_responses();
+    ASSERT_EQ(h2e_msgs.size(), 1);
+    auto& h2e_response = h2e_msgs[0];
+    ASSERT_EQ(h2e_response.inner_case(), HostToEnclaveResponse::kStatus);
+    ASSERT_EQ(h2e_response.status(), error::Minimums_ValueTooLow);
+  }
+}
+
 }  // namespace svr2::core

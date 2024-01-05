@@ -141,6 +141,8 @@ class Core {
     void HandleHostRequestedRaftRemoval(context::Context* ctx, internal::TransactionID tx) EXCLUDES(raft_.mu);
     // Compute and return to the host a hash of the current DB.
     error::Error HandleHostHashes(context::Context* ctx, internal::TransactionID tx) EXCLUDES(raft_.mu);
+    // Handle a request to update MinimumLimits.
+    void HandleUpdateMinimums(context::Context* ctx, internal::TransactionID tx, const minimums::MinimumLimits& update) EXCLUDES(raft_.mu);
 
   // Handle the inevitable march of time.
   void HandleTimerTick(context::Context* ctx, const TimerTick& tick);
@@ -287,7 +289,7 @@ class Core {
   // Adds a callback to be run when the log at the given location has been commited.
   // NOTE:  when cb is called, raft_.mu will be locked already.
   void AddLogTransaction(context::Context* ctx, const raft::LogLocation& loc, LogTransactionCallback cb) EXCLUDES(outstanding_log_transactions_mu_);
-  error::Error RaftWriteLogTransaction(context::Context* ctx, const std::string& data, LogTransactionCallback cb) EXCLUDES(raft_.mu);
+  error::Error RaftWriteLogTransaction(context::Context* ctx, raft::LogEntry* entry, LogTransactionCallback cb) EXCLUDES(raft_.mu);
   LogTransactionCallback ClientLogTransaction(context::Context* ctx, client::ClientID client_id, internal::TransactionID tx);
 
   // State for transactions that this enclave sends to other enclaves.

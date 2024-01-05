@@ -174,7 +174,7 @@ error::Error Peer::FinishConnection(
   if (!util::ConstantTimeEquals(key, this->ID().Get())) {
     return error::Peers_FinishIDMismatch; 
   }
-  RETURN_IF_ERROR(parent_->Minimums()->CheckValues(ctx, att.minimum_values()));
+  RETURN_IF_ERROR(parent_->Minimums().CheckValues(ctx, att.minimum_values()));
 
   NoiseBuffer buf = noise::BufferInputFromString(conn->mutable_handshake());
   if (NOISE_ERROR_NONE != noise_handshakestate_read_message(local_handshake.get(), &buf, nullptr)) {
@@ -304,7 +304,7 @@ error::Error Peer::Accept(
     LOG(ERROR) << "ID mismatch with peer, want " << this->ID() << ", have " << util::ToHex(att.public_key());
     return error::Peers_AcceptIDMismatch; 
   }
-  RETURN_IF_ERROR(parent_->Minimums()->CheckValues(ctx, att.minimum_values()));
+  RETURN_IF_ERROR(parent_->Minimums().CheckValues(ctx, att.minimum_values()));
 
   NoiseBuffer read_buf = noise::BufferInputFromString(conn_request->mutable_handshake());
   int err = 0;
@@ -450,13 +450,12 @@ void Peer::PopulateConnectionStatus(context::Context* ctx, ConnectionStatus* sta
   status->set_last_attestation_unix_secs(last_attestation_);
 }
 
-void Peer::CheckMinimums(context::Context* ctx) {
+error::Error Peer::CheckMinimums(context::Context* ctx, const minimums::Minimums& minimums) {
   ACQUIRE_LOCK(mu_, ctx, lock_peer);
-  if (auto err = parent_->Minimums()->CheckValues(ctx, minimums_); err != error::OK) {
-    LOG(WARNING) << "Minimums for " << id_ << " failed, disconnecting: " << err;
-    InternalDisconnect();
-    SendRst(ctx, id_);
-  }
+  // A peer that isn't fully connected we consider successful, since its transition to
+  // connected will re-check minimums.
+  if (InternalCurrentState() != PEER_CONNECTED) { return error::OK; }
+  return minimums.CheckValues(ctx, minimums_);
 }
 
 PeerManager::PeerManager(minimums::Minimums* mins)
@@ -705,8 +704,22 @@ void PeerManager::SetPeerAttestationTimestamp(context::Context* ctx, util::UnixS
 void PeerManager::MinimumsUpdated(context::Context* ctx) {
   ACQUIRE_LOCK(mu_, ctx, lock_peermanager);
   for (auto iter = peers_.begin(); iter != peers_.end(); ++iter) {
-    iter->second->CheckMinimums(ctx);
+    if (auto err = iter->second->CheckMinimums(ctx, Minimums()); err != error::OK) {
+      LOG(WARNING) << "Minimums for peer " << iter->first << " failed so disconnecting peer: " << err;
+      iter->second->Disconnect(ctx);
+    }
   }
+}
+
+error::Error PeerManager::CheckPeerMinimums(context::Context* ctx, const minimums::Minimums& to_check) const {
+  ACQUIRE_LOCK(mu_, ctx, lock_peermanager);
+  for (auto iter = peers_.begin(); iter != peers_.end(); ++iter) {
+    if (auto err = iter->second->CheckMinimums(ctx, to_check); err != error::OK) {
+      LOG(INFO) << "Minimums for peer " << iter->first << " failed: " << err;
+      return err;
+    }
+  }
+  return error::OK;
 }
 
 void PeerManager::PeerStatus(context::Context* ctx, const peerid::PeerID& id, ConnectionStatus* status) const {

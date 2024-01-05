@@ -12,6 +12,8 @@ namespace svr2::env::test {
 
 std::vector<EnclaveMessage> SentMessages();
 
+extern uint64_t minimums_test_version;
+
 }  // namespace svr2::env::test
 
 #endif  // __SVR2_ENV_TEST_TEST_H__

@@ -10,6 +10,7 @@ option optimize_for = LITE_RUNTIME;
 import "enclaveconfig.proto";
 import "error.proto";
 import "metrics.proto";
+import "minimums.proto";
 
 //
 // shared types
@@ -76,6 +77,7 @@ message HostToEnclaveRequest {
     bool hashes = 17;
     MetricsRequest metrics = 18;
     bytes reset_peer_id = 19;
+    minimums.MinimumLimits update_minimums = 20;
   }
 }
 

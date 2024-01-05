@@ -336,6 +336,9 @@ error::Error Core::HandleHostToEnclave(context::Context* ctx, const HostToEnclav
       RETURN_IF_ERROR(peer_id.FromString(msg.reset_peer_id()));
       return peer_manager_->ResetPeer(ctx, peer_id);
     }
+    case HostToEnclaveRequest::kUpdateMinimums: {
+      HandleUpdateMinimums(ctx, tx, msg.update_minimums());
+    } return error::OK;
     default:
       return error::General_Unimplemented;
   }
@@ -383,7 +386,9 @@ error::Error Core::HandleExistingClient(context::Context* ctx, const ExistingCli
   if (!log->SerializeToString(&serialized)) {
     return COUNTED_ERROR(Core_SerializeClientLog);
   }
-  return RaftWriteLogTransaction(ctx, serialized, ClientLogTransaction(ctx, client_id, tx));
+  auto log_entry = ctx->Protobuf<raft::LogEntry>();
+  log_entry->set_data(serialized);
+  return RaftWriteLogTransaction(ctx, log_entry, ClientLogTransaction(ctx, client_id, tx));
 }
 
 void Core::HandleCreateNewRaftGroupRequest(context::Context* ctx, internal::TransactionID tx) {
@@ -714,7 +719,9 @@ error::Error Core::HandleHostDatabaseRequest(context::Context* ctx, internal::Tr
   if (!log->SerializeToString(&serialized)) {
     return COUNTED_ERROR(Core_SerializeClientLog);
   }
-  return RaftWriteLogTransaction(ctx, serialized, [tx](
+  auto log_entry = ctx->Protobuf<raft::LogEntry>();
+  log_entry->set_data(serialized);
+  return RaftWriteLogTransaction(ctx, log_entry, [tx](
       context::Context* ctx,
       error::Error err,
       const raft::LogEntry* entry,
@@ -813,6 +820,34 @@ error::Error Core::HandleHostHashes(context::Context* ctx, internal::Transaction
   return error::OK;
 }
 
+void Core::HandleUpdateMinimums(context::Context* ctx, internal::TransactionID tx, const minimums::MinimumLimits& update) {
+  minimums::Minimums to_check(minimums_);
+  if (auto err = to_check.UpdateLimits(ctx, update); err != error::OK) {
+    LOG(INFO) << "Minimums update invalid: " << err;
+    ReplyWithError(ctx, tx, err);
+    return;
+  }
+  if (auto err = peer_manager_->CheckPeerMinimums(ctx, to_check); err != error::OK) {
+    LOG(INFO) << "Minimums update rejected since at least one peer would be removed because of it: " << err;
+    ReplyWithError(ctx, tx, err);
+    return;
+  }
+  auto log_entry = ctx->Protobuf<raft::LogEntry>();
+  log_entry->mutable_minimums()->MergeFrom(update);
+  if (auto err = RaftWriteLogTransaction(ctx, log_entry, [tx](
+      context::Context* ctx,
+      error::Error err,
+      const raft::LogEntry* entry,
+      const db::DB::Response* response) {
+    LOG(INFO) << "Minimums update returned: " << err;
+    ReplyWithError(ctx, tx, err);
+  }); err != error::OK) {
+    LOG(INFO) << "Failed to request minimums update: " << err;
+    ReplyWithError(ctx, tx, err);
+    return;
+  }
+}
+
 void Core::HandleTimerTick(context::Context* ctx, const TimerTick& tick) {
   MEASURE_CPU(ctx, cpu_core_timer_tick);
   auto time = tick.new_timestamp_unix_secs();
@@ -830,7 +865,9 @@ void Core::HandleTimerTick(context::Context* ctx, const TimerTick& tick) {
     if (raft_.loaded.raft->is_leader()) {
       raft::ReplicaGroup* next = NextReplicaGroup(ctx);
       if (next != nullptr) {
-        auto [loc, err] = raft_.loaded.raft->ReplicaGroupChange(ctx, *next);
+        auto log_entry = ctx->Protobuf<raft::LogEntry>();
+        log_entry->mutable_membership_change()->MergeFrom(*next);
+        auto [loc, err] = raft_.loaded.raft->LogRequest(ctx, log_entry);
         // We expect errors to occur here, in cases where for example an existing
         // replica group change is already in progress, etc.
         LOG(INFO) << "attempt to change replica group returned " << err;
@@ -1305,7 +1342,9 @@ error::Error Core::HandleRequestRaftMembership(context::Context* ctx, const peer
     }
   }
   g.add_replicas()->set_peer_id(peer_string);
-  auto [loc, err] = raft_.loaded.raft->ReplicaGroupChange(ctx, g);
+  auto log_entry = ctx->Protobuf<raft::LogEntry>();
+  log_entry->mutable_membership_change()->MergeFrom(g);
+  auto [loc, err] = raft_.loaded.raft->LogRequest(ctx, log_entry);
   if (err == error::OK) {
     RaftStep(ctx);
     resp->mutable_raft_membership_response()->MergeFrom(loc);
@@ -1335,7 +1374,9 @@ error::Error Core::HandleRequestRaftVoting(context::Context* ctx, const peerid::
       break;
     }
   }
-  auto [loc, err] = raft_.loaded.raft->ReplicaGroupChange(ctx, g);
+  auto log_entry = ctx->Protobuf<raft::LogEntry>();
+  log_entry->mutable_membership_change()->MergeFrom(g);
+  auto [loc, err] = raft_.loaded.raft->LogRequest(ctx, log_entry);
   if (err == error::OK) {
     RaftStep(ctx);
     resp->mutable_raft_voting_response()->MergeFrom(loc);
@@ -1352,7 +1393,11 @@ error::Error Core::HandleRaftWrite(context::Context* ctx, const std::string& dat
   if (raft_.loaded.raft->membership().voting_replicas().size() < raft_.loaded.group_config.min_voting_replicas()) {
     return COUNTED_ERROR(Core_NotEnoughVotingReplicas);
   }
-  auto [loc, err] = raft_.loaded.raft->ClientRequest(ctx, data);
+  auto log_entry = ctx->Protobuf<raft::LogEntry>();
+  if (!log_entry->ParseFromString(data)) {
+    return COUNTED_ERROR(Core_DeserializeRaftWrite);
+  }
+  auto [loc, err] = raft_.loaded.raft->LogRequest(ctx, log_entry);
   if (err == error::OK) {
     RaftStep(ctx);
     resp->mutable_raft_write()->MergeFrom(loc);
@@ -1388,7 +1433,9 @@ error::Error Core::HandlePeerRequestedRaftRemoval(context::Context* ctx, const p
     SendE2EError(ctx, from, tx, COUNTED_ERROR(Core_RemoveNonexistentMember));
     return error::OK;
   }
-  auto [loc, err] = raft_.loaded.raft->ReplicaGroupChange(ctx, next);
+  auto log_entry = ctx->Protobuf<raft::LogEntry>();
+  log_entry->mutable_membership_change()->MergeFrom(next);
+  auto [loc, err] = raft_.loaded.raft->LogRequest(ctx, log_entry);
   if (err != error::OK) {
     SendE2EError(ctx, from, tx, err);
     return error::OK;
@@ -1498,7 +1545,7 @@ Core::LogTransactionCallback Core::ClientLogTransaction(context::Context* ctx, c
   };
 }
 
-error::Error Core::RaftWriteLogTransaction(context::Context* ctx, const std::string& data, Core::LogTransactionCallback cb) {
+error::Error Core::RaftWriteLogTransaction(context::Context* ctx, raft::LogEntry* entry, Core::LogTransactionCallback cb) {
   ACQUIRE_LOCK(raft_.mu, ctx, lock_core_raft);
   if (raft_.state != svr2::RAFTSTATE_LOADED_PART_OF_GROUP) {
     return COUNTED_ERROR(Core_RaftState);
@@ -1508,7 +1555,7 @@ error::Error Core::RaftWriteLogTransaction(context::Context* ctx, const std::str
       return COUNTED_ERROR(Core_NotEnoughVotingReplicas);
     }
     // Add the ClientLog message to the Raft log
-    auto [loc, raft_err] = raft_.loaded.raft->ClientRequest(ctx, data);
+    auto [loc, raft_err] = raft_.loaded.raft->LogRequest(ctx, entry);
     if (raft_err != error::OK) {
       return raft_err;
     }
@@ -1517,7 +1564,9 @@ error::Error Core::RaftWriteLogTransaction(context::Context* ctx, const std::str
   } else if (raft_.loaded.raft->leader().has_value()) {
     // Forward this ClientLog to the leader to be added to the log
     auto txn = ctx->Protobuf<e2e::TransactionRequest>();
-    txn->set_raft_write(data);
+    if (!entry->SerializeToString(txn->mutable_raft_write())) {
+      return COUNTED_ERROR(Core_SerializeRaftWrite);
+    }
     SendE2ETransaction(ctx, *raft_.loaded.raft->leader(), *txn, true,
         [this, cb](context::Context* ctx, error::Error err, const e2e::TransactionResponse* resp) {
           if (err == error::OK && resp->inner_case() == e2e::TransactionResponse::kStatus) {
@@ -1651,7 +1700,7 @@ void Core::HandleRaftMinimumsChange(
     raft::LogIdx idx,
     raft::TermId term,
     const minimums::MinimumLimits& minimums) {
-  if (auto err = minimums_.UpdateSet(ctx, minimums); err != error::OK) {
+  if (auto err = minimums_.UpdateLimits(ctx, minimums); err != error::OK) {
     LOG(ERROR) << "Failed to update minimums from raft group: " << err;
     CHECK(nullptr == "failed to update minimums from raft group");
   }

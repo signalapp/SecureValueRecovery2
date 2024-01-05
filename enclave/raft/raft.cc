@@ -508,43 +508,41 @@ std::pair<LogLocation, error::Error> Raft::ClientRequestInternal(LogEntry* entry
   //    IN  log' = [log EXCEPT ![i] = newLog]
 }
 
-std::pair<LogLocation, error::Error> Raft::ClientRequest(context::Context* ctx, const std::string& data) {
-  auto entry = ctx->Protobuf<LogEntry>();
-  *entry->mutable_data() = data;
-  auto out = ClientRequestInternal(entry);
-  MaybeChangeStateAndSendMessages(ctx);
-  return out;
-}
-
-std::pair<LogLocation, error::Error> Raft::ReplicaGroupChange(context::Context* ctx, const ReplicaGroup& g) {
-  // We will check role again in ClientRequestInternal, but we
-  // do some checks here that assume leadership, so check here
-  // before we do those.
-  if (role_ != internal::Role::LEADER || leader_.relinquishing) {
-    MELOG(VERBOSE) << "received ReplicaGroupRequest but not leader";
-    return std::make_pair(LogLocation(), COUNTED_ERROR(Raft_AppendEntryNotLeader));
+std::pair<LogLocation, error::Error> Raft::LogRequest(context::Context* ctx, LogEntry* log) {
+  switch (log->inner_case()) {
+    case LogEntry::INNER_NOT_SET:
+    case LogEntry::kData:
+      break;
+    case LogEntry::kMinimums:
+      break;
+    case LogEntry::kMembershipChange: {
+      // We will check role again in ClientRequestInternal, but we
+      // do some checks here that assume leadership, so check here
+      // before we do those.
+      if (role_ != internal::Role::LEADER || leader_.relinquishing) {
+        MELOG(VERBOSE) << "received ReplicaGroupRequest but not leader";
+        return std::make_pair(LogLocation(), COUNTED_ERROR(Raft_AppendEntryNotLeader));
+      }
+      // We allow only one uncommitted membership change within uncommitted
+      // logs.  If we already have one, reject this request.
+      if (uncommitted_memberships_.size()) {
+        return std::make_pair(LogLocation(), COUNTED_ERROR(Raft_MembershipAlreadyChanging));
+      }
+      // Is this change actually valid?
+      auto [next, err] = Membership::FromProto(log->membership_change());
+      if (err != error::OK) {
+        return std::make_pair(LogLocation(), err);
+      }
+      // Does this change do anything detrimental, like remove the voting rights
+      // of the current leader, emptying out all voters, etc?
+      err = Membership::ValidProgressionForLeader(me_, *membership_, *next, super_majority_);
+      if (err != error::OK) {
+        return std::make_pair(LogLocation(), err);
+      }
+      LOG(VERBOSE) << "Requesting raft membership change";
+    } break;
   }
-  // We allow only one uncommitted membership change within uncommitted
-  // logs.  If we already have one, reject this request.
-  if (uncommitted_memberships_.size()) {
-    return std::make_pair(LogLocation(), COUNTED_ERROR(Raft_MembershipAlreadyChanging));
-  }
-  // Is this change actually valid?
-  auto [next, err] = Membership::FromProto(g);
-  if (err != error::OK) {
-    return std::make_pair(LogLocation(), err);
-  }
-  // Does this change do anything detrimental, like remove the voting rights
-  // of the current leader, emptying out all voters, etc?
-  err = Membership::ValidProgressionForLeader(me_, *membership_, *next, super_majority_);
-  if (err != error::OK) {
-    return std::make_pair(LogLocation(), err);
-  }
-  // If we're here, we're going to attempt to move forward with this request.
-  auto entry = ctx->Protobuf<LogEntry>();
-  *entry->mutable_membership_change() = g;
-  LOG(VERBOSE) << "Requesting raft membership change";
-  auto out = ClientRequestInternal(entry);
+  auto out = ClientRequestInternal(log);
   MaybeChangeStateAndSendMessages(ctx);
   return out;
 }

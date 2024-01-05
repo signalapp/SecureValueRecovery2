@@ -3,10 +3,12 @@
 
 #include "minimums/minimums.h"
 #include "util/macros.h"
+#include "util/log.h"
+#include "util/hex.h"
 
 namespace svr2::minimums {
 
-error::Error Minimums::UpdateSet(context::Context* ctx, const MinimumLimits& s) {
+error::Error Minimums::UpdateLimits(context::Context* ctx, const MinimumLimits& s) {
   ACQUIRE_LOCK(mu_, ctx, lock_minimums_updateset);
   for (const auto& iter : s_.lim()) {
     if (s.lim().count(iter.first) == 0) {
@@ -32,6 +34,9 @@ error::Error Minimums::UpdateSet(context::Context* ctx, const MinimumLimits& s) 
     }
   }
   s_ = s;
+  for (const auto& iter : s.lim()) {
+    LOG(INFO) << "Minimums update: '" << iter.first << "' = 0x" << util::ToHex(iter.second);
+  }
   return error::OK;
 }
 

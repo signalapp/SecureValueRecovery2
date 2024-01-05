@@ -34,7 +34,7 @@ TEST_F(MinimumsTest, SetLimits) {
   MinimumLimits lim;
   (*lim.mutable_lim())["foo"] = "bar";
   (*lim.mutable_lim())["baz"] = "blah";
-  ASSERT_EQ(error::OK, m.UpdateSet(&ctx, lim));
+  ASSERT_EQ(error::OK, m.UpdateLimits(&ctx, lim));
 }
 
 TEST_F(MinimumsTest, UpdateLimitsWithSame) {
@@ -42,8 +42,8 @@ TEST_F(MinimumsTest, UpdateLimitsWithSame) {
   MinimumLimits lim;
   (*lim.mutable_lim())["foo"] = "bar";
   (*lim.mutable_lim())["baz"] = "blah";
-  ASSERT_EQ(error::OK, m.UpdateSet(&ctx, lim));
-  ASSERT_EQ(error::OK, m.UpdateSet(&ctx, lim));
+  ASSERT_EQ(error::OK, m.UpdateLimits(&ctx, lim));
+  ASSERT_EQ(error::OK, m.UpdateLimits(&ctx, lim));
 }
 
 TEST_F(MinimumsTest, AddNewLimit) {
@@ -51,9 +51,9 @@ TEST_F(MinimumsTest, AddNewLimit) {
   MinimumLimits lim;
   (*lim.mutable_lim())["foo"] = "bar";
   (*lim.mutable_lim())["baz"] = "blah";
-  ASSERT_EQ(error::OK, m.UpdateSet(&ctx, lim));
+  ASSERT_EQ(error::OK, m.UpdateLimits(&ctx, lim));
   (*lim.mutable_lim())["bing"] = "pot";
-  ASSERT_EQ(error::OK, m.UpdateSet(&ctx, lim));
+  ASSERT_EQ(error::OK, m.UpdateLimits(&ctx, lim));
 }
 
 TEST_F(MinimumsTest, KeyMissing) {
@@ -61,9 +61,9 @@ TEST_F(MinimumsTest, KeyMissing) {
   MinimumLimits lim;
   (*lim.mutable_lim())["foo"] = "bar";
   (*lim.mutable_lim())["baz"] = "blah";
-  ASSERT_EQ(error::OK, m.UpdateSet(&ctx, lim));
+  ASSERT_EQ(error::OK, m.UpdateLimits(&ctx, lim));
   lim.mutable_lim()->erase("baz");
-  ASSERT_EQ(error::Minimums_KeyMissing, m.UpdateSet(&ctx, lim));
+  ASSERT_EQ(error::Minimums_KeyMissing, m.UpdateLimits(&ctx, lim));
 }
 
 TEST_F(MinimumsTest, EmptyKey) {
@@ -71,7 +71,7 @@ TEST_F(MinimumsTest, EmptyKey) {
   MinimumLimits lim;
   (*lim.mutable_lim())[""] = "bar";
   (*lim.mutable_lim())["baz"] = "blah";
-  ASSERT_EQ(error::Minimums_KeyEmpty, m.UpdateSet(&ctx, lim));
+  ASSERT_EQ(error::Minimums_KeyEmpty, m.UpdateLimits(&ctx, lim));
 }
 
 TEST_F(MinimumsTest, EmptyValue) {
@@ -79,7 +79,7 @@ TEST_F(MinimumsTest, EmptyValue) {
   MinimumLimits lim;
   (*lim.mutable_lim())["foo"] = "bar";
   (*lim.mutable_lim())["baz"] = "";
-  ASSERT_EQ(error::Minimums_EntryEmpty, m.UpdateSet(&ctx, lim));
+  ASSERT_EQ(error::Minimums_EntryEmpty, m.UpdateLimits(&ctx, lim));
 }
 
 TEST_F(MinimumsTest, KeyUpdate) {
@@ -87,9 +87,9 @@ TEST_F(MinimumsTest, KeyUpdate) {
   MinimumLimits lim;
   (*lim.mutable_lim())["foo"] = "bar";
   (*lim.mutable_lim())["baz"] = "blah";
-  ASSERT_EQ(error::OK, m.UpdateSet(&ctx, lim));
+  ASSERT_EQ(error::OK, m.UpdateLimits(&ctx, lim));
   (*lim.mutable_lim())["baz"] = "zzzz";
-  ASSERT_EQ(error::OK, m.UpdateSet(&ctx, lim));
+  ASSERT_EQ(error::OK, m.UpdateLimits(&ctx, lim));
 }
 
 TEST_F(MinimumsTest, KeyUpdateLess) {
@@ -97,9 +97,9 @@ TEST_F(MinimumsTest, KeyUpdateLess) {
   MinimumLimits lim;
   (*lim.mutable_lim())["foo"] = "bar";
   (*lim.mutable_lim())["baz"] = "blah";
-  ASSERT_EQ(error::OK, m.UpdateSet(&ctx, lim));
+  ASSERT_EQ(error::OK, m.UpdateLimits(&ctx, lim));
   (*lim.mutable_lim())["baz"] = "aaaa";
-  ASSERT_EQ(error::Minimums_LimitDecreased, m.UpdateSet(&ctx, lim));
+  ASSERT_EQ(error::Minimums_LimitDecreased, m.UpdateLimits(&ctx, lim));
 }
 
 TEST_F(MinimumsTest, KeyUpdateSizeDiff) {
@@ -107,9 +107,9 @@ TEST_F(MinimumsTest, KeyUpdateSizeDiff) {
   MinimumLimits lim;
   (*lim.mutable_lim())["foo"] = "bar";
   (*lim.mutable_lim())["baz"] = "blah";
-  ASSERT_EQ(error::OK, m.UpdateSet(&ctx, lim));
+  ASSERT_EQ(error::OK, m.UpdateLimits(&ctx, lim));
   (*lim.mutable_lim())["baz"] = "blah2";
-  ASSERT_EQ(error::Minimums_SizeMismatch, m.UpdateSet(&ctx, lim));
+  ASSERT_EQ(error::Minimums_SizeMismatch, m.UpdateLimits(&ctx, lim));
 }
 
 TEST_F(MinimumsTest, KeyUpdateLowValue3) {
@@ -118,7 +118,7 @@ TEST_F(MinimumsTest, KeyUpdateLowValue3) {
   (*lim.mutable_lim())["foo"] = "bar";
   MinimumValues val;
   (*val.mutable_val())["foo"] = "aaa";
-  ASSERT_EQ(error::OK, m.UpdateSet(&ctx, lim));
+  ASSERT_EQ(error::OK, m.UpdateLimits(&ctx, lim));
   ASSERT_EQ(error::Minimums_ValueTooLow, m.CheckValues(&ctx, val));
 }
 
@@ -126,12 +126,12 @@ TEST_F(MinimumsTest, U64s) {
   Minimums m;
   MinimumLimits lim;
   (*lim.mutable_lim())["foo"] = Minimums::U64(123);;
-  ASSERT_EQ(error::OK, m.UpdateSet(&ctx, lim));
-  ASSERT_EQ(error::OK, m.UpdateSet(&ctx, lim));
+  ASSERT_EQ(error::OK, m.UpdateLimits(&ctx, lim));
+  ASSERT_EQ(error::OK, m.UpdateLimits(&ctx, lim));
   (*lim.mutable_lim())["foo"] = Minimums::U64(124);;
-  ASSERT_EQ(error::OK, m.UpdateSet(&ctx, lim));
+  ASSERT_EQ(error::OK, m.UpdateLimits(&ctx, lim));
   (*lim.mutable_lim())["foo"] = Minimums::U64(123);;
-  ASSERT_EQ(error::Minimums_LimitDecreased, m.UpdateSet(&ctx, lim));
+  ASSERT_EQ(error::Minimums_LimitDecreased, m.UpdateLimits(&ctx, lim));
 }
 
 }  // namespace svr2::minimums

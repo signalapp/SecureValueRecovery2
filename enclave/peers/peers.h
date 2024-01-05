@@ -110,7 +110,7 @@ class Peer {
   // Send a `rst` to the given peer ID.
   static void SendRst(context::Context* ctx, const peerid::PeerID& id) EXCLUDES(mu_);
 
-  void CheckMinimums(context::Context* ctx) EXCLUDES(mu_);
+  error::Error CheckMinimums(context::Context* ctx, const minimums::Minimums& minimums) EXCLUDES(mu_);
 
  private:
   // Resets state to DISCONNECTED.
@@ -235,11 +235,13 @@ class PeerManager {
   void PeerStatus(context::Context* ctx, const peerid::PeerID& id, ConnectionStatus* status) const;
 
   void SetPeerAttestationTimestamp(context::Context* ctx, util::UnixSecs secs, util::UnixSecs attestation_timeout) EXCLUDES(mu_);
-  void MinimumsUpdated(context::Context* ctx) EXCLUDES(mu_);
-
   util::UnixSecs CurrentTime() const { return time_.load(); }
 
-  minimums::Minimums* Minimums() const { return minimums_; }  // minimums_ does its own locking.
+  void MinimumsUpdated(context::Context* ctx) EXCLUDES(mu_);
+  // Check all peers to see if any of them would return errors if to_check were the
+  // new set of minimums.  For safety only.
+  error::Error CheckPeerMinimums(context::Context* ctx, const minimums::Minimums& to_check) const EXCLUDES(mu_);
+  const minimums::Minimums& Minimums() const { return *minimums_; }  // minimums_ does its own locking.
 
  private:
   std::pair<noise::DHState, e2e::Attestation*> ConnectionArgs(context::Context* ctx) EXCLUDES(mu_);

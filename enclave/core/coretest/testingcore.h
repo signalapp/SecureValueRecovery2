@@ -90,6 +90,7 @@ class TestingCore {
   error::Error Reconfigure(const enclaveconfig::EnclaveConfig& config);
   error::Error DeleteBackup(const std::string& client_authenticated_id);
   error::Error RaftRemoval();
+  error::Error UpdateMinimums(const minimums::MinimumLimits& lim);
 
   // Peer communication
   error::Error AddPeerMessage(PeerMessage&& peer_message);

@@ -141,17 +141,7 @@ class Raft {
   // SendableMessages() must be called after that function completes and before
   // that context falls out of scope.
 
-  // Request that a log entry containing the given data be added to the Raft log.
-  // Requires that `is_leader()` is true.
-  //
-  // If successful, this log returns the location where the log _may_ be
-  // committed. You can tell if the log was successfully added if TakeCommittedLog
-  // returns a log entry with a matching location (term+idx).
-  std::pair<LogLocation, error::Error> ClientRequest(context::Context* ctx, const std::string& data);
-  // Request that a new replica group configuration be adopted by the Raft
-  // group.  Requires that `is_leader()` is true, and that the configuration
-  // is an acceptable next configuration from the current one.
-  std::pair<LogLocation, error::Error> ReplicaGroupChange(context::Context* ctx, const ReplicaGroup& g);
+  std::pair<LogLocation, error::Error> LogRequest(context::Context* ctx, LogEntry* entry);
   // Receive a Raft message from another replica.
   // Send messages from SendableMessages after this call.
   void Receive(context::Context* ctx, const RaftMessage& msg, const peerid::PeerID& from);

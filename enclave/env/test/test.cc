@@ -4,6 +4,7 @@
 #include "env/test/test.h"
 #include "env/env.h"
 #include "util/mutex.h"
+#include "minimums/minimums.h"
 #include <sys/random.h>
 #include <string.h>
 #include <atomic>
@@ -11,6 +12,8 @@
 
 namespace svr2::env {
 namespace test {
+
+uint64_t minimums_test_version = 100;
 
 static const char* evidence_prefix = "EVIDENCE:";
 static volatile std::atomic<uint32_t> random_gen;
@@ -53,6 +56,7 @@ class Environment : public ::svr2::env::Environment {
     if (!out.ParseFromArray(attestation.evidence().data() + prefix_len, attestation.evidence().size() - prefix_len)) {
       return std::make_pair(out, COUNTED_ERROR(Env_AttestationFailure));
     }
+    (*out.mutable_minimum_values()->mutable_val())["minimums_test_version"] = minimums::Minimums::U64(minimums_test_version);
     return std::make_pair(out, error::OK);
   }
 
