@@ -57,7 +57,7 @@ class Environment : public ::svr2::env::socket::Environment {
   // this report.
   virtual std::pair<e2e::Attestation, error::Error> Evidence(
       context::Context* ctx,
-      const enclaveconfig::AttestationData& data) const {
+      const attestation::AttestationData& data) const {
     MEASURE_CPU(ctx, cpu_env_evidence);
     e2e::Attestation out;
     std::string serialized = data.SerializeAsString();
@@ -123,12 +123,12 @@ class Environment : public ::svr2::env::socket::Environment {
   }
 
   // Given evidence and endorsements, extract the key.
-  virtual std::pair<enclaveconfig::AttestationData, error::Error> Attest(
+  virtual std::pair<attestation::AttestationData, error::Error> Attest(
       context::Context* ctx,
       util::UnixSecs now,
       const e2e::Attestation& attestation) const {
     MEASURE_CPU(ctx, cpu_env_attest);
-    enclaveconfig::AttestationData out;
+    attestation::AttestationData out;
     if (simulated_) {
       if (attestation.evidence().rfind(SIMULATED_REPORT_PREFIX, 0) != 0) {
         return std::make_pair(out, error::Env_AttestationFailure);
@@ -191,7 +191,7 @@ class Environment : public ::svr2::env::socket::Environment {
     }
 
     context::Context ctx;
-    enclaveconfig::AttestationData data;
+    attestation::AttestationData data;
     data.mutable_public_key()->resize(sizeof(env::PublicKey));
     auto [attest, err] = Evidence(&ctx, data);
     CHECK(err == error::OK);

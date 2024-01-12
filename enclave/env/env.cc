@@ -16,18 +16,18 @@ class UnsetEnvironment : public Environment {
   virtual ~UnsetEnvironment() {}
   virtual std::pair<e2e::Attestation, error::Error> Evidence(
       context::Context* ctx,
-      const enclaveconfig::AttestationData& data) const {
+      const attestation::AttestationData& data) const {
     CHECK(nullptr == "env::Init not called, environment not initiated");
 
     return std::make_pair(e2e::Attestation(), error::General_Unimplemented);
   }
   // Given evidence and endorsements, extract the key.
-  virtual std::pair<enclaveconfig::AttestationData, error::Error> Attest(
+  virtual std::pair<attestation::AttestationData, error::Error> Attest(
       context::Context* ctx,
       util::UnixSecs now,
       const e2e::Attestation& attestation) const {
     CHECK(nullptr == "env::Init not called, environment not initiated");
-    enclaveconfig::AttestationData out;
+    attestation::AttestationData out;
     return std::make_pair(out, error::General_Unimplemented);
   }
   // Given a string of size N, rewrite all bytes in that string with

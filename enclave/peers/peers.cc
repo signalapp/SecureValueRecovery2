@@ -488,7 +488,7 @@ error::Error PeerManager::Init(context::Context* ctx) {
     return COUNTED_ERROR(Peers_NewKeyPublic);
   }
 
-  enclaveconfig::AttestationData data;
+  attestation::AttestationData data;
   *data.mutable_public_key() = util::ByteArrayToString(public_key);
   // It's assumed that env->Evidence will fill in data.minimums.
   auto [evidence_and_endorsements, err] = env::environment->Evidence(ctx, data);
@@ -512,7 +512,7 @@ const peerid::PeerID& PeerManager::ID() const {
 }
 
 error::Error PeerManager::RefreshAttestation(context::Context* ctx) {
-  enclaveconfig::AttestationData att;
+  attestation::AttestationData att;
   *att.mutable_public_key() = util::ByteArrayToString(ID().Get());
   // It's assumed that env->Evidence will fill in data.minimums.
   auto [evidence_and_endorsements, err] = env::environment->Evidence(ctx, att);

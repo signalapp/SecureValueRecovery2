@@ -286,9 +286,9 @@ std::pair<attestation_report, error::Error> ReportFromUnverifiedAttestation(cons
   return std::make_pair(out, ValidateReport(out));
 }
 
-std::pair<enclaveconfig::AttestationData, error::Error> DataFromVerifiedAttestation(const attestation_report& local, const e2e::Attestation& attestation, util::UnixSecs now) {
+std::pair<attestation::AttestationData, error::Error> DataFromVerifiedAttestation(const attestation_report& local, const e2e::Attestation& attestation, util::UnixSecs now) {
   auto [report, err] = ReportFromUnverifiedEvidence(attestation.evidence());
-  enclaveconfig::AttestationData out;
+  attestation::AttestationData out;
   if (err != error::OK) {
     return std::make_pair(out, err);
   }

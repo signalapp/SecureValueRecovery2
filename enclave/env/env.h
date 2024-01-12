@@ -9,6 +9,7 @@
 #include "proto/error.pb.h"
 #include "proto/e2e.pb.h"
 #include "proto/msgs.pb.h"
+#include "proto/attestation.pb.h"
 #include "util/macros.h"
 #include "util/ticks.h"
 #include "context/context.h"
@@ -26,9 +27,9 @@ class Environment {
   // Given a 32-byte key, return evidence of that key (an OpenEnclave report).
   virtual std::pair<e2e::Attestation, error::Error> Evidence(
       context::Context* ctx,
-      const enclaveconfig::AttestationData& attestation) const = 0;
+      const attestation::AttestationData& attestation) const = 0;
   // Given evidence and endorsements, extract the key.
-  virtual std::pair<enclaveconfig::AttestationData, error::Error> Attest(
+  virtual std::pair<attestation::AttestationData, error::Error> Attest(
       context::Context* ctx,
       util::UnixSecs now,
       const e2e::Attestation& attestation) const = 0;

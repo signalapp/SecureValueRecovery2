@@ -36,7 +36,7 @@ class Environment : public ::svr2::env::socket::Environment {
   }
   virtual std::pair<e2e::Attestation, error::Error> Evidence(
       context::Context* ctx,
-      const enclaveconfig::AttestationData& data) const {
+      const attestation::AttestationData& data) const {
     MEASURE_CPU(ctx, cpu_env_evidence);
     e2e::Attestation out;
     if (simulated_) {
@@ -66,12 +66,12 @@ class Environment : public ::svr2::env::socket::Environment {
   }
 
   // Given evidence and endorsements, extract attestation data.
-  virtual std::pair<enclaveconfig::AttestationData, error::Error> Attest(
+  virtual std::pair<attestation::AttestationData, error::Error> Attest(
       context::Context* ctx,
       util::UnixSecs now,
       const e2e::Attestation& attestation) const {
     MEASURE_CPU(ctx, cpu_env_attest);
-    enclaveconfig::AttestationData out;
+    attestation::AttestationData out;
     if (simulated_) {
       if (attestation.evidence().rfind(SIMULATED_REPORT_PREFIX, 0) != 0) {
         return std::make_pair(out, error::Env_AttestationFailure);
@@ -132,7 +132,7 @@ class Environment : public ::svr2::env::socket::Environment {
     ::svr2::env::socket::Environment::Init();
     if (simulated_) return;
     // Get an initial set of evidence to pull our PCRs from.
-    enclaveconfig::AttestationData data;
+    attestation::AttestationData data;
     data.mutable_public_key()->resize(sizeof(env::PublicKey));
     context::Context ctx;
     auto [att, err] = Evidence(&ctx, data);

@@ -217,7 +217,7 @@ error::Error ClientManager::RefreshAttestation(context::Context* ctx, const encl
 }
 
 std::pair<e2e::Attestation, error::Error> ClientManager::GetAttestation(context::Context* ctx, const noise::DHState& dhstate, const enclaveconfig::RaftGroupConfig& config) {
-  enclaveconfig::AttestationData att;
+  attestation::AttestationData att;
   att.mutable_public_key()->resize(32);
   e2e::Attestation attestation;
   // get attestation for its public key

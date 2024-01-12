@@ -47,7 +47,7 @@ class Environment : public ::svr2::env::Environment {
 
   virtual std::pair<e2e::Attestation, error::Error> Evidence(
       context::Context* ctx,
-      const enclaveconfig::AttestationData& attestation) const {
+      const attestation::AttestationData& attestation) const {
     MEASURE_CPU(ctx, cpu_env_evidence);
     e2e::Attestation out;
     if (simulated_) {
@@ -125,12 +125,12 @@ class Environment : public ::svr2::env::Environment {
     return error::OK;
   }
 
-  virtual std::pair<enclaveconfig::AttestationData, error::Error> Attest(
+  virtual std::pair<attestation::AttestationData, error::Error> Attest(
       context::Context* ctx,
       util::UnixSecs now,
       const e2e::Attestation& attestation) const {
     MEASURE_CPU(ctx, cpu_env_attest);
-    enclaveconfig::AttestationData out;
+    attestation::AttestationData out;
 
     if (simulated_) {
       const size_t prefix_len = strlen(unattested_evidence_prefix);
@@ -218,7 +218,7 @@ class Environment : public ::svr2::env::Environment {
   std::string expected_mrenclave_;
   error::Error GetMRENCLAVE() {
     context::Context ctx;
-    enclaveconfig::AttestationData data;
+    attestation::AttestationData data;
     data.mutable_public_key()->resize(sizeof(env::PublicKey));
     auto [attestation, err] = Evidence(&ctx, data);
     if (err != error::OK) {

@@ -1,0 +1,22 @@
+// Copyright 2023 Signal Messenger, LLC
+// SPDX-License-Identifier: AGPL-3.0-only
+
+syntax = "proto3";
+
+package svr2.attestation;
+option go_package = "github.com/signalapp/svr2/proto";
+option optimize_for = LITE_RUNTIME;
+
+import "minimums.proto";
+import "enclaveconfig.proto";
+
+message AttestationData {
+  bytes public_key = 1;
+  enclaveconfig.RaftGroupConfig group_config = 2;
+  // This is the set of limits that this replica enforces on its peers.
+  minimums.MinimumLimits minimum_limits = 3;
+  // This is the set of values associated with a peer.  These are not sent
+  // over the wire, but are rather added on by env->Attest as part of the
+  // attestation process.
+  minimums.MinimumValues minimum_values = 4;
+}
