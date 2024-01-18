@@ -20,7 +20,9 @@ CPUMeasurement::CPUMeasurement(Context* ctx, metrics::Counter* counter)
 
 CPUMeasurement::~CPUMeasurement() {
   uint64_t ticks = util::asm_rdtsc();
-  counter_->IncrementBy(ticks - ticks_);
+  if (counter_ != nullptr) {
+    counter_->IncrementBy(ticks - ticks_);
+  }
   if (parent_ != nullptr) {
     parent_->ticks_ = ticks;
   }
@@ -32,7 +34,7 @@ void CPUMeasurement::SetContext(Context* ctx) {
   ctx_ = ctx;
   parent_ = ctx_->cpu_current_;
   ctx_->cpu_current_ = this;
-  if (parent_ != nullptr) {
+  if (parent_ != nullptr && parent_->counter_ != nullptr) {
     // If there's a parent CPUMeasurement, increment its ticks-so-far.
     // When we're destroyed, we'll push parent_->ticks_ forward so ticks
     // during our lifetime are not double-counted.

@@ -58,10 +58,14 @@ error::Error Socket::WriteAll(uint8_t* buf, size_t size) {
 }
 
 error::Error Socket::ReadPB(context::Context* ctx, google::protobuf::MessageLite* pb) {
-  ACQUIRE_LOCK(read_mu_, ctx, lock_socket_read);
+  util::unique_lock read_lock(read_mu_, std::defer_lock);
+  {
+    IGNORE_CPU(ctx);
+    read_lock.lock();
+  }
   size_t to_read = 0;
   {
-    MEASURE_CPU(ctx, cpu_socket_read_recv);
+    IGNORE_CPU(ctx);
     uint8_t uint32_buf[4] = {0};
     RETURN_IF_ERROR(ReadAll(uint32_buf, sizeof(uint32_buf)));
     to_read = util::BigEndian32FromBytes(uint32_buf);
@@ -69,6 +73,7 @@ error::Error Socket::ReadPB(context::Context* ctx, google::protobuf::MessageLite
       return COUNTED_ERROR(Socket_ReadTooBig);
     }
     LOG(VERBOSE) << "Reading " << to_read << " byte proto";
+    MEASURE_CPU(ctx, cpu_socket_read_recv);
     if (read_buf_.size() < to_read) {
       read_buf_.resize(to_read);
     }

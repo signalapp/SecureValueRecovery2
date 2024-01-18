@@ -63,6 +63,7 @@ func main() {
 		parallel := loadtestCmd.Int("parallel", 1, "amount of parallelization")
 		count := loadtestCmd.Int("count", 1, "total count to run")
 		loadtestCmd.Parse(os.Args[2:])
+		log.Printf("Using hosts: %v", hosts)
 		hs := newHostSet(strings.Split(hosts, ","))
 		if err := runLoadTest(*parallel, *count, hs); err != nil {
 			fmt.Fprint(os.Stderr, err.Error())

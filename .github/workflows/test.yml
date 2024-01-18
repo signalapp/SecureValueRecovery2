@@ -23,7 +23,7 @@ jobs:
           dockerfile: docker/Dockerfile
 
       - name: Build and test
-        run: make
+        run: make docker_enclave_test && make
 
       - name: Validate
         run: make docker_validate

@@ -43,6 +43,7 @@ error::Error SendSocketMessages(socketwrap::Socket* sock) {
   while (true) {
     context::Context ctx;
     for (int i = 0; i < 100; i++) {
+      IGNORE_CPU(&ctx);
       auto out = output_messages.Pop();
       RETURN_IF_ERROR(sock->WritePB(&ctx, out));
     }

@@ -80,8 +80,14 @@ class Context {
 
 }  // namespace svr2::context
 
-#define MEASURE_CPU(ctx, name) \
-    ::svr2::context::CPUMeasurement __cpumeasure_ ## __COUNTER__ = (ctx)->MeasureCPU(COUNTER(context, name))
+#define MEASURE_CPU(ctx, name) MEASURE_CPU_CTR1(ctx, name, __COUNTER__)
+#define MEASURE_CPU_CTR1(ctx, name, ctr) MEASURE_CPU_CTR2(ctx, name, ctr)
+#define MEASURE_CPU_CTR2(ctx, name, ctr) \
+    ::svr2::context::CPUMeasurement __cpumeasure_ ## ctr = (ctx)->MeasureCPU(COUNTER(context, name))
+#define IGNORE_CPU(ctx) IGNORE_CPU_CTR1(ctx, __COUNTER__)
+#define IGNORE_CPU_CTR1(ctx, ctr) IGNORE_CPU_CTR2(ctx, ctr)
+#define IGNORE_CPU_CTR2(ctx, ctr) \
+    ::svr2::context::CPUMeasurement __cpuignore_ ## ctr = (ctx)->MeasureCPU(nullptr)
 
 // Creates an RAII util::unique_lock named `lockname`.  Use this
 // if you need to do things with the lock after you create it (e.g., explicitly
