@@ -32,8 +32,9 @@ import (
 )
 
 var (
-	loadtestCmd = flag.NewFlagSet("loadtest", flag.ExitOnError)
-	testKeyCmd  = flag.NewFlagSet("testkey", flag.ExitOnError)
+	loadtestCmd    = flag.NewFlagSet("loadtest", flag.ExitOnError)
+	testKeyCmd     = flag.NewFlagSet("testkey", flag.ExitOnError)
+	authHeadersCmd = flag.NewFlagSet("authheaders", flag.ExitOnError)
 
 	user                                    = toUser("test123")
 	hosts, enclaveID, authKey, statFilename string
@@ -41,8 +42,9 @@ var (
 )
 
 var subcommands = map[string]*flag.FlagSet{
-	loadtestCmd.Name(): loadtestCmd,
-	testKeyCmd.Name():  testKeyCmd,
+	loadtestCmd.Name():    loadtestCmd,
+	testKeyCmd.Name():     testKeyCmd,
+	authHeadersCmd.Name(): authHeadersCmd,
 }
 
 func main() {
@@ -66,14 +68,25 @@ func main() {
 		log.Printf("Using hosts: %v", hosts)
 		hs := newHostSet(strings.Split(hosts, ","))
 		if err := runLoadTest(*parallel, *count, hs); err != nil {
-			fmt.Fprint(os.Stderr, err.Error())
+			log.Printf("ERROR: %v", err)
 			os.Exit(1)
 		}
 	case testKeyCmd.Name():
 		testKeyCmd.Parse(os.Args[2:])
 		if err := runTestKey(); err != nil {
-			fmt.Fprint(os.Stderr, err.Error())
+			log.Printf("ERROR: %v", err)
 			os.Exit(1)
+		}
+	case authHeadersCmd.Name():
+		authHeadersCmd.Parse(os.Args[2:])
+		if err := runAuthHeaders(); err != nil {
+			log.Printf("ERROR: %v", err)
+			os.Exit(1)
+		}
+	default:
+		log.Printf("Subcommands:")
+		for cmd, _ := range subcommands {
+			log.Printf("  - %s", cmd)
 		}
 	}
 }
@@ -340,5 +353,17 @@ func runRestore(username string, blinded []byte, hs *hostSet) error {
 		return fmt.Errorf("evaluate request not successful: %v", br.Evaluate.Status)
 	}
 	log.Printf("restore successful in %v: data=pin=%x", time.Since(start), b)
+	return nil
+}
+
+func runAuthHeaders() error {
+	authBytes, err := base64.StdEncoding.DecodeString(authKey)
+	if err != nil {
+		return err
+	}
+	pass := auth.New(authBytes).PassFor(user)
+	log.Printf("USER: %q", user)
+	log.Printf("PASS: %q", pass)
+	log.Printf("HEADERS: Authorization: Basic %s", base64.URLEncoding.EncodeToString([]byte(user+":"+pass)))
 	return nil
 }
