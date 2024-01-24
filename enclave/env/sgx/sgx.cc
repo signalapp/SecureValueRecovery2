@@ -202,6 +202,10 @@ class Environment : public ::svr2::env::Environment {
     oe_log_ocall(level, msg.c_str());
   }
 
+  virtual void FlushAllLogsIfAble() const {
+    // oe_log_ocall already sends everything effectively synchronously.
+  }
+
   virtual error::Error UpdateEnvStats() const {
     oe_mallinfo_t info;
     if (OE_OK != oe_allocator_mallinfo(&info)) {

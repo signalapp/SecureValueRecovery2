@@ -45,6 +45,9 @@ class Environment {
   virtual void Log(int level, const std::string& msg) const = 0;
   // Update env-specific statistics.
   virtual error::Error UpdateEnvStats() const = 0;
+  // FlushAllLogsIfAble attempts to log everything that's been seen by
+  // Log() up to a place where operators can see it.
+  virtual void FlushAllLogsIfAble() const = 0;
 };
 
 extern std::unique_ptr<Environment> environment;

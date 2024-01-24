@@ -4,6 +4,7 @@
 #include "context/context.h"
 #include "metrics/metrics.h"
 #include "util/cpu.h"
+#include "util/macros.h"
 
 namespace svr2::context {
 

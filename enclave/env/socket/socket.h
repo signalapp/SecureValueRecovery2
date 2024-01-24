@@ -17,6 +17,7 @@ class Environment : public ::svr2::env::Environment {
   virtual ~Environment();
   virtual error::Error SendMessage(context::Context* ctx, const std::string& msg) const;
   virtual void Log(int level, const std::string& msg) const;
+  virtual void FlushAllLogsIfAble() const;
 };
 
 // Send all outstanding messages, in order, up to the host.

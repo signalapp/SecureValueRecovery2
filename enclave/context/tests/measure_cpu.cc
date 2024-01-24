@@ -3,7 +3,10 @@
 
 //TESTDEP gtest
 //TESTDEP context
+//TESTDEP util
 //TESTDEP metrics
+//TESTDEP env
+//TESTDEP libsodium
 //TESTDEP proto
 //TESTDEP protobuf-lite
 #include <gtest/gtest.h>

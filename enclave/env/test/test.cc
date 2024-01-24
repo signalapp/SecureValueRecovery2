@@ -73,6 +73,9 @@ class Environment : public ::svr2::env::Environment {
     fprintf(stderr, "%s\n", msg.c_str());
   }
 
+  virtual void FlushAllLogsIfAble() const {
+  }
+
   std::vector<EnclaveMessage> SentMessages() {
     util::unique_lock ul(mu_);
     return std::move(sent_messages_);

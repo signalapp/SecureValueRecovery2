@@ -5,6 +5,7 @@
 //TESTDEP env
 //TESTDEP env/test
 //TESTDEP context
+//TESTDEP util
 //TESTDEP metrics
 //TESTDEP proto
 //TESTDEP protobuf-lite

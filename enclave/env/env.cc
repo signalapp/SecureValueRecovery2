@@ -47,6 +47,9 @@ class UnsetEnvironment : public Environment {
     fprintf(stderr, "Pre-env::Init LOG(%d): %s\n", level, msg.c_str());
   }
 
+  virtual void FlushAllLogsIfAble() const {
+  }
+
   virtual error::Error UpdateEnvStats() const {
     CHECK(nullptr == "env::Init not called, environment not initiated");
     return error::General_Unimplemented;

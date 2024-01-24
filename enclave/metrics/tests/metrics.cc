@@ -4,8 +4,11 @@
 //TESTDEP gtest
 //TESTDEP metrics
 //TESTDEP context
+//TESTDEP util
 //TESTDEP proto
 //TESTDEP protobuf-lite
+//TESTDEP env
+//TESTDEP libsodium
 
 #include <gtest/gtest.h>
 #include "proto/error.pb.h"

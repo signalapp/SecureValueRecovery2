@@ -5,6 +5,9 @@
 //TESTDEP context
 //TESTDEP metrics
 //TESTDEP proto
+//TESTDEP util
+//TESTDEP env
+//TESTDEP libsodium
 //TESTDEP protobuf-lite
 #include <gtest/gtest.h>
 #include "context/context.h"

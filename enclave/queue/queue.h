@@ -29,9 +29,16 @@ class Queue {
     full_.wait(lock, [this]{ return d_.size() > 0; });
     T out = std::move(d_.front());
     d_.pop_front();
+    popped_++;
     lock.unlock();
-    notfull_.notify_one();
+    notfull_.notify_all();
     return out;
+  }
+
+  bool Flush(uint32_t millis) {
+    std::unique_lock lock(mu_);
+    auto wait_for = popped_ + d_.size();
+    return notfull_.wait_for(lock, std::chrono::milliseconds(millis), [this, wait_for]{ return popped_ >= wait_for; });
   }
 
  private:
@@ -40,6 +47,7 @@ class Queue {
   std::condition_variable notfull_;
   std::deque<T> d_;
   size_t max_size_;
+  size_t popped_;
 };
 
 }  // namespace svr2::queue

@@ -5,11 +5,14 @@
 #define __SVR2_UTIL_MACROS_H__
 
 #include <stdio.h>
-#include <stdlib.h>
+#include "util/log.h"
 
+// LOG(FATAL) already does an abort(), but we do it again so the compiler really
+// knows that this is a sequence of instructions that doesn't continue, for things
+// like fallthrough etc.
 #define CHECK(x) do { \
   if (!(x)) { \
-    fprintf(stderr, "CHECK FAIL @ %s:%d in %s: %s\n", __FILE__, __LINE__, __FUNCTION__, #x); \
+    LOG(FATAL) << "CHECK FAIL: " << #x; \
     abort(); \
   } \
 } while (0)

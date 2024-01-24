@@ -5,6 +5,7 @@
 #include "env/env.h"
 #include "util/macros.h"
 #include <sys/time.h>
+#include <stdlib.h>
 
 namespace svr2::util {
 
@@ -21,7 +22,10 @@ Log::Log(::svr2::enclaveconfig::EnclaveLogLevel lvl) : lvl_(lvl) {}
 
 Log::~Log() {
   env::environment->Log(lvl_, ss_.str());
-  if (lvl_ == enclaveconfig::LOG_LEVEL_FATAL) { CHECK(false); }
+  if (lvl_ == enclaveconfig::LOG_LEVEL_FATAL) {
+    env::environment->FlushAllLogsIfAble();
+    abort();
+  }
 }
 
 void SetLogLevel(::svr2::enclaveconfig::EnclaveLogLevel level) {
