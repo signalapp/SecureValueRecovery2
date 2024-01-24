@@ -506,10 +506,71 @@ TEST_F(DB3Test, KnownKey) {
     auto priv = DB3::Protocol::NewKey();
     log.set_create_privkey(util::ByteArrayToString(priv));
 
+    ASSERT_EQ(db3_protocol.ValidateClientLog(log), error::OK);
     auto resp = dynamic_cast<client::Response3*>(db.Run(&ctx, log));
     auto r = resp->create();
     ASSERT_EQ(client::CreateResponse::OK, r.status());
   }
+}
+
+TEST_F(DB3Test, BitFlipKey) {
+  std::string blinded_element("\x46\x32\x3c\xfb\xf6\x3c\x3f\x7b\x59\xcb\x43\xba\x7b\x14\x2e\xae\x7b\x09\x02\xff\xc2\x20\x85\x90\x9b\x52\x74\xde\x9b\xce\xad\x72", 32);
+  auto priv = DB3::Protocol::NewKey();
+  CHECK(priv.size() == DB3::SCALAR_SIZE);
+  int failures = 0;
+  // bytes
+  for (int i = 0; i < DB3::SCALAR_SIZE; i++) {
+    // bits
+    for (int j = 0; j < 8; j++) {
+      std::string backup_id("\0BACKUP890123456", 16);
+      backup_id[0] += i * 8 + j;
+      client::Log3 log;
+      log.set_backup_id(backup_id);
+      auto b = log.mutable_req()->mutable_create();
+      b->set_max_tries(3);
+      b->set_blinded_element(blinded_element);
+      auto priv2 = priv;
+      priv2[i] ^= 1 << j;
+      log.set_create_privkey(util::ByteArrayToString(priv2));
+      auto resp = dynamic_cast<client::Response3*>(db.Run(&ctx, log));
+      auto r = resp->create();
+      if (r.status() != client::CreateResponse::OK) {
+        failures++;
+      }
+    }
+  }
+  ASSERT_EQ(failures, 0);
+}
+
+TEST_F(DB3Test, BitFlipElement) {
+  std::string blinded_element("\x46\x32\x3c\xfb\xf6\x3c\x3f\x7b\x59\xcb\x43\xba\x7b\x14\x2e\xae\x7b\x09\x02\xff\xc2\x20\x85\x90\x9b\x52\x74\xde\x9b\xce\xad\x72", 32);
+  auto priv = DB3::Protocol::NewKey();
+  CHECK(priv.size() == DB3::SCALAR_SIZE);
+  int failures = 0;
+  // bytes
+  for (int i = 0; i < DB3::SCALAR_SIZE; i++) {
+    // bits
+    for (int j = 0; j < 8; j++) {
+      std::string backup_id("\0BACKUP890123456", 16);
+      backup_id[0] += i * 8 + j;
+      client::Log3 log;
+      log.set_backup_id(backup_id);
+      auto b = log.mutable_req()->mutable_create();
+      b->set_max_tries(3);
+      auto b2 = blinded_element;
+      b2[i] ^= 1 << j;
+      b->set_blinded_element(b2);
+      log.set_create_privkey(util::ByteArrayToString(priv));
+      auto resp = dynamic_cast<client::Response3*>(db.Run(&ctx, log));
+      auto r = resp->create();
+      ASSERT_TRUE(r.status() == client::CreateResponse::OK || r.status() == client::CreateResponse::ERROR);
+      if (r.status() != client::CreateResponse::OK) {
+        failures++;
+      }
+    }
+  }
+  // Lots of element encodings are invalid, we expect there to be lots of failures when we bitflip them:
+  ASSERT_EQ(failures, 184);
 }
 
 }  // namespace svr2::db

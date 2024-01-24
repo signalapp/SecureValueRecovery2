@@ -64,18 +64,24 @@ error::Error DB3::Protocol::ValidateClientLog(const DB::Log& log_pb) const {
   switch (log->req().inner_case()) {
     case client::Request3::kCreate: {
       auto r = log->req().create();
-      if (r.max_tries() < 1 || r.max_tries() > 255) { return COUNTED_ERROR(DB3_MaxTriesOutOfRange); }
-      if (r.blinded_element().size() != ELEMENT_SIZE) { return COUNTED_ERROR(DB3_BlindedElementSize); }
-      if (log->create_privkey().size() != sizeof(PrivateKey)) { return COUNTED_ERROR(DB3_LogPrivateKeyInvalid); }
+      if (r.max_tries() < 1 || r.max_tries() > 255) {
+        return COUNTED_ERROR(DB3_MaxTriesOutOfRange);
+      } else if (r.blinded_element().size() != ELEMENT_SIZE) {
+        return COUNTED_ERROR(DB3_BlindedElementSize);
+      } else if (log->create_privkey().size() != sizeof(PrivateKey)) {
+        return COUNTED_ERROR(DB3_LogPrivateKeyInvalid);
+      }
     } break;
     case client::Request3::kEvaluate: {
       auto r = log->req().evaluate();
-      if (r.blinded_element().size() != ELEMENT_SIZE) { return COUNTED_ERROR(DB3_BlindedElementSize); }
+      if (r.blinded_element().size() != ELEMENT_SIZE) {
+        return COUNTED_ERROR(DB3_BlindedElementSize);
+      }
     } break;
+    case client::Request3::kRemove:
+      break;
     case client::Request3::kQuery: 
-    case client::Request3::kRemove: {
-      // nothing to do
-    } break;
+      break;
     default:
       return COUNTED_ERROR(DB3_ToplevelRequestType);
   }
@@ -207,8 +213,10 @@ std::array<uint8_t, 16> DB3::HashRow(const BackupID& id, const Row& row) {
       SCALAR_SIZE    +  // priv
       0> scratch = {0};
   size_t offset = 0;
+  CHECK(id.size() == BACKUP_ID_SIZE);
   memcpy(scratch.data() + offset, id.data(), id.size());             offset += BACKUP_ID_SIZE;
   util::BigEndian32Bytes(row.tries, scratch.data() + offset);        offset += 4;
+  CHECK(row.priv.size() == SCALAR_SIZE);
   memcpy(scratch.data() + offset, row.priv.data(), row.priv.size()); offset += SCALAR_SIZE;
   CHECK(offset == scratch.size());
 
@@ -239,7 +247,6 @@ std::pair<DB3::Element, error::Error> DB3::BlindEvaluate(
   Element out{0};
   int ret = 0;
   if (0 != (ret = crypto_scalarmult_ristretto255(out.data(), key.data(), blinded_element.data()))) {
-    LOG(WARNING) << "crypto_scalarmult_ristretto255 error: " << ret;
     return std::make_pair(out, COUNTED_ERROR(DB3_ScalarMultFailure));
   }
   return std::make_pair(out, error::OK);
