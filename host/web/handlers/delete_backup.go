@@ -26,7 +26,7 @@ type deleteBackupHandler struct {
 
 func (d *deleteBackupHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
-		http.NotFound(w, r)
+		http.Error(w, "only DELETE allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	user, _, _ := r.BasicAuth()
