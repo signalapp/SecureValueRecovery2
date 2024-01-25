@@ -4,5 +4,6 @@ enclave/c
 enclave/enclave.test
 cmd/control/control
 cmd/svr2client/svr2client
+cmd/svr3client/svr3client
 cmd/get_sev_chain/get_sev_chain
 miniredis/miniredis
