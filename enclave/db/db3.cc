@@ -323,9 +323,11 @@ void DB3::Evaluate(
   resp->set_tries_remaining(row->tries);
   if (row->tries == 0) {
     rows_.erase(find);
+    row = nullptr;  // The `row` ptr is no longer valid due to the `erase` call.
     GAUGE(db, rows)->Set(rows_.size());
+  } else {
+    row->merkle_leaf_.Update(merkle::HashFrom(HashRow(id, *row)));
   }
-  row->merkle_leaf_.Update(merkle::HashFrom(HashRow(id, *row)));
   resp->set_evaluated_element(util::ByteArrayToString(evaluated));
   resp->set_status(client::EvaluateResponse::OK);
 }

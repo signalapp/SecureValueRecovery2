@@ -80,6 +80,7 @@ RUN mkdir /src && \
       gcc \
       libgtest-dev \
       cmake \
+      valgrind \
     && break; done
 
 ARG PROTOBUF_PLATFORM=linux-x86_64
