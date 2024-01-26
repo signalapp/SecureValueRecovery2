@@ -24,6 +24,9 @@ enclave: | git
 enclave_test: | git
 	$(MAKE) $(MAKE_ARGS) -C enclave test
 
+enclave_valgrind: enclave_test | git
+	$(MAKE) $(MAKE_ARGS) -C enclave valgrind
+
 host: enclave | git
 	$(MAKE) $(MAKE_ARGS) -C host all
 

@@ -22,8 +22,14 @@ jobs:
           target: builder
           dockerfile: docker/Dockerfile
 
-      - name: Build and test
-        run: make docker_enclave_test && make
+      - name: Test
+        run: make docker_enclave_test
+
+      - name: Build
+        run: make
 
       - name: Validate
         run: make docker_validate
+
+      - name: Valgrind
+        run: make docker_enclave_valgrind

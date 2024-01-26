@@ -276,6 +276,11 @@ build/public.pem: build/private.pem
 	$(QUIET) echo -e "TEST\xE2\x9c\x85\t$<"
 	$(QUIET) touch $*.test.success
 
+%.test.valgrind: %.test
+	$(QUIET) echo -e "GRIND\t$<"
+	$(QUIET) valgrind --tool=memcheck --leak-check=full --error-exitcode=3 -s --track-origins=yes ./$^ &>$@ || (cat $@; false)
+	$(QUIET) echo -e "GRIND\xE2\x9c\x85\t$<"
+
 build/testhost/libsvr2.a: 
 	$(QUIET) mkdir -p $(@D)
 	$(CC) -c -o build/testhost/svr2.o $(HOST_CFLAGS) ../host/enclave/c/svr2_u.c
@@ -285,3 +290,5 @@ build/testhost.bin: testhost/testhost.cc build/testhost/libsvr2.a build/attestat
 	$(CXX) -o $@ $(HOST_CXXFLAGS) $(HOST_LDFLAGS) $^ $(HOST_LDFLAGS)
 
 validate:
+
+valgrind:

@@ -13,5 +13,6 @@ for testfile in `find ./ -type f -wholename '*/tests/*.cc'`; do
   echo -e '\t$(QUIET) mkdir -p \$(@D)'
   echo -e "\t\$(QUIET) \$(CXX) \$(TEST_CXXFLAGS) -o \$@ $testfile -Wl,--start-group $deps -Wl,--end-group $args \$(TEST_LDFLAGS)"
   echo "test: build/$testname.success"
+  echo "valgrind: build/$testname.valgrind"
   echo ".PRECIOUS: build/$testname build/$testname.out"
 done | tee .testdepends
