@@ -44,7 +44,7 @@ func Start(ctx context.Context, hconfig *config.Config, authenticator auth.Auth,
 	// Use DefaultServeMux, since it's got PProf stuff already attached by net/http/pprof.
 	controlMux := http.DefaultServeMux
 	healthErr := errors.New("joining raft")
-	live, ready := health.New(healthErr), health.New(healthErr)
+	live, ready := health.New("live", healthErr), health.New("ready", healthErr)
 	controlMux.Handle("/health/live", middleware.Instrument(live))
 	controlMux.Handle("/health/ready", middleware.Instrument(ready))
 	g.Go(func() error {
@@ -52,14 +52,14 @@ func Start(ctx context.Context, hconfig *config.Config, authenticator auth.Auth,
 		return http.ListenAndServe(hconfig.ControlListenAddr, controlMux)
 	})
 
-	c, nodeID := enc.OutputMessages(), enc.PID()
+	enclaveMessages, nodeID := enc.OutputMessages(), enc.PID()
 
 	logger.WithGlobal(zap.String("me", nodeID.String()))
 	logger.Infow("created enclave")
 
 	txGen := &util.TxGenerator{}
 
-	dispatcher := dispatch.New(hconfig.Raft, txGen, enc, c)
+	dispatcher := dispatch.New(hconfig.Raft, txGen, enc, enclaveMessages)
 
 	// listen for peer network requests
 	ln, err := net.Listen("tcp", hconfig.PeerAddr)
@@ -110,8 +110,8 @@ func Start(ctx context.Context, hconfig *config.Config, authenticator auth.Auth,
 		return http.ListenAndServe(hconfig.ClientListenAddr, clientMux)
 	})
 
-	// The enclave is up and the servers are serving, mark live.
-	live.Set(nil)
+	// The enclave is up and the servers are serving, start checking liveness.
+	g.Go(func() error { return livenessChecks(ctx, dispatcher, live, hconfig) })
 
 	// wait until we successfully create a raft group or join an existing one
 	raftManager := raftmanager.New(nodeID, dispatcher, peerDB, hconfig)
@@ -156,4 +156,47 @@ func Start(ctx context.Context, hconfig *config.Config, authenticator auth.Auth,
 	})
 
 	return g.Wait()
+}
+
+func livenessChecks(ctx context.Context, dispatcher *dispatch.Dispatcher, live *health.Health, cfg *config.Config) error {
+	ticker := time.NewTicker(cfg.LocalLivenessCheckPeriod)
+	defer ticker.Stop()
+	live.Set(livenessCheck(ctx, dispatcher, cfg))
+	for {
+		select {
+		case <-ctx.Done():
+			live.Set(fmt.Errorf("livenessChecks context: %w", ctx.Err()))
+			return ctx.Err()
+		case <-ticker.C:
+			live.Set(livenessCheck(ctx, dispatcher, cfg))
+		}
+	}
+}
+
+func livenessCheck(ctx context.Context, dispatcher *dispatch.Dispatcher, cfg *config.Config) error {
+	// dispatcher.SendTransaction could block forever if something's wrong with the
+	// enclave... make sure to use a timeout!
+	dispatcherErr := make(chan error, 1)
+	ctx, cancel := context.WithTimeout(ctx, cfg.LocalLivenessCheckTimeout)
+	defer cancel()
+	go func() {
+		if resp, err := dispatcher.SendTransaction(&pb.HostToEnclaveRequest{
+			Inner: &pb.HostToEnclaveRequest_GetEnclaveStatus{GetEnclaveStatus: true},
+		}); err != nil {
+			// We were unable to talk to the enclave
+			dispatcherErr <- fmt.Errorf("dispatcher.SendTransaction: %w", err)
+		} else if s, ok := resp.Inner.(*pb.HostToEnclaveResponse_Status); ok {
+			// We were able to talk to the enclave, but it couldn't give us a status
+			dispatcherErr <- fmt.Errorf("HostToEnclaveResponse_Status: %w", s.Status)
+		} else {
+			// We could get a status from the enclave
+			dispatcherErr <- nil
+		}
+	}()
+	select {
+	case err := <-dispatcherErr:
+		return fmt.Errorf("dispatcherErr: %w", err)
+	case <-ctx.Done():
+		return fmt.Errorf("livenessCheck context: %w", ctx.Err())
+	}
 }

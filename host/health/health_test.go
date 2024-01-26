@@ -11,7 +11,7 @@ import (
 )
 
 func TestServingFromHealthy(t *testing.T) {
-	h := New(nil)
+	h := New("test", nil)
 	ts := httptest.NewServer(h)
 	defer ts.Close()
 	res, err := http.Get(ts.URL)
@@ -32,7 +32,7 @@ func TestServingFromHealthy(t *testing.T) {
 }
 
 func TestServingFromUnhealthy(t *testing.T) {
-	h := New(errors.New("FUBAR"))
+	h := New("test", errors.New("FUBAR"))
 	ts := httptest.NewServer(h)
 	defer ts.Close()
 	res, err := http.Get(ts.URL)

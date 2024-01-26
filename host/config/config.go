@@ -43,6 +43,9 @@ type Config struct {
 	RecurringRedisPeerDBTTL time.Duration `yaml:"recurringRedisPeerDBTTL"`
 	// Configuration for the client websocket handler
 	Request RequestConfig `yaml:"request"`
+	// Periodicity/timeout for local liveness checks
+	LocalLivenessCheckPeriod  time.Duration `yaml:"localLivenessCheckPeriod"`
+	LocalLivenessCheckTimeout time.Duration `yaml:"localLivenessCheckTimeout"`
 }
 
 // validate returns a list of validation errors, or empty if there are no errors.
@@ -133,8 +136,10 @@ func Default() *Config {
 			WebsocketHandshakeTimeout: time.Second * 30,
 			SocketTimeout:             time.Second * 30,
 		},
-		EnclaveID:               "enclave",
-		InitialRedisPeerDBTTL:   time.Minute * 120,
-		RecurringRedisPeerDBTTL: time.Minute * 5,
+		EnclaveID:                 "enclave",
+		InitialRedisPeerDBTTL:     time.Minute * 120,
+		RecurringRedisPeerDBTTL:   time.Minute * 5,
+		LocalLivenessCheckPeriod:  time.Minute,
+		LocalLivenessCheckTimeout: time.Minute,
 	}
 }

@@ -7,26 +7,33 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+
+	"github.com/signalapp/svr2/logger"
 )
 
 // Health wraps an error (nil means "healthy"), and provides HTTP handling
 // logic to serve that error.
 type Health struct {
-	mu  sync.Mutex
-	err error
+	mu   sync.Mutex
+	name string
+	err  error
 }
 
 // New creates a new health object, with initial health set based on the
 // 'initial' error (nil==healthy).
-func New(initial error) *Health {
-	return &Health{err: initial}
+func New(name string, initial error) *Health {
+	return &Health{name: name, err: initial}
 }
 
 // Set sets the underlying error for this Health object; err=nil means "OK"
 func (h *Health) Set(err error) {
 	h.mu.Lock()
+	oldErr := h.err
 	h.err = err
 	h.mu.Unlock()
+	if (err == nil) != (oldErr == nil) {
+		logger.Infof("Setting health %q from [%v] -> [%v]", h.name, oldErr, err)
+	}
 }
 
 // ServeHTTP implements http.Handler.
