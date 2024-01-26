@@ -5,6 +5,7 @@
 #include <sys/random.h>
 #include <sstream>
 #include <chrono>
+#include <signal.h>
 
 #include "util/macros.h"
 #include "context/context.h"
@@ -17,7 +18,46 @@
 namespace svr2::env::socket {
 namespace {
 
-static queue::Queue<socketmain::OutboundMessage> output_messages(256);
+queue::Queue<socketmain::OutboundMessage> output_messages(256);
+
+void LogFatalSignalHandler(int signal, siginfo_t* info, void* context) {
+  LOG(FATAL) << "Crashing due to signal " << signal << " at addr " << reinterpret_cast<uintptr_t>(info->si_addr);
+}
+
+// Overrides signal handlers for SIGILL, SIGSEGV, and SIGFPE that
+// calls LOG(FATAL).  This allows the information about these signals
+// to make it up to operators in a more debuggable manner.
+// LOG(FATAL) will eventually call `abort()` which will SIGABRT and crash.
+class SignalsCauseFatalLogs {
+ public:
+  SignalsCauseFatalLogs();
+  ~SignalsCauseFatalLogs();
+  DELETE_COPY_AND_ASSIGN(SignalsCauseFatalLogs);
+ private:
+  struct sigaction orig_segv_;
+  struct sigaction orig_fpe_;
+  struct sigaction orig_ill_;
+};
+
+SignalsCauseFatalLogs::SignalsCauseFatalLogs() {
+  LOG(INFO) << "Setting signal handlers to use LOG(FATAL)";
+  struct sigaction new_handler;
+  sigemptyset(&new_handler.sa_mask);
+  new_handler.sa_handler = nullptr;
+  new_handler.sa_flags = SA_SIGINFO;
+  new_handler.sa_sigaction = &LogFatalSignalHandler;
+  CHECK(0 == sigaction(SIGSEGV, &new_handler, &orig_segv_));
+  CHECK(0 == sigaction(SIGFPE, &new_handler, &orig_fpe_));
+  CHECK(0 == sigaction(SIGILL, &new_handler, &orig_ill_));
+}
+SignalsCauseFatalLogs::~SignalsCauseFatalLogs() {
+  // Attempt to (but don't error check) reset handlers.
+  sigaction(SIGSEGV, &orig_segv_, nullptr);
+  sigaction(SIGFPE, &orig_fpe_, nullptr);
+  sigaction(SIGILL, &orig_ill_, nullptr);
+}
+
+SignalsCauseFatalLogs signals_cause_fatal_logs;
 
 }  // namespace
 
