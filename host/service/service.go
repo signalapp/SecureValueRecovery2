@@ -158,14 +158,24 @@ func Start(ctx context.Context, hconfig *config.Config, authenticator auth.Auth,
 	return g.Wait()
 }
 
+func wrapErr(in string, err error) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("%s: %w", in, err)
+}
+
 func livenessChecks(ctx context.Context, dispatcher *dispatch.Dispatcher, live *health.Health, cfg *config.Config) error {
 	ticker := time.NewTicker(cfg.LocalLivenessCheckPeriod)
 	defer ticker.Stop()
-	live.Set(livenessCheck(ctx, dispatcher, cfg))
+	logger.Infof("Starting initial liveness check")
+	err := livenessCheck(ctx, dispatcher, cfg)
+	live.Set(err)
+	logger.Infof("Starting liveness check loop, initial liveness check: %v", err)
 	for {
 		select {
 		case <-ctx.Done():
-			live.Set(fmt.Errorf("livenessChecks context: %w", ctx.Err()))
+			live.Set(wrapErr("livenessChecks context", ctx.Err()))
 			return ctx.Err()
 		case <-ticker.C:
 			live.Set(livenessCheck(ctx, dispatcher, cfg))
@@ -184,10 +194,10 @@ func livenessCheck(ctx context.Context, dispatcher *dispatch.Dispatcher, cfg *co
 			Inner: &pb.HostToEnclaveRequest_GetEnclaveStatus{GetEnclaveStatus: true},
 		}); err != nil {
 			// We were unable to talk to the enclave
-			dispatcherErr <- fmt.Errorf("dispatcher.SendTransaction: %w", err)
+			dispatcherErr <- wrapErr("dispatcher.SendTransaction", err)
 		} else if s, ok := resp.Inner.(*pb.HostToEnclaveResponse_Status); ok {
 			// We were able to talk to the enclave, but it couldn't give us a status
-			dispatcherErr <- fmt.Errorf("HostToEnclaveResponse_Status: %w", s.Status)
+			dispatcherErr <- wrapErr("HostToEnclaveResponse_Status", s.Status)
 		} else {
 			// We could get a status from the enclave
 			dispatcherErr <- nil
@@ -195,8 +205,8 @@ func livenessCheck(ctx context.Context, dispatcher *dispatch.Dispatcher, cfg *co
 	}()
 	select {
 	case err := <-dispatcherErr:
-		return fmt.Errorf("dispatcherErr: %w", err)
+		return wrapErr("dispatcherErr", err)
 	case <-ctx.Done():
-		return fmt.Errorf("livenessCheck context: %w", ctx.Err())
+		return wrapErr("livenessCheck context", ctx.Err())
 	}
 }
