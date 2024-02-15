@@ -43,9 +43,9 @@ func main() {
 		log.Fatalf("GetAttestationFromReport: %v", err)
 	}
 	out := &pb.SevSnpEndorsements{}
-	out.Vcek = attestation.CertificateChain.VcekCert
-	out.Ask = attestation.CertificateChain.AskCert
-	out.Ark = attestation.CertificateChain.ArkCert
+	out.VcekDer = attestation.CertificateChain.VcekCert
+	out.AskDer = attestation.CertificateChain.AskCert
+	out.ArkDer = attestation.CertificateChain.ArkCert
 	data, err := proto.Marshal(out)
 	if err != nil {
 		log.Fatalf("proto.Marshal: %v", err)

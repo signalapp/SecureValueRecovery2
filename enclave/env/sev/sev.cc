@@ -26,17 +26,16 @@
 #include "util/mutex.h"
 #include "util/endian.h"
 #include "util/log.h"
+#include "hmac/hmac.h"
 
 namespace svr2::env {
 namespace sev {
 namespace {
 
-static const char* SIMULATED_REPORT_PREFIX = "SEV_SIMULATED_REPORT:";
-
 class Environment : public ::svr2::env::socket::Environment {
  public:
   DELETE_COPY_AND_ASSIGN(Environment);
-  Environment(bool simulated) : sev_fd_(0), simulated_(simulated) {
+  Environment(bool simulated) : ::svr2::env::socket::Environment(simulated), sev_fd_(0) {
     for (const char* devname : {"/dev/sev-guest", "/dev/sev"}) {
       sev_fd_ = open(devname, O_RDWR | O_CLOEXEC);
       if (sev_fd_ > 0) return;
@@ -59,12 +58,12 @@ class Environment : public ::svr2::env::socket::Environment {
       context::Context* ctx,
       const attestation::AttestationData& data) const {
     MEASURE_CPU(ctx, cpu_env_evidence);
+    if (simulated()) {
+      return SimulatedEvidence(ctx, data);
+    }
+
     e2e::Attestation out;
     std::string serialized = data.SerializeAsString();
-    if (simulated_) {
-      out.set_evidence(SIMULATED_REPORT_PREFIX + serialized);
-      return std::make_pair(out, error::OK);
-    }
 
     snp_ext_report_req req;
     snp_report_resp resp;
@@ -78,11 +77,9 @@ class Environment : public ::svr2::env::socket::Environment {
     req.certs_address = reinterpret_cast<__u64>(&certs[0]);
     req.certs_len = sizeof(certs);
 
-    CHECK(sizeof(req.data.user_data) >= crypto_hash_sha256_BYTES);
-    crypto_hash_sha256_state sha256;
-    crypto_hash_sha256_init(&sha256);
-    crypto_hash_sha256_update(&sha256, reinterpret_cast<const uint8_t*>(serialized.data()), serialized.size());
-    crypto_hash_sha256_final(&sha256, req.data.user_data);
+    CHECK(sizeof(req.data.user_data) >= hmac::Sha256SumBytes);
+    auto hash = hmac::Sha256(serialized);
+    memcpy(req.data.user_data, hash.data(), hash.size());
 
     guest_req.msg_version = 1;
     guest_req.req_data = reinterpret_cast<__u64>(&req);
@@ -128,53 +125,10 @@ class Environment : public ::svr2::env::socket::Environment {
       util::UnixSecs now,
       const e2e::Attestation& attestation) const {
     MEASURE_CPU(ctx, cpu_env_attest);
-    attestation::AttestationData out;
-    if (simulated_) {
-      if (attestation.evidence().rfind(SIMULATED_REPORT_PREFIX, 0) != 0) {
-        return std::make_pair(out, error::Env_AttestationFailure);
-      }
-      size_t prefix_len = strlen(SIMULATED_REPORT_PREFIX);
-      if (!out.ParseFromArray(attestation.evidence().data() + prefix_len, attestation.evidence().size() - prefix_len)) {
-        return std::make_pair(out, error::Env_AttestationFailure);
-      }
-      return std::make_pair(out, error::OK);
+    if (simulated()) {
+      return SimulatedAttest(ctx, now, attestation);
     }
     return attestation::sev::DataFromVerifiedAttestation(report_, attestation, now);
-  }
-
-  // Given a string of size N, rewrite all bytes in that string with
-  // random bytes.
-  virtual error::Error RandomBytes(void* bytes, size_t size) const {
-    uint8_t* u8ptr = reinterpret_cast<uint8_t*>(bytes);
-    if (simulated_) {
-      while (size) {
-        auto out = getrandom(u8ptr, size, 0);
-        if (out < 0) {
-          return error::Env_RandomBytes;
-        }
-        size -= out;
-        u8ptr += out;
-      }
-    } else {
-      // This may be slow but uses direct CPU instructions to get randomness.
-      // We're not sure we can trust syscalls, as they might be sent up
-      // to the hypervisor or the host OS, both of which we may not have fully
-      // verified.
-      unsigned long long r;
-      uint8_t buf[8];
-      CHECK(sizeof(r) == sizeof(buf));
-      while (size) {
-        if (1 != __builtin_ia32_rdrand64_step(&r)) {
-          return error::Env_RandomBytes;
-        }
-        util::BigEndian64Bytes(r, buf);
-        for (size_t i = 0; i < sizeof(buf) && size; i++) {
-          *u8ptr++ = buf[i];
-          size--;
-        }
-      }
-    }
-    return error::OK;
   }
 
   virtual error::Error UpdateEnvStats() const {
@@ -183,7 +137,7 @@ class Environment : public ::svr2::env::socket::Environment {
 
   virtual void Init() {
     ::svr2::env::Environment::Init();
-    if (simulated_) return;
+    if (simulated()) return;
 
     const char* base_endorsements_file = "endorsements.pb";
     if (attestation::sev::EndorsementsFromFile(base_endorsements_file, &base_endorsements_)) {
@@ -198,33 +152,11 @@ class Environment : public ::svr2::env::socket::Environment {
     auto [report, err2] = attestation::sev::ReportFromUnverifiedAttestation(attest);
     CHECK(err2 == error::OK);
     report_ = report;
-    LOG(INFO) << "SEV REPORT:"
-        << " version:" << util::ValueToHex(report.version)
-        << " guest_svn:" << util::ValueToHex(report.guest_svn)
-        << " policy:" << util::ValueToHex(report.policy)
-        << " family_id:" << util::BytesToHex(report.family_id, sizeof(report.family_id))
-        << " image_id:" << util::BytesToHex(report.image_id, sizeof(report.image_id))
-        << " vmpl:" << util::ValueToHex(report.vmpl)
-        << " signature_algo:" << util::ValueToHex(report.signature_algo)
-        << " platform_version:" << util::ValueToHex(report.platform_version.raw)
-        << " platform_info:" << util::ValueToHex(report.platform_info)
-        << " flags:" << util::ValueToHex(report.flags)
-        << " report_data:" << util::BytesToHex(report.report_data, sizeof(report.report_data))
-        << " measurement:" << util::BytesToHex(report.measurement, sizeof(report.measurement))
-        << " host_data:" << util::BytesToHex(report.host_data, sizeof(report.host_data))
-        << " id_key_digest:" << util::BytesToHex(report.id_key_digest, sizeof(report.id_key_digest))
-        << " author_key_digest:" << util::BytesToHex(report.author_key_digest, sizeof(report.author_key_digest))
-        << " report_id:" << util::BytesToHex(report.report_id, sizeof(report.report_id))
-        << " report_id_ma:" << util::BytesToHex(report.report_id_ma, sizeof(report.report_id_ma))
-        << " reported_tcb:" << util::ValueToHex(report.reported_tcb.raw)
-        << " chip_id:" << util::BytesToHex(report.chip_id, sizeof(report.chip_id))
-        << " signature.r:" << util::BytesToHex(report.signature.r, sizeof(report.signature.r))
-        << " signature.s:" << util::BytesToHex(report.signature.s, sizeof(report.signature.s));
+    LOG(INFO) << report;
   }
 
  private:
   int32_t sev_fd_;
-  bool simulated_;
   attestation::sev::SevSnpEndorsements base_endorsements_;
   attestation::sev::attestation_report report_;
 };

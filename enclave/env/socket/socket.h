@@ -13,11 +13,26 @@ namespace svr2::env::socket {
 class Environment : public ::svr2::env::Environment {
  public:
   DELETE_COPY_AND_ASSIGN(Environment);
-  Environment();
+  Environment(bool simulated);
   virtual ~Environment();
   virtual error::Error SendMessage(context::Context* ctx, const std::string& msg) const;
   virtual void Log(int level, const std::string& msg) const;
   virtual void FlushAllLogsIfAble() const;
+  virtual error::Error RandomBytes(void* bytes, size_t size) const;
+
+ protected:
+  bool simulated() const { return simulated_; }
+  std::pair<e2e::Attestation, error::Error> SimulatedEvidence(
+      context::Context* ctx,
+      const attestation::AttestationData& data) const;
+  std::pair<attestation::AttestationData, error::Error> SimulatedAttest(
+      context::Context* ctx,
+      util::UnixSecs now,
+      const e2e::Attestation& attestation) const;
+
+
+ private:
+  bool simulated_;
 };
 
 // Send all outstanding messages, in order, up to the host.

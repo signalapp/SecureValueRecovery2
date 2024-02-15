@@ -28,6 +28,8 @@ error::Error CertificatesToEndorsements(const uint8_t* certs, uint32_t certs_siz
 // without doing any crypto verification.
 std::pair<attestation_report, error::Error> ReportFromUnverifiedAttestation(const e2e::Attestation& attestation);
 
+std::pair<attestation_report, error::Error> ReportFromVerifiedBuffer(const std::string& buffer, const SevSnpEndorsements& endorsements, util::UnixSecs now);
+
 // Pulls a public key from the given attestation, verifying that attestation
 // as much as possible in the process.  Will return an error if the attestation
 // is invalid, does not match the given local attestation in the necessary ways,
@@ -37,5 +39,7 @@ std::pair<attestation::AttestationData, error::Error> DataFromVerifiedAttestatio
 minimums::MinimumValues MinimumsFromReport(const attestation_report& report);
 
 }  // namespace svr2::attestation::sev
+
+std::ostream& operator<<(std::ostream& os, const ::svr2::attestation::sev::attestation_report& report);
 
 #endif  // __SVR2_ATTESTATION_SEV_SEV_H__

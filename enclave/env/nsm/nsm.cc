@@ -23,12 +23,10 @@ namespace svr2::env {
 namespace nsm {
 namespace {
 
-static const char* SIMULATED_REPORT_PREFIX = "NITRO_SIMULATED_REPORT:";
-
 class Environment : public ::svr2::env::socket::Environment {
  public:
   DELETE_COPY_AND_ASSIGN(Environment);
-  Environment(bool simulated) : nsm_fd_(0), simulated_(simulated) {
+  Environment(bool simulated) : ::svr2::env::socket::Environment(simulated), nsm_fd_(0) {
     nsm_fd_ = nsm_lib_init();
   }
   virtual ~Environment() {
@@ -38,11 +36,10 @@ class Environment : public ::svr2::env::socket::Environment {
       context::Context* ctx,
       const attestation::AttestationData& data) const {
     MEASURE_CPU(ctx, cpu_env_evidence);
-    e2e::Attestation out;
-    if (simulated_) {
-      out.set_evidence(SIMULATED_REPORT_PREFIX + data.SerializeAsString());
-      return std::make_pair(out, error::OK);
+    if (simulated()) {
+      return SimulatedEvidence(ctx, data);
     }
+    e2e::Attestation out;
     out.mutable_evidence()->resize(102400);
     uint32_t evidence_len = out.evidence().size();
     std::string data_serialized;
@@ -71,17 +68,10 @@ class Environment : public ::svr2::env::socket::Environment {
       util::UnixSecs now,
       const e2e::Attestation& attestation) const {
     MEASURE_CPU(ctx, cpu_env_attest);
-    attestation::AttestationData out;
-    if (simulated_) {
-      if (attestation.evidence().rfind(SIMULATED_REPORT_PREFIX, 0) != 0) {
-        return std::make_pair(out, error::Env_AttestationFailure);
-      } else if (!out.ParseFromArray(
-          attestation.evidence().data() + strlen(SIMULATED_REPORT_PREFIX),
-          attestation.evidence().size() - strlen(SIMULATED_REPORT_PREFIX))) {
-        return std::make_pair(out, COUNTED_ERROR(Env_AttestationFailure));
-      }
-      return std::make_pair(out, error::OK);
+    if (simulated()) {
+      return SimulatedAttest(ctx, now, attestation);
     }
+    attestation::AttestationData out;
     attestation::nitro::CoseSign1 cose_sign_1;
     attestation::nitro::AttestationDoc attestation_doc;
 
@@ -103,7 +93,7 @@ class Environment : public ::svr2::env::socket::Environment {
   // Given a string of size N, rewrite all bytes in that string with
   // random bytes.
   virtual error::Error RandomBytes(void* bytes, size_t size) const {
-    if (simulated_) {
+    if (simulated()) {
       while (size) {
         size_t got = getrandom(bytes, size, 0);
         if (got <= 0) { return error::Env_RandomBytes; }
@@ -130,7 +120,7 @@ class Environment : public ::svr2::env::socket::Environment {
 
   virtual void Init() {
     ::svr2::env::socket::Environment::Init();
-    if (simulated_) return;
+    if (simulated()) return;
     // Get an initial set of evidence to pull our PCRs from.
     attestation::AttestationData data;
     data.mutable_public_key()->resize(sizeof(env::PublicKey));
@@ -176,7 +166,6 @@ class Environment : public ::svr2::env::socket::Environment {
   }
 
   int32_t nsm_fd_;
-  bool simulated_;
   std::map<int, attestation::nitro::ByteString> pcrs_;
 };
 

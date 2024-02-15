@@ -8,9 +8,9 @@ option go_package = "github.com/signalapp/svr2/proto";
 option optimize_for = LITE_RUNTIME;
 
 message SevSnpEndorsements {
-  bytes vcek = 1;
-  bytes ask = 2;
-  bytes ark = 3;
-  bytes vlek = 4;
+  bytes vcek_der = 1;
+  bytes ask_der = 2;
+  bytes ark_der = 3;
+  bytes vlek_der = 4;
   bytes crl = 5;
 }

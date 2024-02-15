@@ -75,7 +75,7 @@ TEST_F(AttestSEVTest, SigningPastTimestamp) {
 TEST_F(AttestSEVTest, InvalidASKSignature) {
   SevSnpEndorsements sse;
   ASSERT_TRUE(sse.ParseFromString(attestation_.endorsements()));
-  (*sse.mutable_ask())[sse.ask().size() - 1] ^= 1;  // mess up signature on ASK
+  (*sse.mutable_ask_der())[sse.ask_der().size() - 1] ^= 1;  // mess up signature on ASK
   ASSERT_TRUE(sse.SerializeToString(attestation_.mutable_endorsements()));
   auto [report, err1] = ReportFromUnverifiedAttestation(attestation_);
   ASSERT_EQ(error::OK, err1);
@@ -86,7 +86,7 @@ TEST_F(AttestSEVTest, InvalidASKSignature) {
 TEST_F(AttestSEVTest, InvalidVCEKSignature) {
   SevSnpEndorsements sse;
   ASSERT_TRUE(sse.ParseFromString(attestation_.endorsements()));
-  (*sse.mutable_vcek())[sse.vcek().size() - 1] ^= 1;  // mess up signature on VCEK
+  (*sse.mutable_vcek_der())[sse.vcek_der().size() - 1] ^= 1;  // mess up signature on VCEK
   ASSERT_TRUE(sse.SerializeToString(attestation_.mutable_endorsements()));
   auto [report, err1] = ReportFromUnverifiedAttestation(attestation_);
   ASSERT_EQ(error::OK, err1);

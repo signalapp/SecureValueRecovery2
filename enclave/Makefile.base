@@ -57,6 +57,7 @@ LIBRARY_CFLAGS = \
   -I$(CURDIR)/tinycbor/src \
   -I$(CURDIR)/boringssl/include \
   -I$(CURDIR)/sev-guest/include \
+  -I$(CURDIR)/rapidjson/include \
 ## LIBRARY_CFLAGS
 
 TEST_CFLAGS ?= \

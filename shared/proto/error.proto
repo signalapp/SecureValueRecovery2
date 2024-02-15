@@ -74,6 +74,8 @@ enum Error {
   Env_SerializeConfigForEvidence = 313;
   Env_MallinfoFailure = 314;
   Env_SerializeMinimumsForEvidence = 315;
+  Env_ParseEvidence = 316;
+  Env_ParseEndorsements = 317;
 
   Peers_NS = 400;
   Peers_SendBeforeConnect = 401;
@@ -195,6 +197,8 @@ enum Error {
   Util_ArrayCopyTooBig = 1101;
   Util_HexCharInvalid = 1102;
   Util_HexBytesSize = 1103;
+  Util_Base64InvalidChar = 1104;
+  Util_Base64InvalidPadding = 1105;
 
   DB3_NS = 1200;
   DB3_ScalarMultFailure = 1201;
@@ -287,4 +291,20 @@ enum Error {
   AttestationTPM2_SignatureDigest = 2007;
   AttestationTPM2_PCRDigest = 2008;
   AttestationTPM2_PCRVerify = 2009;
+
+  AzureSNP_NS = 2100;
+  AzureSNP_OpenFile = 2101;
+  AzureSNP_Mkdir = 2102;
+  AzureSNP_InvalidAKCert = 2103;
+  AzureSNP_InvalidAKCertIntermediate = 2104;
+  AzureSNP_CryptoAllocate = 2105;
+  AzureSNP_AKCertificateChainVerify = 2106;
+  AzureSNP_CryptoStoreInit = 2107;
+  AzureSNP_AzureBufferTooSmall = 2108;
+  AzureSNP_ReportDataMismatch = 2109;
+  AzureSNP_RuntimeDataJSON = 2110;
+  AzureSNP_AKCertPubKey = 2111;
+  AzureSNP_AKCertMismatch = 2112;
+  AzureSNP_PCRMismatch = 2113;
+  AzureSNP_AttestationDataHashMismatch = 2114;
 };

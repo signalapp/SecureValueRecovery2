@@ -45,14 +45,6 @@ constexpr UUID UUID_ARK  = {0xc0, 0xb4, 0x06, 0xa4, 0xa8, 0x03, 0x49, 0x52, 0x97
 constexpr UUID UUID_VLEK = {0xa8, 0x07, 0x4b, 0xc2, 0xa2, 0x5a, 0x48, 0x3e, 0xaa, 0xe6, 0x39, 0xc0, 0x45, 0xa0, 0xb8, 0xa1};
 constexpr UUID UUID_CRL  = {0x92, 0xf8, 0x1b, 0xc3, 0x58, 0x11, 0x4d, 0x3d, 0x97, 0xff, 0xd1, 0x9f, 0x88, 0xdc, 0x67, 0xea};
 
-std::pair<const attestation_report*, error::Error> ReportFromUnverifiedEvidence(const std::string& evidence) {
-  if (evidence.size() < sizeof(attestation_report)) {
-    return std::make_pair(nullptr, COUNTED_ERROR(AttestationSEV_EvidenceTooSmallForReport));
-  }
-  auto report = reinterpret_cast<const attestation_report*>(evidence.data());
-  return std::make_pair(report, error::OK);
-}
-
 // AMD Root Key (ARK) for Milan processors.
 const char* ARK_MILAN_PEM = R"EOF(
 -----BEGIN CERTIFICATE-----
@@ -177,6 +169,15 @@ error::Error AllowRemote(const attestation_report& local, const attestation_repo
   return error::OK;
 }
 
+std::pair<attestation_report, error::Error> ReportFromUnverifiedBuffer(const std::string& evidence) {
+  attestation_report out;
+  if (evidence.size() < sizeof(attestation_report)) {
+    return std::make_pair(out, COUNTED_ERROR(AttestationSEV_EvidenceTooSmallForReport));
+  }
+  out = *reinterpret_cast<const attestation_report*>(evidence.data());
+  return std::make_pair(out, error::OK);
+}
+
 }  // namespace
 
 minimums::MinimumValues MinimumsFromReport(const attestation_report& report) {
@@ -253,16 +254,16 @@ error::Error CertificatesToEndorsements(const uint8_t* certs, uint32_t certs_siz
     LOG(INFO) << "Certificate: " << util::ToHex(uuid);
     switch (uuid[0]) {
       case UUID_VCEK[0]:
-        if (uuid == UUID_VCEK) { endorsements->set_vcek(util::ByteVectorToString(cert)); }
+        if (uuid == UUID_VCEK) { endorsements->set_vcek_der(util::ByteVectorToString(cert)); }
         break;
       case UUID_ASK[0]:
-        if (uuid == UUID_ASK) { endorsements->set_ask(util::ByteVectorToString(cert)); }
+        if (uuid == UUID_ASK) { endorsements->set_ask_der(util::ByteVectorToString(cert)); }
         break;
       case UUID_ARK[0]:
-        if (uuid == UUID_ARK) { endorsements->set_ark(util::ByteVectorToString(cert)); }
+        if (uuid == UUID_ARK) { endorsements->set_ark_der(util::ByteVectorToString(cert)); }
         break;
       case UUID_VLEK[0]:
-        if (uuid == UUID_VLEK) { endorsements->set_vlek(util::ByteVectorToString(cert)); }
+        if (uuid == UUID_VLEK) { endorsements->set_vlek_der(util::ByteVectorToString(cert)); }
         break;
       case UUID_CRL[0]:
         if (uuid == UUID_CRL) { endorsements->set_crl(util::ByteVectorToString(cert)); }
@@ -277,40 +278,26 @@ error::Error CertificatesToEndorsements(const uint8_t* certs, uint32_t certs_siz
 }
 
 std::pair<attestation_report, error::Error> ReportFromUnverifiedAttestation(const e2e::Attestation& attestation) {
-  auto [report, err] = ReportFromUnverifiedEvidence(attestation.evidence());
-  attestation_report out;
-  if (err != error::OK) {
-    return std::make_pair(out, err);
-  }
-  memcpy(&out, report, sizeof(out));
-  return std::make_pair(out, ValidateReport(out));
+  return ReportFromUnverifiedBuffer(attestation.evidence());
 }
 
-std::pair<attestation::AttestationData, error::Error> DataFromVerifiedAttestation(const attestation_report& local, const e2e::Attestation& attestation, util::UnixSecs now) {
-  auto [report, err] = ReportFromUnverifiedEvidence(attestation.evidence());
-  attestation::AttestationData out;
+std::pair<attestation_report, error::Error> ReportFromVerifiedBuffer(const std::string& buffer, const SevSnpEndorsements& endorsements, util::UnixSecs now) {
+  auto [report, err] = ReportFromUnverifiedBuffer(buffer);
   if (err != error::OK) {
-    return std::make_pair(out, err);
-  }
-  if (auto err = AllowRemote(local, *report); err != error::OK) {
-    return std::make_pair(out, err);
-  }
-  SevSnpEndorsements endorsements;
-  if (!endorsements.ParseFromString(attestation.endorsements())) {
-    return std::make_pair(out, COUNTED_ERROR(AttestationSEV_ParseEndorsements));
+    return std::make_pair(report, err);
   }
 
   // Get VCEK and ASK from endorsements.
-  auto vcek_start = reinterpret_cast<const uint8_t*>(endorsements.vcek().data());
-  auto ask_start = reinterpret_cast<const uint8_t*>(endorsements.ask().data());
-  bssl::UniquePtr<X509> vcek(d2i_X509(nullptr, &vcek_start, endorsements.vcek().size()));
-  bssl::UniquePtr<X509> ask(d2i_X509(nullptr, &ask_start, endorsements.ask().size()));
+  auto vcek_start = reinterpret_cast<const uint8_t*>(endorsements.vcek_der().data());
+  auto ask_start = reinterpret_cast<const uint8_t*>(endorsements.ask_der().data());
+  bssl::UniquePtr<X509> vcek(d2i_X509(nullptr, &vcek_start, endorsements.vcek_der().size()));
+  bssl::UniquePtr<X509> ask(d2i_X509(nullptr, &ask_start, endorsements.ask_der().size()));
   if (!vcek || !ask) {
-    return std::make_pair(out, COUNTED_ERROR(AttestationSEV_EndorsementBadCert));
+    return std::make_pair(report, COUNTED_ERROR(AttestationSEV_EndorsementBadCert));
   }
   bssl::UniquePtr<EVP_PKEY> vcek_pub(X509_get_pubkey(vcek.get()));
   if (!vcek_pub) {
-    return std::make_pair(out, COUNTED_ERROR(AttestationSEV_CryptoAllocate));
+    return std::make_pair(report, COUNTED_ERROR(AttestationSEV_CryptoAllocate));
   }
 
   // Verify VCEK.
@@ -319,11 +306,11 @@ std::pair<attestation::AttestationData, error::Error> DataFromVerifiedAttestatio
   bssl::UniquePtr<STACK_OF(X509)> intermediates(sk_X509_new_null());
   if (!ctx || !store || !intermediates ||
       0 == sk_X509_push(intermediates.get(), ask.get())) {
-    return std::make_pair(out, COUNTED_ERROR(AttestationSEV_CryptoAllocate));
+    return std::make_pair(report, COUNTED_ERROR(AttestationSEV_CryptoAllocate));
   }
   ask.release();  // now owned by [intermediates]
   if (!X509_STORE_CTX_init(ctx.get(), store.get(), vcek.get(), intermediates.get())) {
-    return std::make_pair(out, COUNTED_ERROR(AttestationSEV_CryptoStoreInit));
+    return std::make_pair(report, COUNTED_ERROR(AttestationSEV_CryptoStoreInit));
   }
   // X509_STORE_CTX_set0_trusted_stack does not take ownership of roots_of_trust stack.
   X509_STORE_CTX_set0_trusted_stack(ctx.get(), roots_of_trust.get());
@@ -332,18 +319,18 @@ std::pair<attestation::AttestationData, error::Error> DataFromVerifiedAttestatio
   if (1 != X509_verify_cert(ctx.get())) {
     auto err = X509_STORE_CTX_get_error(ctx.get());
     LOG(ERROR) << "SEV attestation verify_cert err=" << err << ": " << X509_verify_cert_error_string(err);
-    return std::make_pair(out, COUNTED_ERROR(AttestationSEV_CertificateChainVerify));
+    return std::make_pair(report, COUNTED_ERROR(AttestationSEV_CertificateChainVerify));
   }
 
   // Extract ECDSA signature from report.
   bssl::UniquePtr<ECDSA_SIG> sig(ECDSA_SIG_new());
-  bssl::UniquePtr<BIGNUM> r(BN_le2bn(report->signature.r, 48, nullptr));
-  bssl::UniquePtr<BIGNUM> s(BN_le2bn(report->signature.s, 48, nullptr));
+  bssl::UniquePtr<BIGNUM> r(BN_le2bn(report.signature.r, 48, nullptr));
+  bssl::UniquePtr<BIGNUM> s(BN_le2bn(report.signature.s, 48, nullptr));
   if (!sig || !r || !s) {
-    return std::make_pair(out, COUNTED_ERROR(AttestationSEV_CryptoAllocate));
+    return std::make_pair(report, COUNTED_ERROR(AttestationSEV_CryptoAllocate));
   }
   if (1 != ECDSA_SIG_set0(sig.get(), r.get(), s.get())) {
-    return std::make_pair(out, COUNTED_ERROR(AttestationSEV_CryptoAllocate));
+    return std::make_pair(report, COUNTED_ERROR(AttestationSEV_CryptoAllocate));
   }
   r.release();  // now owned by sig
   s.release();  // now owned by sig
@@ -351,32 +338,76 @@ std::pair<attestation::AttestationData, error::Error> DataFromVerifiedAttestatio
   // Compute message digest.
   bssl::UniquePtr<EVP_MD_CTX> md_ctx(EVP_MD_CTX_new());
   if (!md_ctx) {
-    return std::make_pair(out, COUNTED_ERROR(AttestationSEV_CryptoAllocate));
+    return std::make_pair(report, COUNTED_ERROR(AttestationSEV_CryptoAllocate));
   } 
   EVP_MD_CTX_init(md_ctx.get());
   uint8_t md[48];
   unsigned int md_size = sizeof(md);
-  auto verify_from = reinterpret_cast<const uint8_t*>(report);
-  auto verify_to = reinterpret_cast<const uint8_t*>(&report->signature);
+  auto verify_from = reinterpret_cast<const uint8_t*>(&report);
+  auto verify_to = reinterpret_cast<const uint8_t*>(&report.signature);
   if (1 != EVP_DigestInit(md_ctx.get(), EVP_sha384()) ||
       1 != EVP_DigestUpdate(md_ctx.get(), verify_from, verify_to - verify_from) ||
       1 != EVP_DigestFinal(md_ctx.get(), md, &md_size) ||
       md_size != sizeof(md)) {
-    return std::make_pair(out, COUNTED_ERROR(AttestationSEV_CryptoMessageDigest));
+    return std::make_pair(report, COUNTED_ERROR(AttestationSEV_CryptoMessageDigest));
   }
 
   // Use VCEK to verify signature.
   EC_KEY* ec_key_not_owned = EVP_PKEY_get0_EC_KEY(vcek_pub.get());
   if (1 != ECDSA_do_verify(md, md_size, sig.get(), ec_key_not_owned)) {
     LOG(ERROR) << "SEV attestation signature verification failed";
-    return std::make_pair(out, COUNTED_ERROR(AttestationSEV_SignatureVerify));
+    return std::make_pair(report, COUNTED_ERROR(AttestationSEV_SignatureVerify));
+  }
+
+  return std::make_pair(report, error::OK);
+}
+
+std::pair<attestation::AttestationData, error::Error> DataFromVerifiedAttestation(const attestation_report& local, const e2e::Attestation& attestation, util::UnixSecs now) {
+  attestation::AttestationData out;
+  SevSnpEndorsements endorsements;
+  if (!endorsements.ParseFromString(attestation.endorsements())) {
+    return std::make_pair(out, COUNTED_ERROR(AttestationSEV_ParseEndorsements));
+  }
+  auto [report, err] = ReportFromVerifiedBuffer(attestation.evidence(), endorsements, now);
+  if (err != error::OK) {
+    return std::make_pair(out, err);
+  }
+  if (auto err = AllowRemote(local, report); err != error::OK) {
+    return std::make_pair(out, err);
   }
 
   out.mutable_public_key()->resize(sizeof(env::PublicKey));
-  memcpy(out.mutable_public_key()->data(), report->report_data, sizeof(env::PublicKey));
-  minimums::MinimumValues mins = minimums::Minimums::CombineValues(out.minimum_values(), MinimumsFromReport(*report));
+  memcpy(out.mutable_public_key()->data(), report.report_data, sizeof(env::PublicKey));
+  minimums::MinimumValues mins = minimums::Minimums::CombineValues(out.minimum_values(), MinimumsFromReport(report));
   *out.mutable_minimum_values() = std::move(mins);
   return std::make_pair(out, error::OK);
 }
 
 }  // namespace svr2::attestation::sev
+
+std::ostream& operator<<(std::ostream& os, const ::svr2::attestation::sev::attestation_report& report) {
+  os << "SEV REPORT{"
+     << " version:" << ::svr2::util::ValueToHex(report.version)
+     << " guest_svn:" << ::svr2::util::ValueToHex(report.guest_svn)
+     << " policy:" << ::svr2::util::ValueToHex(report.policy)
+     << " family_id:" << ::svr2::util::BytesToHex(report.family_id, sizeof(report.family_id))
+     << " image_id:" << ::svr2::util::BytesToHex(report.image_id, sizeof(report.image_id))
+     << " vmpl:" << ::svr2::util::ValueToHex(report.vmpl)
+     << " signature_algo:" << ::svr2::util::ValueToHex(report.signature_algo)
+     << " platform_version:" << ::svr2::util::ValueToHex(report.platform_version.raw)
+     << " platform_info:" << ::svr2::util::ValueToHex(report.platform_info)
+     << " flags:" << ::svr2::util::ValueToHex(report.flags)
+     << " report_data:" << ::svr2::util::BytesToHex(report.report_data, sizeof(report.report_data))
+     << " measurement:" << ::svr2::util::BytesToHex(report.measurement, sizeof(report.measurement))
+     << " host_data:" << ::svr2::util::BytesToHex(report.host_data, sizeof(report.host_data))
+     << " id_key_digest:" << ::svr2::util::BytesToHex(report.id_key_digest, sizeof(report.id_key_digest))
+     << " author_key_digest:" << ::svr2::util::BytesToHex(report.author_key_digest, sizeof(report.author_key_digest))
+     << " report_id:" << ::svr2::util::BytesToHex(report.report_id, sizeof(report.report_id))
+     << " report_id_ma:" << ::svr2::util::BytesToHex(report.report_id_ma, sizeof(report.report_id_ma))
+     << " reported_tcb:" << ::svr2::util::ValueToHex(report.reported_tcb.raw)
+     << " chip_id:" << ::svr2::util::BytesToHex(report.chip_id, sizeof(report.chip_id))
+     << " signature.r:" << ::svr2::util::BytesToHex(report.signature.r, sizeof(report.signature.r))
+     << " signature.s:" << ::svr2::util::BytesToHex(report.signature.s, sizeof(report.signature.s))
+     << " }";
+  return os;
+}

@@ -7,18 +7,18 @@
 
 namespace svr2::hmac {
 
-std::array<uint8_t, 32> Sha256(const std::string& input) {
+Sha256Sum Sha256(const uint8_t* data_start, size_t data_size) {
   crypto_hash_sha256_state sha;
   crypto_hash_sha256_init(&sha);
-  crypto_hash_sha256_update(&sha, reinterpret_cast<const unsigned char*>(input.data()), input.size());
-  std::array<uint8_t, 32> out;
+  crypto_hash_sha256_update(&sha, data_start, data_size);
+  Sha256Sum out;
   crypto_hash_sha256_final(&sha, out.data());
   return out;
 }
 
-std::array<uint8_t, 32> HmacSha256(const std::array<uint8_t, 32>& key, const std::string& input) {
-  std::array<uint8_t, 32> out;
-  crypto_auth_hmacsha256(out.data(), reinterpret_cast<const unsigned char*>(input.data()), input.size(), key.data());
+Sha256Sum HmacSha256(const HmacSha256Key& key, const uint8_t* data_start, size_t data_size) {
+  Sha256Sum out;
+  crypto_auth_hmacsha256(out.data(), data_start, data_size, key.data());
   return out;
 }
 

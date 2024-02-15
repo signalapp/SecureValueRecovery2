@@ -1,0 +1,31 @@
+// Copyright 2023 Signal Messenger, LLC
+// SPDX-License-Identifier: AGPL-3.0-only
+
+syntax = "proto3";
+
+package svr2.attestation.azuresnp;
+option go_package = "github.com/signalapp/svr2/proto";
+option optimize_for = LITE_RUNTIME;
+
+message ASNPEvidence {
+  // Serialized AttestationData
+  bytes attestation_data = 1;
+
+  // tpm2_quote -c 0x81000003 -l sha256:all -q "<sha256 of attestation_data>" -m msg -s sig -o pcrs --pcrs_format values
+  bytes pcrs = 2;
+  bytes msg = 3;
+  bytes sig = 4;
+
+  // tpm2_nvread -C o 0x01400001
+  bytes azure_report = 5;  // contains snp_report and runtimedata
+  // tpm2_nvread -C o 0x1C101D0
+  bytes akcert_der = 6;
+}
+
+message ASNPEndorsements {
+  // From https://learn.microsoft.com/en-us/azure/virtual-machines/trusted-launch-faq?tabs=cli%2Cdebianbased#certificates
+  bytes intermediate_der = 1;
+  // From http://169.254.169.254/metadata/THIM/amd/certification
+  bytes vcek_der = 2;
+  bytes ask_der = 3;
+}

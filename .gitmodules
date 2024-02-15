@@ -25,3 +25,6 @@
 [submodule "enclave/sev-guest"]
 	path = enclave/sev-guest
 	url = https://github.com/AMDESE/sev-guest/
+[submodule "enclave/rapidjson"]
+	path = enclave/rapidjson
+	url = https://github.com/Tencent/rapidjson
