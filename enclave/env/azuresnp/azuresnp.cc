@@ -166,9 +166,21 @@ class Environment : public ::svr2::env::socket::Environment {
         "/usr/bin/openssl x509 -in " + dir + "/intermediate.pem -inform PEM -out " + dir + "/intermediate.der -outform DER",
     }) {
       LOG(INFO) << "Running command: " << cmd;
-      int ret = system(cmd.c_str());
-      if (ret != 0) {
-        LOG(FATAL) << "Command failed.  Return value: " << ret;
+      bool success = false;
+      // Retry a few times over a total of ~2-3 minutes.
+      // It appears that the TPM may need some "warm-up time" before it gets
+      // all of its stuff in order.
+      for (int i = 0; i < 6; i++) {
+        int ret = system(cmd.c_str());
+        if (ret == 0) {
+          success = true;
+          break;
+        }
+        LOG(ERROR) << "Command failed, retrying again in " << (1 << i) << " seconds, failure=" << ret;
+        sleep(1 << i);
+      }
+      if (!success) {
+        LOG(FATAL) << "Command " << cmd << " failed after multiple attempts";
       }
     }
     auto [azure_report, err1] = FileContents(dir + "/azure_report.bin");
