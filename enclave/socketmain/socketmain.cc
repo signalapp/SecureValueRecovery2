@@ -103,9 +103,27 @@ error::Error AcceptSocket(int sock_type, int port, int* afd) {
   }
   shutdown(fd, SHUT_RDWR);
   close(fd);
-  int tcp_nodelay = 1;
   if (sock_type == AF_INET) {
-    RETURN_ERRNO_ERROR_UNLESS(0 == setsockopt(*afd, IPPROTO_TCP, TCP_NODELAY, &tcp_nodelay, sizeof(tcp_nodelay)), SocketMain_SocketSetOpt);
+    int tcp_nodelay = 1;
+    RETURN_ERRNO_ERROR_UNLESS(
+        0 == setsockopt(*afd, IPPROTO_TCP, TCP_NODELAY, &tcp_nodelay, sizeof(tcp_nodelay)),
+        SocketMain_SocketSetOpt);
+    int tcp_keepalive = 1;
+    int tcp_keepalive_idle = 60;  // send first probe after 1m of inactivity
+    int tcp_keepalive_intvl = 30;  // send subsequent probes every 30s
+    int tcp_keepalive_cnt = 8;  // fail if 8 probes are unack'd.  This totals ~5m of total time
+    RETURN_ERRNO_ERROR_UNLESS(
+        0 == setsockopt(*afd, SOL_SOCKET, SO_KEEPALIVE, &tcp_keepalive, sizeof(tcp_keepalive)),
+        SocketMain_SocketSetOpt);
+    RETURN_ERRNO_ERROR_UNLESS(
+        0 == setsockopt(*afd, SOL_TCP, TCP_KEEPIDLE, &tcp_keepalive_idle, sizeof(tcp_keepalive_idle)),
+        SocketMain_SocketSetOpt);
+    RETURN_ERRNO_ERROR_UNLESS(
+        0 == setsockopt(*afd, SOL_TCP, TCP_KEEPINTVL, &tcp_keepalive_intvl, sizeof(tcp_keepalive_intvl)),
+        SocketMain_SocketSetOpt);
+    RETURN_ERRNO_ERROR_UNLESS(
+        0 == setsockopt(*afd, SOL_TCP, TCP_KEEPCNT, &tcp_keepalive_cnt, sizeof(tcp_keepalive_cnt)),
+        SocketMain_SocketSetOpt);
   }
   LOG(INFO) << "Sucessfully accepted connection on FD=" << *afd;
   return error::OK;
