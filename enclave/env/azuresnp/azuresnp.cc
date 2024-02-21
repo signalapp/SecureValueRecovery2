@@ -209,7 +209,7 @@ class Environment : public ::svr2::env::socket::Environment {
       LOG(FATAL) << "Loading local PCRs: " << err;
     }
     for (size_t i = 0; i < local_pcrs_.size(); i++) {
-      LOG(DEBUG) << "PCRS[" << i << "]: " << util::ToHex(local_pcrs_[i]);
+      LOG(INFO) << "PCRS[" << i << "]: " << util::ToHex(local_pcrs_[i]);
     }
 
     if (auto [attestation, err] = Evidence(&ctx, *attestation_data); err != error::OK) {
