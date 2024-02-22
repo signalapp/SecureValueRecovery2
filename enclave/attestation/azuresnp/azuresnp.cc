@@ -216,7 +216,7 @@ error::Error CheckRemotePCRs(context::Context* ctx, const attestation::tpm2::PCR
       3,  // Extended/pluggable firmware data, set during UEFI boot select
       4,  // Boot loader and additional drivers, binaries and extensions loaded by boot loader
       5,  // config to bootloaders, GPT partition table
-      6,  // resume from S4/S5 power state events
+      // 6,  // resume from S4/S5 power state events.  On Azure, this PCR contains the VM ID, a UUID, and is thus unique across all VMs.
       7,  // secure boot state, including PK/KEK/db, specific certificates used
       8,  // Kernel command line (grub and systemd-boot only)
       9,  // Kernel image, initrd, and EFI load options (kernel command line)
