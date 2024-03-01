@@ -6,14 +6,14 @@ toolchain go1.21.0
 
 require (
 	github.com/alicebob/miniredis/v2 v2.31.0
-	github.com/armon/go-metrics v0.4.1
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/go-redis/redis_rate/v9 v9.1.2
 	github.com/google/go-sev-guest v0.9.3
 	github.com/gtank/ristretto255 v0.1.2
+	github.com/hashicorp/go-metrics v0.5.3
 	github.com/mdlayher/vsock v1.2.1
-	golang.org/x/exp v0.0.0-20231006140011-7918f672742d
-	golang.org/x/sync v0.4.0
+	golang.org/x/exp v0.0.0-20240222234643-814bf88cf225
+	golang.org/x/sync v0.6.0
 )
 
 require (
@@ -31,19 +31,19 @@ require (
 	github.com/pborman/uuid v1.2.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/yuin/gopher-lua v1.1.0 // indirect
-	golang.org/x/crypto v0.14.0 // indirect
-	golang.org/x/mod v0.13.0 // indirect
-	golang.org/x/net v0.17.0 // indirect
-	golang.org/x/sys v0.13.0 // indirect
-	golang.org/x/tools v0.14.0 // indirect
+	golang.org/x/crypto v0.19.0 // indirect
+	golang.org/x/mod v0.15.0 // indirect
+	golang.org/x/net v0.21.0 // indirect
+	golang.org/x/sys v0.17.0 // indirect
+	golang.org/x/tools v0.18.0 // indirect
 )
 
 require (
 	github.com/flynn/noise v1.0.0
 	github.com/google/go-cmp v0.6.0
-	github.com/gorilla/websocket v1.5.0
+	github.com/gorilla/websocket v1.5.1
 	go.uber.org/multierr v1.11.0 // indirect
-	go.uber.org/zap v1.26.0
-	google.golang.org/protobuf v1.31.0
+	go.uber.org/zap v1.27.0
+	google.golang.org/protobuf v1.32.0
 	gopkg.in/yaml.v2 v2.4.0
 )

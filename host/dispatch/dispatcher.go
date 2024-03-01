@@ -17,7 +17,7 @@ import (
 	"github.com/signalapp/svr2/util"
 	"golang.org/x/sync/errgroup"
 
-	metrics "github.com/armon/go-metrics"
+	metrics "github.com/hashicorp/go-metrics"
 	pb "github.com/signalapp/svr2/proto"
 )
 

@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/armon/go-metrics"
 	"github.com/gorilla/websocket"
+	"github.com/hashicorp/go-metrics"
 	"github.com/signalapp/svr2/config"
 	"github.com/signalapp/svr2/logger"
 	"github.com/signalapp/svr2/util"

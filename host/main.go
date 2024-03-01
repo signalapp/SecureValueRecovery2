@@ -16,7 +16,7 @@ import (
 	"os/signal"
 	"time"
 
-	"github.com/armon/go-metrics/datadog"
+	"github.com/hashicorp/go-metrics/datadog"
 	"github.com/signalapp/svr2/auth"
 	"github.com/signalapp/svr2/config"
 	"github.com/signalapp/svr2/enclave"
@@ -26,7 +26,7 @@ import (
 
 	stdlog "log"
 
-	metrics "github.com/armon/go-metrics"
+	metrics "github.com/hashicorp/go-metrics"
 	pb "github.com/signalapp/svr2/proto"
 )
 

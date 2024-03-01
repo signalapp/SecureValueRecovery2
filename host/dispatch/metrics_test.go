@@ -11,7 +11,7 @@ import (
 
 	pb "github.com/signalapp/svr2/proto"
 
-	metrics "github.com/armon/go-metrics"
+	metrics "github.com/hashicorp/go-metrics"
 )
 
 type mockMetricsWriter struct {

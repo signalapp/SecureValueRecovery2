@@ -13,7 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/armon/go-metrics"
+	"github.com/hashicorp/go-metrics"
 	"github.com/signalapp/svr2/config"
 	"github.com/signalapp/svr2/logger"
 	"github.com/signalapp/svr2/peerid"

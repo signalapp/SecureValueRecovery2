@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/armon/go-metrics"
+	"github.com/hashicorp/go-metrics"
 )
 
 func TestParseUserAgent(t *testing.T) {
