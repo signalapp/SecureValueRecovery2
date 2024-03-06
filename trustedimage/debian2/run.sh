@@ -6,13 +6,13 @@
 # /dev/vdb (our `disk_additional_size` disk) to be a dm-verity-protected
 # disk that allows our trust chain up to Grub to continue into userspace.
 
-set -ex
+set -euxo pipefail
 
 # Make the partitions we need in the new disk for UEFI secure-boot booting.
 parted --script /dev/vdb mklabel gpt
 parted --script --align=optimal /dev/vdb mkpart ESP fat32 1MB 512MB
-parted --script --align=optimal /dev/vdb mkpart ROOT 512MB 2000MB
-parted --script --align=optimal /dev/vdb mkpart HASH 2000MB 100%
+parted --script --align=optimal /dev/vdb mkpart ROOT 512MB 3000MB
+parted --script --align=optimal /dev/vdb mkpart HASH 3000MB 100%
 parted --script /dev/vdb set 1 boot on
 
 # Make the necessary filesystems.

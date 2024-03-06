@@ -23,7 +23,7 @@ esac
 
 # Set up ramdisk for overlay.
 mkdir /ram_disk
-mount -t tmpfs tmpfs -o size=100Mi /ram_disk
+mount -t tmpfs tmpfs -o size=100M /ram_disk
 mkdir /ram_disk/work
 mkdir /ram_disk/root
 

@@ -1,0 +1,18 @@
+[Unit]
+Description=SVR3
+Requires=dev-tpmrm0.device
+Before=ssh.service
+After=network-online.target
+Wants=network-online.target
+# If we run SVR3, disallow SSH.
+#Conflicts=ssh.service
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=60
+User=root
+ExecStart=/usr/bin/svr3 --sock_type=af_inet
+
+[Install]
+WantedBy=multi-user.target

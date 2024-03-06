@@ -1,0 +1,35 @@
+#!/bin/bash
+# Copyright 2024 Signal Messenger, LLC
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# Region to put resources in
+AZ_LOCATION=eastus
+
+# Resource group to put resources in
+AZ_RESOURCE_GROUP=my_rg
+
+# Existing shared image gallery to create image versions in
+AZ_SHARED_IMAGE_GALLERY=my_sig
+
+# Existing image definition within shared image gallery to put image versions in
+AZ_IMAGE_DEFINITION=my_id
+
+# AZ Storage account and container into which to put image VHD
+#   az storage account create
+AZ_STORAGE_ACCOUNT=my_sa
+#   az storage container create
+AZ_STORAGE_CONTAINER=my_sc
+
+# Regions to replicate to, comma-separated.
+AZ_TARGET_REGIONS=eastus
+
+# Optional host to send files to before calling azcopy.  azcopy doesn't compress
+# stuff while it's sending, and doesn't do any diffing.  This can make upload
+# of a VHD file take a LONG time.  To get around this, if a jumphost is specified,
+# this script will:
+#   rsync (via ssh) the VHD up to the jumphost
+#   azcopy the file from the jumphost to Azure
+# Since rsync does on-the-wire compression and incremental updates, this can save
+# a ton of time.  You need to have SSH access to this host.  You can specify
+# a username with user@hostname
+AZ_JUMPHOST=foo@bar.example.com

@@ -1,0 +1,11 @@
+[Unit]
+Description=SSH Key generation
+Before=ssh.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/ssh-keygen -A
+
+[Install]
+WantedBy=multi-user.target

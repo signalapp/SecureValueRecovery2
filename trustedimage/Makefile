@@ -1,18 +1,30 @@
 # Copyright 2024 Signal Messenger, LLC
 # SPDX-License-Identifier: AGPL-3.0-only
-all: build2
+SHELL=/bin/bash -o pipefail  # needed for pipefail
 
-build3: build2 debian3.json
-	rm -rf build3
-	sed 's/#.*//' debian3.json | packer build /dev/stdin
+all: build/azure_version
 
-build2: build1 debian2.json debian2/*
-	rm -rf build2
-	sed 's/#.*//' debian2.json | packer build /dev/stdin
+build/dir:
+	mkdir -p build
+	touch build/dir
 
-build1: debian1.json debian1/*
-	rm -rf build1
-	sed 's/#.*//' debian1.json | packer build /dev/stdin
+build/%.json: %.json build/dir
+	sed 's/#.*//' $< > $@
+
+build/debian3.out: build/debian3.json build/debian2.out
+	rm -rf $@
+	packer build $<
+
+build/debian2.out: build/debian2.json build/debian1.out debian2/*
+	rm -rf $@
+	packer build $<
+
+build/debian1.out: build/debian1.json debian1/* build/dir
+	rm -rf $@
+	packer build $<
+
+build/azure_version: azure.sh build/debian2.out azure_config
+	./azure.sh
 
 clean:
-	rm -rf build1 build2 build3
+	rm -rf build

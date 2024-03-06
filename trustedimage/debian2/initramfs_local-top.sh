@@ -24,8 +24,18 @@ esac
 # We do some other tricks to it in local-bottom before `pivot_root`
 # is called to pivot into it.
 log_begin_msg "Creating verity device mapping with veritysetup"
-if ! /sbin/veritysetup open /dev/vda2 verity /dev/vda3 $svr3verity --panic-on-corruption; then
-  log_failure_msg "veritysetup failed"
-  exit 1  # Halt boot process
-fi
-log_end_msg
+
+for device in vda vdb sda sdb; do
+  if ! [ -e /dev/${device}3 ]; then
+    continue
+  fi
+  if ! /sbin/veritysetup open /dev/${device}2 verity /dev/${device}3 $svr3verity --panic-on-corruption; then
+    log_failure_msg "veritysetup failed for ${device}"
+    exit 1  # Halt boot process
+  else
+    log_end_msg
+    exit 0
+  fi
+done
+log_failure_msg "no device found"
+exit 1
