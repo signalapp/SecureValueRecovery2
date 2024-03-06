@@ -61,7 +61,9 @@ Peer::Peer(const peerid::PeerID& id, PeerManager* parent)
     : id_(id),
       handshake_(noise::WrapHandshakeState(nullptr)),
       tx_(noise::WrapCipherState(nullptr)),
+      tx_rekey_(0),
       rx_(noise::WrapCipherState(nullptr)),
+      rx_rekey_(0),
       parent_(parent),
       last_attestation_(0) {}
 
@@ -85,6 +87,9 @@ error::Error Peer::Send(
     InternalDisconnect();
     SendRst(ctx, id_);
     return err;
+  }
+  if (++tx_rekey_ == 0) {
+    noise_cipherstate_rekey(tx_.get());
   }
   send->mutable_data()->swap(ciphertext);
   id_.ToString(send->mutable_peer_id());
@@ -123,6 +128,9 @@ error::Error Peer::Recv(
         InternalDisconnect();
         SendRst(ctx, id_);
         return err;
+      }
+      if (++rx_rekey_ == 0) {
+        noise_cipherstate_rekey(rx_.get());
       }
       auto e2e_message = ctx->Protobuf<e2e::EnclaveToEnclaveMessage>();
       if (!e2e_message->ParseFromString(plaintext)) {
@@ -192,6 +200,8 @@ error::Error Peer::FinishConnection(
   minimums_ = att.minimum_values();
   tx_.reset(tx);
   rx_.reset(rx);
+  tx_rekey_ = 0;
+  rx_rekey_ = 0;
   auto e2e_message = ctx->Protobuf<e2e::EnclaveToEnclaveMessage>();
   e2e_message->set_connected(true);
   *decoded = e2e_message;
@@ -340,6 +350,8 @@ error::Error Peer::Accept(
   minimums_ = att.minimum_values();
   tx_.reset(tx);
   rx_.reset(rx);
+  tx_rekey_ = 0;
+  rx_rekey_ = 0;
 
   auto e2e_message = ctx->Protobuf<e2e::EnclaveToEnclaveMessage>();
   e2e_message->set_connected(true);
@@ -374,6 +386,8 @@ void Peer::InternalDisconnect() {
   handshake_.reset(nullptr);
   tx_.reset(nullptr);
   rx_.reset(nullptr);
+  tx_rekey_ = 0;
+  rx_rekey_ = 0;
   last_attestation_ = 0;
   minimums_.Clear();
 }

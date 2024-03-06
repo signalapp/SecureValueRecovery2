@@ -141,7 +141,9 @@ class Peer {
   mutable util::mutex mu_;
   noise::HandshakeState handshake_ GUARDED_BY(mu_);
   noise::CipherState tx_ GUARDED_BY(mu_);
+  uint8_t tx_rekey_ GUARDED_BY(mu_);
   noise::CipherState rx_ GUARDED_BY(mu_);
+  uint8_t rx_rekey_ GUARDED_BY(mu_);
   const PeerManager* const parent_;
   util::UnixSecs last_attestation_ GUARDED_BY(mu_);
   minimums::MinimumValues minimums_ GUARDED_BY(mu_);

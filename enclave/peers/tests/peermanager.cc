@@ -207,4 +207,20 @@ TEST_F(PeerManagerTest, AttestationRefreshStallsTimeout) {
   ASSERT_EQ(PEER_CONNECTED, mgr1->PeerState(&ctx, mgr2->ID()));
 }
 
+TEST_F(PeerManagerTest, SendEnoughToRekey) {
+  Connect1To2();
+  for (int i = 0; i < 4096; i++) {
+    context::Context ctx;
+    e2e::EnclaveToEnclaveMessage* e2e;
+    e2e::EnclaveToEnclaveMessage send;
+    send.mutable_raft_message()->set_term(123);
+    ASSERT_EQ(error::OK, mgr1->SendToPeer(&ctx, mgr2->ID(), send));
+    EnclaveMessage em = Sent();
+    ASSERT_EQ(error::OK, mgr2->RecvFromPeer(&ctx, *FromEnclaveMessage(em, mgr1->ID()), &e2e));
+    ASSERT_NE(e2e, nullptr);
+    ASSERT_EQ(e2e->raft_message().term(), 123);
+  }
+}
+
+
 }  // namespace svr2::peers
