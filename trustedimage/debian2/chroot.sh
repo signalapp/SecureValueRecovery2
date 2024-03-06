@@ -26,6 +26,7 @@ cp -v /dev/shm/debian2/initramfs_local-top.sh /etc/initramfs-tools/scripts/local
 cp -v /dev/shm/debian2/initramfs_local-bottom.sh /etc/initramfs-tools/scripts/local-bottom/
 
 /dev/shm/debian2/azure.sh
+/dev/shm/debian2/gcp.sh
 
 # Regenerate our initramfs.
 update-initramfs -u

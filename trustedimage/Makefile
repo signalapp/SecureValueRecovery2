@@ -23,8 +23,14 @@ build/debian1.out: build/debian1.json debian1/* build/dir
 	rm -rf $@
 	packer build $<
 
-build/azure_version: azure.sh build/debian2.out azure_config
-	./azure.sh
-
 clean:
 	rm -rf build
+
+build/version: build/debian2.out
+	echo "0.$$(date --utc +%Y%m%d.%H%M%S)" > $@
+
+build/azure_version: build/version azure.sh azure_config
+	./azure.sh $$(cat build/version)
+
+build/gcp_version: build/version gcp.sh gcp_config
+	./gcp.sh $$(cat build/version)

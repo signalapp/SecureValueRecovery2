@@ -25,7 +25,7 @@ esac
 # is called to pivot into it.
 log_begin_msg "Creating verity device mapping with veritysetup"
 
-for device in vda vdb sda sdb; do
+for device in vda vdb sda sdb nvme0n1p; do
   if ! [ -e /dev/${device}3 ]; then
     continue
   fi
@@ -37,5 +37,5 @@ for device in vda vdb sda sdb; do
     exit 0
   fi
 done
-log_failure_msg "no device found"
+log_failure_msg "device not found in devices `ls /dev/`"
 exit 1

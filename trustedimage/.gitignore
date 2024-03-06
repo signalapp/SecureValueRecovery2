@@ -1,3 +1,4 @@
 build
 debian2/id_rsa.pub
 azure_config
+gcp_config

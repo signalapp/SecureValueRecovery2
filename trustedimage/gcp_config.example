@@ -1,0 +1,21 @@
+#!/bin/bash
+# Copyright 2024 Signal Messenger, LLC
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# Which GCP bucket should be used for intermediate storage of disk
+# images before they become images proper.
+GCP_BUCKET=my-storage-bucket
+
+# Which GCP service account should be used for upload, if using
+# a jumphost.  If not using a jumphost, this can be empty.
+GCP_SERVICE_ACCOUNT=my-service-account@my-project.iam.gserviceaccount.com
+
+# Optional host to send files to before copying up to GCP.  This can make upload
+# of our image faster on slow network links, as the original copy via rsync is
+# compressed and incremental.
+#   rsync (via ssh) the VHD up to the jumphost
+#   azcopy the file from the jumphost to Azure
+# Since rsync does on-the-wire compression and incremental updates, this can save
+# a ton of time.  You need to have SSH access to this host.  You can specify
+# a username with user@hostname
+GCP_JUMPHOST=foo@example.com

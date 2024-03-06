@@ -33,7 +33,7 @@ AZ_BLOB_URL="$(az storage blob url --account-name $AZ_STORAGE_ACCOUNT --containe
 if [ ! -z "$AZ_JUMPHOST" ]; then
   # Rsync up to the target host, then run azcopy from the directory
   # we just uploaded it to.
-  rsync --progress -e ssh -zL $(which azcopy) $FILE $AZ_JUMPHOST:./ 1>&2
+  rsync --progress --compress --inplace -e ssh -L $(which azcopy) $FILE $AZ_JUMPHOST:./ 1>&2
   ssh $AZ_JUMPHOST "./azcopy copy $(basename $FILE) \"${AZ_BLOB_URL}?${AZ_SAS_TOKEN}\"" 1>&2
 else
   # Just run the azcopy command locally.

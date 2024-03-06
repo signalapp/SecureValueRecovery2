@@ -18,7 +18,7 @@ source ./azure_config
 FROM="build/debian2.out/disk.raw-1"  # Local disk image to build from
 TO="build/azure.vhd"            # Local VHD file to create
 MB=$((1024*1024))
-VERSION="0.$(date --utc +%Y%m%d.%H%M%S)"
+VERSION="$1"
 
 # Make sure the image gallery exists
 if ! az sig show \
