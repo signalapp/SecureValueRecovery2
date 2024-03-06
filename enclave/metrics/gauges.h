@@ -49,3 +49,6 @@ CREATE_GAUGE(test, test2)
 CREATE_GAUGE(env, total_heap_size)
 CREATE_GAUGE(env, allocated_heap_size)
 CREATE_GAUGE(env, peak_heap_size)
+
+CREATE_GAUGE(socketwrap, output_buffer_size)
+CREATE_GAUGE(socketwrap, output_buffer_cap)

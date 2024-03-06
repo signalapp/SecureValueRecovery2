@@ -146,7 +146,7 @@ error::Error RunServerThread(core::Core* core, socketwrap::Socket* sock) {
     auto out_msg = out->mutable_msg();
     out_msg->set_id(in->msg().id());
     out_msg->set_status(status);
-    RETURN_IF_ERROR(sock->WritePB(&ctx, *out));
+    RETURN_IF_ERROR(env::socket::SendOutboundMessage(&ctx, *out));
   }
 }
 
@@ -174,7 +174,7 @@ std::pair<std::unique_ptr<core::Core>, error::Error> InitCore(socketwrap::Socket
     LOG(INFO) << "Writing init message";
     auto out = ctx.Protobuf<socketmain::OutboundMessage>();
     core_ptr->ID().ToString(out->mutable_init()->mutable_peer_id());
-    err = sock->WritePB(&ctx, *out);
+    err = env::socket::SendOutboundMessage(&ctx, *out);
   }
   LOG(INFO) << "Core creation: " << err;
   return std::make_pair(std::move(core_ptr), err);

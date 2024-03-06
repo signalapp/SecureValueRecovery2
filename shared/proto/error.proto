@@ -220,6 +220,7 @@ enum Error {
   Socket_ParseIncoming = 1304;
   Socket_WriteTooBig = 1305;
   Socket_ReadTooBig = 1306;
+  Socket_WriteNotInitialized = 1307;
 
   SocketMain_NS = 1400;
   SocketMain_SocketCreation = 1401;

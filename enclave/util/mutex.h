@@ -27,7 +27,7 @@ class CAPABILITY("mutex") mutex {
     CHECK(nullptr == "this function should be used only for thread annotations");
     return *this;
   }
- 
+
  private:
    std::mutex mu_;
 };

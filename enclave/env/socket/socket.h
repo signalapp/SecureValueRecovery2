@@ -38,6 +38,7 @@ class Environment : public ::svr2::env::Environment {
 // Send all outstanding messages, in order, up to the host.
 // Blocks forever.
 error::Error SendSocketMessages(socketwrap::Socket* sock);
+error::Error SendOutboundMessage(context::Context* ctx, const google::protobuf::MessageLite& msg);
 
 }  // namespace svr2::env::nsm
 
