@@ -1,3 +1,5 @@
+# Copyright 2024 Signal Messenger, LLC
+# SPDX-License-Identifier: AGPL-3.0-only
 OE_INCDIR = $(shell pkg-config oeenclave-clang++ --variable=includedir)
 CC=clang-11
 GO_TEST_FLAGS ?=

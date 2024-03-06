@@ -1,3 +1,5 @@
+# Copyright 2024 Signal Messenger, LLC
+# SPDX-License-Identifier: AGPL-3.0-only
 all: test build sign
 
 MAKEFILTER=| (grep --line-buffered -v '^make\[' || true)

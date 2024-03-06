@@ -1,0 +1,61 @@
+# Copyright 2024 Signal Messenger, LLC
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# This builder currently does nothing, but it allows us to test that
+# the disk image we created in 'debian2' (now in the 'build2' directory)
+# is functioning as expected.
+{
+  "builders": [
+    {
+      "type": "qemu",
+      "format": "raw",
+      "headless": "false",
+      "communicator": "ssh",
+      "disk_size": "2G",
+      "memory": 4096,
+
+      # Boot in UEFI, and use default vars again to make sure we can be
+      # found without modifying UEFI vars.  This does require us to do
+      # the MSFT UEFI 'bcfg' magic again in `boot_steps`.
+      "efi_boot": "true",
+      "efi_firmware_code": "/usr/share/OVMF/OVMF_CODE_4M.ms.fd",
+      "efi_firmware_vars": "/usr/share/OVMF/OVMF_VARS_4M.ms.fd",
+      "machine_type": "q35",
+
+      "accelerator": "kvm",
+      "vm_name": "disk.raw",
+      "net_device": "virtio-net",
+      "disk_interface": "virtio",
+      "output_directory": "build3",
+      "shutdown_command": "sudo halt",
+
+      # TODO: eventually shut off SSH entirely.
+      "ssh_username": "svr3",
+      "ssh_private_key_file": "/home/gram/.ssh/id_rsa",
+      "ssh_timeout": "15m",
+
+      # Use the additional disk created by 'debian2'.
+      "iso_url": "build2/disk.raw-1",
+      "iso_checksum": "none",
+      "disk_image": true,
+
+      "boot_wait": "2s",
+      "boot_key_interval": "5ms",
+      "boot_steps": [
+        "<enter>",
+        "bcfg boot rm 0<enter>",
+        "bcfg boot rm 0<enter>",
+        "reset<enter>"
+      ]
+    }
+  ],
+  "provisioners": [
+    {
+      # Make sure we can run commands as root, then sleep for a long time
+      # so that the user can log in via the console and poke around to make
+      # sure everything is working as intended.
+      "type": "shell",
+      "inline": [""sudo echo 'Boot and sudo successful'", "sleep 86400"]
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+# Copyright 2024 Signal Messenger, LLC
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# Do the second phase of image creation, where we actually create the new,
+# secure disk image.  The additional disk will be set up as our secure one.
+# This could be done in 'debian1', but that takes a long time and by
+# splitting them up, we can iterate much faster on these scripts.
+{
+  "builders": [
+    {
+      "type": "qemu",
+      "format": "raw",
+      "headless": "false",
+      "communicator": "ssh",
+      "disk_size": "5G",
+      "disk_additional_size": ["2G"],
+      "memory": 4096,
+
+      # Use UEFI again, but this time use the vars we got from 'debian1',
+      # since they tell us how to boot to the OS we just set up.
+      "efi_boot": "true",
+      "efi_firmware_code": "/usr/share/OVMF/OVMF_CODE_4M.ms.fd",
+      "efi_firmware_vars": "build1/efivars.fd",
+      "machine_type": "q35",
+
+      "accelerator": "kvm",
+      "vm_name": "disk.raw",
+      "net_device": "virtio-net",
+      "disk_interface": "virtio",
+      "output_directory": "build2",
+      "shutdown_command": "sudo shutdown -h now",
+      "ssh_username": "svr3",
+      "ssh_password": "svr3",  # Super secret, don't tell anyone.
+      "ssh_timeout": "5m",
+
+      # We start from the disk image that 'debian1' created.  Because
+      # we just created it, we ignore checksumming.
+      "iso_url": "build1/disk.raw",
+      "iso_checksum": "none",
+      "disk_image": true
+    }
+  ],
+  "provisioners": [
+    # Write up a bunch of scripts for us to use into /dev/shm/debian2/...
+    # We use /dev/shm since it's accessible even when we `chroot` halfway
+    # through our install process.
+    {
+      "type": "file",
+      "source": "debian2",
+      "destination": "/dev/shm"
+    },
+    # Call the first of our scripts.  It does everything else.
+    {
+      "type": "shell",
+      "inline": ["sudo /dev/shm/debian2/run.sh"]
+    }
+  ]
+}
