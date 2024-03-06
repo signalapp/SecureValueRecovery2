@@ -2463,4 +2463,129 @@ TEST_F(CoreTest, AcceptsAndRejectsMinimums) {
   }
 }
 
+TEST_F(CoreTest, ReplicationReset) {
+  auto [core1, err1] = Core::Create(ctx, valid_init_config);
+  ASSERT_EQ(err1, error::OK);
+  auto [core2, err2] = Core::Create(ctx, valid_init_config);
+  ASSERT_EQ(err2, error::OK);
+  LOG(INFO) << "core1=" << core1->ID() << ", core2=" << core2->ID();
+
+  // Create cores map for PassMessages
+  CoreMap cores;
+  cores[core1->ID()] = core1.get();
+  cores[core2->ID()] = core2.get();
+
+  {
+    LOG(INFO) << "\n\nSet up as one-replica Raft on core 1";
+    UntrustedMessage msg;
+    auto host = msg.mutable_h2e_request();
+    host->set_request_id(1000);
+    host->set_create_new_raft_group(true);
+
+    context::Context ctx;
+    ASSERT_EQ(error::OK, core1->Receive(&ctx, msg));
+    auto out = SentMessages();
+    ASSERT_EQ(1, out.size());
+    auto resp = out[0].h2e_response();
+    ASSERT_EQ(resp.request_id(), 1000);
+    ASSERT_EQ(resp.inner_case(), HostToEnclaveResponse::kStatus);
+    ASSERT_EQ(resp.status(), error::OK);
+  }
+
+  auto msgs = SentMessages();
+  ASSERT_EQ(msgs.size(), 0);
+  {
+    LOG(INFO) << "\n\nRequest join on core 2";
+    UntrustedMessage msg;
+    auto host = msg.mutable_h2e_request();
+    host->set_request_id(1001);
+    auto req = host->mutable_join_raft();
+    core1->ID().ToString(req->mutable_peer_id());
+
+    ASSERT_EQ(error::OK, core2->Receive(ctx, msg));
+    msgs = SentMessages();
+    ASSERT_EQ(msgs.size(), 1);
+    auto resp = msgs[0];
+    ASSERT_EQ(resp.inner_case(), EnclaveMessage::kPeerMessage);
+    ASSERT_EQ(resp.peer_message().has_syn(), true);
+  }
+  {
+    auto msg = PeerMessage(core2->ID(), core1->ID(), msgs[0]);
+    ASSERT_EQ(error::OK, core1->Receive(ctx, msg));
+    msgs = SentMessages();
+    ASSERT_EQ(msgs.size(), 2);
+    auto resp1 = msgs[0];
+    ASSERT_EQ(resp1.peer_message().inner_case(), PeerMessage::kSynack);
+    auto resp2 = msgs[1];  // timestamp transaction, ignorable
+    ASSERT_EQ(resp2.peer_message().inner_case(), PeerMessage::kData);
+  }
+  {
+    // synack
+    auto msg1 = PeerMessage(core1->ID(), core2->ID(), msgs[0]);
+    // timestamp request
+    auto msg2 = PeerMessage(core1->ID(), core2->ID(), msgs[1]);
+    ASSERT_EQ(error::OK, core2->Receive(ctx, msg1));
+    ASSERT_EQ(error::OK, core2->Receive(ctx, msg2));
+    msgs = SentMessages();
+    ASSERT_EQ(msgs.size(), 3);
+  }
+  {
+    // timestamp request
+    auto msg1 = PeerMessage(core2->ID(), core1->ID(), msgs[0]);
+    // raft request
+    auto msg2 = PeerMessage(core2->ID(), core1->ID(), msgs[1]);
+    // timestamp response
+    auto msg3 = PeerMessage(core2->ID(), core1->ID(), msgs[2]);
+    ASSERT_EQ(error::OK, core1->Receive(ctx, msg1));
+    ASSERT_EQ(error::OK, core1->Receive(ctx, msg2));
+    ASSERT_EQ(error::OK, core1->Receive(ctx, msg3));
+    msgs = SentMessages();
+    ASSERT_EQ(msgs.size(), 2);
+  }
+  {
+    // timestamp response
+    auto msg1 = PeerMessage(core1->ID(), core2->ID(), msgs[0]);
+    // GetRaft
+    auto msg2 = PeerMessage(core1->ID(), core2->ID(), msgs[1]);
+    ASSERT_EQ(error::OK, core2->Receive(ctx, msg1));
+    ASSERT_EQ(error::OK, core2->Receive(ctx, msg2));
+    msgs = SentMessages();
+    ASSERT_EQ(msgs.size(), 1);
+  }
+  {
+    // GetRaft response
+    auto msg1 = PeerMessage(core2->ID(), core1->ID(), msgs[0]);
+    ASSERT_EQ(error::OK, core1->Receive(ctx, msg1));
+    msgs = SentMessages();
+    ASSERT_EQ(msgs.size(), 1);
+    // msgs[0] now has our "please start replication" request
+  }
+  // We're now in a state where Core2 expects data from Core1.
+  // We simulate Core1 crashing and the Core2 host noticing eventually
+  // by passing a ResetPeer down to Core2.
+  {
+    LOG(INFO) << "\n\nReset core1 on core2";
+    UntrustedMessage msg;
+    auto host = msg.mutable_h2e_request();
+    host->set_request_id(1002);
+    core1->ID().ToString(host->mutable_reset_peer_id());
+
+    ASSERT_EQ(error::OK, core2->Receive(ctx, msg));
+    msgs = SentMessages();
+    ASSERT_EQ(3, msgs.size());
+    EXPECT_EQ(msgs[0].peer_message().inner_case(), PeerMessage::kRst);
+
+    // This is the one we actually care about:  the ongoing
+    // raft replication request is cancelled due to the ResetPeer call.
+    EXPECT_EQ(msgs[1].h2e_response().request_id(), 1001);
+    EXPECT_EQ(msgs[1].h2e_response().inner_case(), HostToEnclaveResponse::kStatus);
+    EXPECT_EQ(msgs[1].h2e_response().status(), error::Core_E2ETransactionReset);
+
+    // Our request to ResetPeer then succeeds.
+    EXPECT_EQ(msgs[2].h2e_response().request_id(), 1002);
+    EXPECT_EQ(msgs[2].h2e_response().inner_case(), HostToEnclaveResponse::kStatus);
+    EXPECT_EQ(msgs[2].h2e_response().status(), error::OK);
+  }
+}
+
 }  // namespace svr2::core

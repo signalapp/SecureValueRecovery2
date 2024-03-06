@@ -57,6 +57,7 @@ enum Error {
   Core_RaftGroupConfigAttestationTimeoutTooSmall = 240;
   Core_SerializeRaftWrite = 241;
   Core_DeserializeRaftWrite = 242;
+  Core_E2ETransactionReset = 243;
 
   Env_NS = 300;
   Env_SerializeCustomClaims = 301;

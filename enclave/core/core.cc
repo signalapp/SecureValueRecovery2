@@ -198,7 +198,7 @@ error::Error Core::Receive(context::Context* ctx, const UntrustedMessage& msg) {
       MEASURE_CPU(ctx, cpu_core_peer_rst);
       peerid::PeerID peer_id;
       RETURN_IF_ERROR(peer_id.FromString(msg.reset_peer().peer_id()));
-      return peer_manager_->ResetPeer(ctx, peer_id);
+      return ResetPeer(ctx, peer_id);
     }
     case UntrustedMessage::kPeerMessage: {
       MEASURE_CPU(ctx, cpu_core_peer_msg);
@@ -334,8 +334,8 @@ error::Error Core::HandleHostToEnclave(context::Context* ctx, const HostToEnclav
     case HostToEnclaveRequest::kResetPeerId: {
       peerid::PeerID peer_id;
       RETURN_IF_ERROR(peer_id.FromString(msg.reset_peer_id()));
-      return peer_manager_->ResetPeer(ctx, peer_id);
-    }
+      ReplyWithError(ctx, tx, ResetPeer(ctx, peer_id));
+    } return error::OK;
     case HostToEnclaveRequest::kUpdateMinimums: {
       HandleUpdateMinimums(ctx, tx, msg.update_minimums());
     } return error::OK;
@@ -1626,6 +1626,32 @@ error::Error Core::SendE2EError(context::Context* ctx, const peerid::PeerID& fro
   return peer_manager_->SendToPeer(ctx, from, *e2e);
 }
 
+error::Error Core::ResetPeer(context::Context* ctx, const peerid::PeerID& id) {
+  std::vector<E2ECall> txns_to_cancel;
+  // We perform an O(n) operation here on the set of all outstanding transactions,
+  // which may be large, but ResetPeer should happen very infrequently.  We also
+  // make sure to unlock e2e_txn_mu_ before calling callbacks, as these callbacks
+  // might themselves call SendE2ETransaction, which needs to re-lock the mutex.
+  { ACQUIRE_LOCK(e2e_txn_mu_, ctx, lock_core_e2e_txns);
+    for (auto iter = outstanding_e2e_transactions_.begin(); iter != outstanding_e2e_transactions_.end(); ) {
+      if (iter->second.to == id) {
+        timeout_.CancelTimeout(ctx, iter->second.timeout_cancel);
+        txns_to_cancel.emplace_back(std::move(iter->second));
+        iter = outstanding_e2e_transactions_.erase(iter);
+      } else {
+        ++iter;
+      }
+    }
+  }
+  auto err = peer_manager_->ResetPeer(ctx, id);
+  LOG(INFO) << "Resetting peer " << id << " in peer manager, canceling "
+            << txns_to_cancel.size() << " transactions - err=" << err;
+  for (auto& cb : txns_to_cancel) {
+    cb.callback(ctx, error::Core_E2ETransactionReset, nullptr);
+  }
+  return err;
+}
+
 void Core::RaftHandleCommittedLogs(context::Context* ctx) {
   // See if Raft has any committed logs for us.
   MEASURE_CPU(ctx, cpu_core_committed_logs);
@@ -1790,6 +1816,7 @@ void Core::SendE2ETransaction(
   outstanding_e2e_transactions_[tx] = {
     .callback = callback,
     .timeout_cancel = tc,
+    .to = to,
   };
 }
 

@@ -310,6 +310,7 @@ class Core {
   struct E2ECall {
     E2ECallback callback;
     timeout::Cancel timeout_cancel;
+    peerid::PeerID to;
   };
   std::unordered_map<internal::TransactionID, E2ECall> outstanding_e2e_transactions_ GUARDED_BY(e2e_txn_mu_);
   // Send an Enclave-to-enclave transaction.
@@ -320,6 +321,10 @@ class Core {
       bool with_timeout,  // If false, allow to run forever.
       E2ECallback callback) EXCLUDES(e2e_txn_mu_);
   error::Error SendE2EError(context::Context* ctx, const peerid::PeerID& from, internal::TransactionID id, error::Error err);
+  // Called when a peer ID reset is requested by the host.  This means that the
+  // host has abandoned the peer.  In this case, we treat all transactions
+  // to that host as having failed.
+  error::Error ResetPeer(context::Context* ctx, const peerid::PeerID& id);
 };
 
 }  // namespace svr2::core
