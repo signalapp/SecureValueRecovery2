@@ -140,14 +140,24 @@ func Start(ctx context.Context, hconfig *config.Config, authenticator auth.Auth,
 		case <-sigtermC:
 			logger.Errorf("Received SIGTERM, gracefully shutting down")
 			// If we're the leader, stop being the leader.
-			logger.Errorf("Relinquishing Raft leadership")
-			dispatcher.SendTransaction(&pb.HostToEnclaveRequest{
-				Inner: &pb.HostToEnclaveRequest_RelinquishLeadership{RelinquishLeadership: true},
-			})
-			logger.Errorf("Requesting removal from Raft")
-			dispatcher.SendTransaction(&pb.HostToEnclaveRequest{
-				Inner: &pb.HostToEnclaveRequest_RequestRemoval{RequestRemoval: true},
-			})
+			for sleep := time.Second * 0; ; sleep += time.Second {
+				time.Sleep(sleep) // first time will not sleep
+				logger.Errorf("Relinquishing Raft leadership")
+				// We send both requests, but we retry both requests until both succeed.
+				// This will allow us to retry when, for example, two replicas try to remove
+				// themselves at the same time when only one membership change is allowed at once.
+				_, err1 := dispatcher.SendTransaction(&pb.HostToEnclaveRequest{
+					Inner: &pb.HostToEnclaveRequest_RelinquishLeadership{RelinquishLeadership: true},
+				})
+				logger.Errorf("Requesting removal from Raft")
+				_, err2 := dispatcher.SendTransaction(&pb.HostToEnclaveRequest{
+					Inner: &pb.HostToEnclaveRequest_RequestRemoval{RequestRemoval: true},
+				})
+				if err1 == nil && err2 == nil {
+					break
+				}
+				logger.Errorf("Failed to remove self:  leadership=[%v] remove=[%v]", err1, err2)
+			}
 			logger.Errorf("Done gracefully shutting down, exiting")
 			return errors.New("SIGTERM")
 		case <-ctx.Done():
