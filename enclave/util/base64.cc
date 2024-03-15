@@ -7,8 +7,9 @@
 #include "metrics/metrics.h"
 
 namespace svr2::util {
-
-const char B64STD[256] = {
+namespace {
+const Base64Encoding B64STD_{
+  .decode = {
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 62, -1, -1, -1, 63,
@@ -25,9 +26,12 @@ const char B64STD[256] = {
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+  },
+  .encode = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/",
 };
 
-const char B64URL[256] = {
+const Base64Encoding B64URL_{
+  .decode = {
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 62, -1, -1,
@@ -44,11 +48,16 @@ const char B64URL[256] = {
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+  },
+  .encode = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_",
 };
+}  // namespace
+const Base64Encoding* const B64STD = &B64STD_;
+const Base64Encoding* const B64URL = &B64URL_;
 
 static const char padding = '=';
 
-error::Error B64DecodeInline(std::string* inout, const char type[256]) {
+error::Error B64DecodeInline(std::string* inout, const Base64Encoding* const encoding) {
   size_t j = 0;
   uint16_t accumulator = 0;
   uint16_t bits = 0;
@@ -66,7 +75,7 @@ error::Error B64DecodeInline(std::string* inout, const char type[256]) {
       }
       break;
     }
-    char c = type[(size_t) next];
+    char c = encoding->decode[(size_t) next];
     if (c == -1) {
       LOG(DEBUG) << "Invalid character: " << ((int) next);
       return COUNTED_ERROR(Util_Base64InvalidChar);
@@ -81,6 +90,36 @@ error::Error B64DecodeInline(std::string* inout, const char type[256]) {
   }
   inout->resize(j);
   return error::OK;
+}
+
+std::string Base64Encode(const uint8_t* in, size_t in_size, const Base64Encoding* const encoding, bool padding) {
+  std::string out;
+  size_t bits = 0;
+  uint16_t work = 0;
+  const uint8_t* end = in + in_size;
+  while (in < end) {
+    bits += 8;
+    work = (work << 8) | *in;
+    in++;
+    while (bits >= 6) {
+      bits -= 6;
+      uint8_t offset = (work >> bits) & 0x3f;
+      out.append(1, encoding->encode[offset]);
+    }
+  }
+  if (bits) {
+    work <<= 6 - bits;
+    uint8_t offset = work & 0x3f;
+    out.append(1, encoding->encode[offset]);
+    if (padding) {
+      out.append(bits == 2 ? "==" : "=");
+    }
+  }
+  return out;
+}
+
+std::string Base64Encode(const char* c, const Base64Encoding* const encoding, bool padding) {
+  return Base64Encode(reinterpret_cast<const uint8_t*>(c), strlen(c), encoding, padding);
 }
 
 }  // namespace svr2::util

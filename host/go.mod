@@ -9,6 +9,8 @@ require (
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/go-redis/redis_rate/v9 v9.1.2
 	github.com/google/go-sev-guest v0.9.3
+	github.com/google/go-tpm v0.9.0
+	github.com/google/go-tpm-tools v0.4.3
 	github.com/gtank/ristretto255 v0.1.2
 	github.com/hashicorp/go-metrics v0.5.3
 	github.com/mdlayher/vsock v1.2.1
@@ -23,6 +25,8 @@ require (
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
+	github.com/google/go-configfs-tsm v0.2.2 // indirect
+	github.com/google/go-tdx-guest v0.3.1 // indirect
 	github.com/google/logger v1.1.1 // indirect
 	github.com/google/uuid v1.4.0 // indirect
 	github.com/hashicorp/go-immutable-radix v1.3.1 // indirect

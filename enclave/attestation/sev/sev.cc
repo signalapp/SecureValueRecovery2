@@ -172,6 +172,7 @@ error::Error AllowRemote(const attestation_report& local, const attestation_repo
 std::pair<attestation_report, error::Error> ReportFromUnverifiedBuffer(const std::string& evidence) {
   attestation_report out;
   if (evidence.size() < sizeof(attestation_report)) {
+    LOG(DEBUG) << "Evidence size = " << evidence.size() << ", expected " << sizeof(attestation_report);
     return std::make_pair(out, COUNTED_ERROR(AttestationSEV_EvidenceTooSmallForReport));
   }
   out = *reinterpret_cast<const attestation_report*>(evidence.data());

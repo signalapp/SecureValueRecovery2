@@ -1,16 +1,20 @@
 // Copyright 2023 Signal Messenger, LLC
 // SPDX-License-Identifier: AGPL-3.0-only
 
-#ifndef __SVR2_ATTESTATION_AZURESNP_AZURESNP_H__
-#define __SVR2_ATTESTATION_AZURESNP_AZURESNP_H__
+#ifndef __SVR2_ATTESTATION_TPM2SNP_TPM2SNP_H__
+#define __SVR2_ATTESTATION_TPM2SNP_TPM2SNP_H__
 
-#include "proto/azuresnp.pb.h"
+#include "proto/tpm2snp.pb.h"
 #include "proto/error.pb.h"
+#include "proto/attestation.pb.h"
 #include "attestation/tpm2/tpm2.h"
 #include "context/context.h"
 #include "util/ticks.h"
 
-namespace svr2::attestation::azuresnp {
+namespace svr2::attestation::tpm2snp {
+
+extern const STACK_OF(X509)* const azure_roots_of_trust;
+extern const STACK_OF(X509)* const gcp_roots_of_trust;
 
 // Azure confidential computing allows for the use of AMD SEV-SNP (herafter
 // AMDSNP) protection for its computation.  AMDSNP measures the boot state
@@ -64,13 +68,25 @@ std::pair<std::string, error::Error> RuntimeDataBufferFromAzureBuffer(const std:
 //   a SHA256 of evidence.azure_report's runtime data
 // - verifying that evidence.azure_report's runtime data contains the public
 //   key contained within evidence.akcert_der (RSA `n` and `e` match)
-error::Error VerifyAKCert(context::Context* ctx, const ASNPEvidence& evidence, const ASNPEndorsements& endorsements, util::UnixSecs now);
+error::Error VerifyAKCert(context::Context* ctx, const ASNPEvidence& evidence, const ASNPEndorsements& endorsements, util::UnixSecs now, const STACK_OF(X509)* const roots_of_trust);
+
+// Verifies that the TPM2 quote in the provided evidence is valid.
+// Checks that evidence.sig() correctly signs evidence.msg() using
+// evidence.akcert_der(), and that evidence.msg() correctly contains
+// a hash of evidence.pcrs().
+error::Error VerifyTPM2(context::Context* ctx, const ASNPEvidence& evidence, std::array<uint8_t, 32>* nonce, attestation::tpm2::PCRs* pcrs);
 
 // Given a set of PCRs for the local machine and a set of PCRs for
 // a potential remote peer, verify that the potential peer's PCRs are
 // allowable and we should move forward with the trusted connection.
 error::Error CheckRemotePCRs(context::Context* ctx, const attestation::tpm2::PCRs& local, const attestation::tpm2::PCRs& remote);
 
-}  // namespace svr2::attestation::azuresnp
+// CompleteVerification checks the entirety of VerifyAKCert, VerifyTPM2, and CheckRemotePCRs,
+// then returns the associated AttestationData.
+std::pair<attestation::AttestationData, error::Error> CompleteVerification(context::Context* ctx, const ASNPEvidence& evidence, const ASNPEndorsements& endorsements, util::UnixSecs now, const STACK_OF(X509)* const roots_of_trust, const attestation::tpm2::PCRs& local_pcrs);
 
-#endif  // __SVR2_ATTESTATION_AZURESNP_AZURESNP_H__
+std::pair<std::string, error::Error> AzureRuntimeDataFromCert(X509* rsa_cert);
+
+}  // namespace svr2::attestation::tpm2snp
+
+#endif  // __SVR2_ATTESTATION_TPM2SNP_TPM2SNP_H__

@@ -68,6 +68,7 @@ cmds: generated
 	(cd cmd/get_sev_chain && go build)
 	(cd cmd/svr2client && go build)
 	(cd cmd/svr3client && go build)
+	(cd cmd/svr3gcp && go build)
 
 get_sev_chain: generated
 	(cd cmd/get_sev_chain && go build)

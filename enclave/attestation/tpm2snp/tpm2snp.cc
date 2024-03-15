@@ -1,7 +1,7 @@
 // Copyright 2023 Signal Messenger, LLC
 // SPDX-License-Identifier: AGPL-3.0-only
 
-#include "attestation/azuresnp/azuresnp.h"
+#include "attestation/tpm2snp/tpm2snp.h"
 #include "attestation/sev/sev.h"
 #include "util/macros.h"
 #include "util/log.h"
@@ -14,7 +14,7 @@
 #include <openssl/base.h>
 #include <rapidjson/document.h>
 
-namespace svr2::attestation::azuresnp {
+namespace svr2::attestation::tpm2snp {
 namespace {
 
 const char* MSFT_AKCERT_ROOT = R"EOF(
@@ -53,7 +53,7 @@ bd+PA4RBToG9rXn6vNkUWdbLibU=
 -----END CERTIFICATE-----
 )EOF";
 
-bssl::UniquePtr<STACK_OF(X509)> RootsOfTrust() {
+bssl::UniquePtr<STACK_OF(X509)> AzureRootsOfTrust() {
   bssl::UniquePtr<STACK_OF(X509)> root_stack(sk_X509_new_null());
   CHECK(root_stack.get() != nullptr);
   for (auto root : {MSFT_AKCERT_ROOT}) {
@@ -67,9 +67,65 @@ bssl::UniquePtr<STACK_OF(X509)> RootsOfTrust() {
   return root_stack;
 }
 
-const bssl::UniquePtr<STACK_OF(X509)> roots_of_trust = RootsOfTrust();
+const char* GOOG_AKCERT_ROOT = R"EOF(
+-----BEGIN CERTIFICATE-----
+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
+av16U4E=
+-----END CERTIFICATE-----
+)EOF";
+
+bssl::UniquePtr<STACK_OF(X509)> GcpRootsOfTrust() {
+  bssl::UniquePtr<STACK_OF(X509)> root_stack(sk_X509_new_null());
+  CHECK(root_stack.get() != nullptr);
+  for (auto root : {GOOG_AKCERT_ROOT}) {
+    bssl::UniquePtr<BIO> root_bio(BIO_new_mem_buf(root, -1));
+    CHECK(root_bio.get() != nullptr);
+    bssl::UniquePtr<X509> root_x509(PEM_read_bio_X509(root_bio.get(), nullptr, nullptr, nullptr));
+    CHECK(root_x509.get() != nullptr);
+    CHECK(0 != sk_X509_push(root_stack.get(), root_x509.get()));
+    root_x509.release();  // owned by root_stack
+  }
+  return root_stack;
+}
+
+const bssl::UniquePtr<STACK_OF(X509)> azure_roots_of_trust_smrtptr = AzureRootsOfTrust();
+const bssl::UniquePtr<STACK_OF(X509)> gcp_roots_of_trust_smrtprt = GcpRootsOfTrust();
 
 }  // namespace
+
+const STACK_OF(X509)* const azure_roots_of_trust = azure_roots_of_trust_smrtptr.get();
+const STACK_OF(X509)* const gcp_roots_of_trust = gcp_roots_of_trust_smrtprt.get();
 
 std::pair<std::string, error::Error> SNPReportBufferFromAzureBuffer(const std::string& tpm2_buffer) {
   if (tpm2_buffer.size() < 1236) {
@@ -90,7 +146,7 @@ std::pair<std::string, error::Error> RuntimeDataBufferFromAzureBuffer(const std:
   return std::make_pair(std::string(start, size), error::OK);
 }
 
-error::Error VerifyAKCert(context::Context* ctx, const ASNPEvidence& evidence, const ASNPEndorsements& endorsements, util::UnixSecs now) {
+error::Error VerifyAKCert(context::Context* ctx, const ASNPEvidence& evidence, const ASNPEndorsements& endorsements, util::UnixSecs now, const STACK_OF(X509)* const roots_of_trust) {
   LOG(DEBUG) << "Parsing AKCert DER";
   auto akcert_start = reinterpret_cast<const uint8_t*>(evidence.akcert_der().data());
   bssl::UniquePtr<X509> akcert(d2i_X509(nullptr, &akcert_start, evidence.akcert_der().size()));
@@ -118,8 +174,8 @@ error::Error VerifyAKCert(context::Context* ctx, const ASNPEvidence& evidence, c
     return COUNTED_ERROR(AzureSNP_CryptoStoreInit);
   }
 
-  LOG(DEBUG) << "Verifying AKCert against MSFT root-of-trust";
-  X509_STORE_CTX_set0_trusted_stack(x509ctx.get(), roots_of_trust.get());
+  LOG(DEBUG) << "Verifying AKCert against root-of-trust";
+  X509_STORE_CTX_set0_trusted_stack(x509ctx.get(), const_cast<STACK_OF(X509)*>(roots_of_trust));
   X509_VERIFY_PARAM *param = X509_STORE_CTX_get0_param(x509ctx.get());
   X509_VERIFY_PARAM_set_time_posix(param, now);
   if (1 != X509_verify_cert(x509ctx.get())) {
@@ -132,24 +188,20 @@ error::Error VerifyAKCert(context::Context* ctx, const ASNPEvidence& evidence, c
   auto sevsnp_endorsements = ctx->Protobuf<attestation::sev::SevSnpEndorsements>();
   sevsnp_endorsements->set_vcek_der(endorsements.vcek_der());
   sevsnp_endorsements->set_ask_der(endorsements.ask_der());
-  auto [snp_report_buf, srberr] = SNPReportBufferFromAzureBuffer(evidence.azure_report());
-  RETURN_IF_ERROR(srberr);
-  auto [snp_report, snperr] = ReportFromVerifiedBuffer(snp_report_buf, *sevsnp_endorsements, now);
+  auto [snp_report, snperr] = ReportFromVerifiedBuffer(evidence.snp_report(), *sevsnp_endorsements, now);
   RETURN_IF_ERROR(snperr);
   LOG(INFO) << snp_report;
 
   LOG(DEBUG) << "Verifying that runtime data is verified by SNP report";
-  auto [runtimedata, rtderr] = RuntimeDataBufferFromAzureBuffer(evidence.azure_report());
-  RETURN_IF_ERROR(rtderr);
-  auto runtimedata_sha256 = hmac::Sha256(runtimedata);
-  LOG(DEBUG) << "Runtime data: " << reinterpret_cast<const char*>(runtimedata.data());
+  auto runtimedata_sha256 = hmac::Sha256(evidence.runtime_data());
+  LOG(DEBUG) << "Runtime data: " << evidence.runtime_data();
   if (!util::ConstantTimeEqualsBytes(runtimedata_sha256.data(), snp_report.report_data, runtimedata_sha256.size())) {
     return COUNTED_ERROR(AzureSNP_ReportDataMismatch);
   }
 
   LOG(DEBUG) << "Parsing runtime JSON to pull out and verify HCLAkPub";
   rapidjson::Document runtime_doc;
-  if (runtime_doc.Parse(runtimedata.c_str()).HasParseError() ||
+  if (runtime_doc.Parse(evidence.runtime_data().c_str()).HasParseError() ||
       !runtime_doc.HasMember("keys") ||
       !runtime_doc["keys"].IsArray() ||
       runtime_doc["keys"].Size() < 1) {
@@ -235,4 +287,82 @@ error::Error CheckRemotePCRs(context::Context* ctx, const attestation::tpm2::PCR
   return error::OK;
 }
 
-}  // namespace svr2::attestation::azuresnp
+std::pair<std::string, error::Error> AzureRuntimeDataFromCert(X509* rsa_cert) {
+  bssl::UniquePtr<EVP_PKEY> cert_pk(X509_get_pubkey(rsa_cert));
+  std::string out;
+  if (!cert_pk) { return std::make_pair(out, COUNTED_ERROR(AzureSNP_AKCertPubKey)); }
+  auto* cert_rsa = EVP_PKEY_get0_RSA(cert_pk.get());  // non-owning reference
+  if (!cert_rsa) { return std::make_pair(out, COUNTED_ERROR(AzureSNP_AKCertPubKey)); }
+  auto* cert_e = RSA_get0_e(cert_rsa);  // non-owning reference
+  auto* cert_n = RSA_get0_n(cert_rsa);  // non-owning reference
+  if (!cert_e || !cert_n) { return std::make_pair(out, COUNTED_ERROR(AzureSNP_AKCertPubKey)); }
+  std::string ake(BN_num_bytes(cert_e), '\0');
+  ake.resize(BN_bn2bin(cert_e, reinterpret_cast<uint8_t*>(ake.data())));
+  std::string akn(BN_num_bytes(cert_n), '\0');
+  akn.resize(BN_bn2bin(cert_n, reinterpret_cast<uint8_t*>(akn.data())));
+  out.append("{\"keys\":[{\"kid\":\"HCLAkPub\",\"kty\":\"RSA\",\"e\":\"");
+  out.append(util::Base64Encode(ake, util::B64URL, false));
+  out.append("\",\"n\":\"");
+  out.append(util::Base64Encode(akn, util::B64URL, false));
+  out.append("\"}]}");
+  LOG(DEBUG) << "Generated Azure runtime data from X509: " << out;
+  return std::make_pair(out, error::OK);
+}
+
+error::Error VerifyTPM2(context::Context* ctx, const ASNPEvidence& evidence, std::array<uint8_t, 32>* nonce, attestation::tpm2::PCRs* pcrs) {
+  LOG(DEBUG) << "Verifing TPM2 quote";
+  auto [sig, sigerr] = attestation::tpm2::Signature::FromString(evidence.sig());
+  if (sigerr != error::OK) {
+    return sigerr;
+  }
+  auto [msg, msgerr] = attestation::tpm2::Report::FromString(evidence.msg());
+  if (msgerr != error::OK) {
+    return msgerr;
+  }
+  if (auto err = attestation::tpm2::PCRsFromString(evidence.pcrs(), pcrs); err != error::OK) {
+    return err;
+  }
+  auto akcert_start = reinterpret_cast<const uint8_t*>(evidence.akcert_der().data());
+  bssl::UniquePtr<X509> akcert(d2i_X509(nullptr, &akcert_start, evidence.akcert_der().size()));
+  if (!akcert) {
+    return COUNTED_ERROR(Env_ParseEvidence);
+  } else if (auto err = sig.VerifyReport(msg, akcert.get()); err != error::OK) {
+    return err;
+  } else if (auto err = msg.VerifyPCRs(*pcrs); err != error::OK) {
+    return err;
+  }
+  *nonce = msg.nonce();
+  return error::OK;
+}
+
+std::pair<attestation::AttestationData, error::Error> CompleteVerification(context::Context* ctx, const ASNPEvidence& evidence, const ASNPEndorsements& endorsements, util::UnixSecs now, const STACK_OF(X509)* const roots_of_trust, const attestation::tpm2::PCRs& local_pcrs) {
+  attestation::AttestationData out;
+  LOG(DEBUG) << "Verifing that the provided AKCert is valid and verified by the SNP report and MSFT root of trust";
+  if (auto err = attestation::tpm2snp::VerifyAKCert(ctx, evidence, endorsements, now, roots_of_trust); err != error::OK) {
+    return std::make_pair(out, err);
+  }
+
+  LOG(DEBUG) << "Verifing TPM2 quote";
+  std::array<uint8_t, 32> nonce;
+  attestation::tpm2::PCRs pcrs;
+  if (auto err = VerifyTPM2(ctx, evidence, &nonce, &pcrs); err != error::OK) {
+    return std::make_pair(out, err);
+  }
+
+  LOG(DEBUG) << "Verifying remote PCRs against local ones";
+  if (auto err = CheckRemotePCRs(ctx, local_pcrs, pcrs); err != error::OK) {
+    return std::make_pair(out, err);
+  }
+
+  LOG(DEBUG) << "Verifying that attestation data matches hash in TPM2 quote";
+  if (auto ad_sha256 = hmac::Sha256(evidence.attestation_data()); !util::ConstantTimeEquals(ad_sha256, nonce)) {
+    return std::make_pair(out, COUNTED_ERROR(AzureSNP_AttestationDataHashMismatch));
+  }
+
+  if (!out.ParseFromString(evidence.attestation_data())) {
+    return std::make_pair(std::move(out), COUNTED_ERROR(Env_ParseEvidence));
+  }
+  return std::make_pair(std::move(out), error::OK);
+}
+
+}  // namespace svr2::attestation::tpm2snp

@@ -3,7 +3,7 @@
 
 syntax = "proto3";
 
-package svr2.attestation.azuresnp;
+package svr2.attestation.tpm2snp;
 option go_package = "github.com/signalapp/svr2/proto";
 option optimize_for = LITE_RUNTIME;
 
@@ -16,10 +16,20 @@ message ASNPEvidence {
   bytes msg = 3;
   bytes sig = 4;
 
-  // tpm2_nvread -C o 0x01400001
-  bytes azure_report = 5;  // contains snp_report and runtimedata
+  // tpm2_nvread -C o 0x01400001 # contains snp_report and runtimedata
+  bytes snp_report = 5;  // contains snp_report and runtimedata
+  // runtime_data should be in the form used by Azure, and must
+  // contain at least the following:
+  //   { "keys": [{
+  //       "kid": "HCLAkPub",
+  //       "kty": "RSA",
+  //       "e": base64(big-endian-bignum(rsa exponent)),
+  //       "n": base64(big-endian-bignum(rsa modulus)),
+  //       ...
+  //   }]}
+  bytes runtime_data = 6;
   // tpm2_nvread -C o 0x1C101D0
-  bytes akcert_der = 6;
+  bytes akcert_der = 7;
 }
 
 message ASNPEndorsements {
