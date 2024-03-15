@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 SHELL=/bin/bash -o pipefail  # needed for pipefail
 
-all: build/azure_version
+all: build/azure_version build/gcp_version
 
 build/dir:
 	mkdir -p build

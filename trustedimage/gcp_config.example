@@ -2,6 +2,9 @@
 # Copyright 2024 Signal Messenger, LLC
 # SPDX-License-Identifier: AGPL-3.0-only
 
+# Which GCP Project to put things in
+GCP_PROJECT=my-project
+
 # Which GCP bucket should be used for intermediate storage of disk
 # images before they become images proper.
 GCP_BUCKET=my-storage-bucket
