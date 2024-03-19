@@ -29,6 +29,7 @@
 #include "util/hex.h"
 #include "util/mutex.h"
 #include "util/endian.h"
+#include "util/base64.h"
 #include "util/log.h"
 #include "hmac/hmac.h"
 #include "fs/fs.h"
@@ -145,6 +146,11 @@ class Environment : public ::svr2::env::socket::Environment {
       LOG(FATAL) << "Failure to attest evidence in Init: " << err;
     }
     LOG(INFO) << "Base evidence and endorsements created successfully";
+    if (auto [elog, err] = fs::FileContents("/sys/kernel/security/tpm0/binary_bios_measurements"); err != error::OK) {
+      LOG(ERROR) << "Unable to retrieve event log: " << err;
+    } else {
+      LOG(INFO) << "Event log: " << util::Base64Encode(elog, util::B64STD, true);
+    }
   }
 
  private:
