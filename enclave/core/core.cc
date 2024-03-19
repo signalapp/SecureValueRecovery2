@@ -32,7 +32,8 @@ void LogRaftGroupConfig(const std::string& name, const enclaveconfig::RaftGroupC
     << " super_majority:" << c.super_majority()
     << " attestation_timeout:" << c.attestation_timeout()
     << " db_version:" << c.db_version()
-    << " simulated:" << c.simulated();
+    << " simulated:" << c.simulated()
+    << " group_id:" << c.group_id();
 }
 
 bool RaftGroupConfigsEqualExceptForGroupID(const enclaveconfig::RaftGroupConfig& a, const enclaveconfig::RaftGroupConfig& b) {
@@ -406,6 +407,8 @@ void Core::HandleCreateNewRaftGroupRequest(context::Context* ctx, internal::Tran
   raft::GroupId group_id = util::BigEndian64FromBytes(group_id_bytes);
   cfg.set_group_id(group_id);
   cfg.set_db_version(db_version_);
+
+  LogRaftGroupConfig("new", cfg);
 
   raft_.state = svr2::RAFTSTATE_LOADED_PART_OF_GROUP;
   enclaveconfig::RaftConfig raft_config = enclave_config(ctx)->raft();
