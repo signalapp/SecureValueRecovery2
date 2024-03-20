@@ -27,6 +27,7 @@ import (
 	"github.com/gtank/ristretto255"
 	"github.com/signalapp/svr2/auth"
 	"github.com/signalapp/svr2/web/client"
+	"google.golang.org/protobuf/proto"
 
 	pb "github.com/signalapp/svr2/proto"
 )
@@ -35,6 +36,7 @@ var (
 	loadtestCmd    = flag.NewFlagSet("loadtest", flag.ExitOnError)
 	testKeyCmd     = flag.NewFlagSet("testkey", flag.ExitOnError)
 	authHeadersCmd = flag.NewFlagSet("authheaders", flag.ExitOnError)
+	attestCmd      = flag.NewFlagSet("attest", flag.ExitOnError)
 
 	user                                    = toUser("test123")
 	hosts, enclaveID, authKey, statFilename string
@@ -45,6 +47,7 @@ var subcommands = map[string]*flag.FlagSet{
 	loadtestCmd.Name():    loadtestCmd,
 	testKeyCmd.Name():     testKeyCmd,
 	authHeadersCmd.Name(): authHeadersCmd,
+	attestCmd.Name():      attestCmd,
 }
 
 func main() {
@@ -80,6 +83,14 @@ func main() {
 	case authHeadersCmd.Name():
 		authHeadersCmd.Parse(os.Args[2:])
 		if err := runAuthHeaders(); err != nil {
+			log.Printf("ERROR: %v", err)
+			os.Exit(1)
+		}
+	case attestCmd.Name():
+		filePrefix := attestCmd.String("filePrefix", "/tmp/svr3", "If not empty, writes evidence to <file_prefix>.evidence and endorsements to <file_prefix>.endorsement")
+		attestCmd.Parse(os.Args[2:])
+		hs := newHostSet(strings.Split(hosts, ","))
+		if err := runAttest(hs, *filePrefix); err != nil {
 			log.Printf("ERROR: %v", err)
 			os.Exit(1)
 		}
@@ -135,7 +146,7 @@ func (h *hostSet) returnHost(host string) {
 	h.hosts[host] -= 1
 }
 
-func newClient(username string, hs *hostSet) (*client.SVRClient, error) {
+func newWebsocket(username string, hs *hostSet) (*websocket.Conn, error) {
 	host := hs.getHost()
 	defer hs.returnHost(host)
 	u := url.URL{Scheme: "wss", Host: host, Path: fmt.Sprintf("v1/%s", enclaveID)}
@@ -159,8 +170,15 @@ func newClient(username string, hs *hostSet) (*client.SVRClient, error) {
 	} else if resp.StatusCode > 299 {
 		return nil, fmt.Errorf("code %v", resp.Status)
 	}
+	return c, nil
+}
 
-	return client.NewClient(c)
+func newClient(username string, hs *hostSet) (*client.SVRClient, error) {
+	w, err := newWebsocket(username, hs)
+	if err != nil {
+		return nil, err
+	}
+	return client.NewClient(w)
 }
 
 func runLoadTest(parallel, count int, hs *hostSet) error {
@@ -365,5 +383,29 @@ func runAuthHeaders() error {
 	log.Printf("USER: %q", user)
 	log.Printf("PASS: %q", pass)
 	log.Printf("HEADERS: Authorization: Basic %s", base64.URLEncoding.EncodeToString([]byte(user+":"+pass)))
+	return nil
+}
+
+func runAttest(hs *hostSet, filePrefix string) error {
+	c, err := newWebsocket(user, hs)
+	if err != nil {
+		return fmt.Errorf("newWebsocket: %w", err)
+	}
+	_, msg, err := c.ReadMessage()
+	if err != nil {
+		return fmt.Errorf("readws: %w", err)
+	}
+	var start pb.ClientHandshakeStart
+	if err := proto.Unmarshal(msg, &start); err != nil {
+		return fmt.Errorf("unmarshal: %w", err)
+	}
+	fmt.Printf("PubKey (testonly): %x\n", start.TestOnlyPubkey)
+	log.Printf("Writing files to %s.{evidence,endorsement}", filePrefix)
+	if err := os.WriteFile(filePrefix+".evidence", start.Evidence, 0600); err != nil {
+		return fmt.Errorf("writing evidence file: %w", err)
+	}
+	if err := os.WriteFile(filePrefix+".endorsement", start.Endorsement, 0600); err != nil {
+		return fmt.Errorf("writing endorsement file: %w", err)
+	}
 	return nil
 }
