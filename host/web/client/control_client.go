@@ -26,6 +26,27 @@ func (cc *ControlClient) Do(request *pb.HostToEnclaveRequest) (*pb.HostToEnclave
 	return cc.DoJSON(bs)
 }
 
+func (cc *ControlClient) Peers() (*pb.PeerMap, error) {
+	url := fmt.Sprintf("http://%v/control/peers", cc.Addr)
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("requesting peers via GET: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("requesting peers via GET: status=%v", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("reading body: %v", err)
+	}
+	pbResponse := pb.PeerMap{}
+	if err := protojson.Unmarshal(body, &pbResponse); err != nil {
+		return nil, fmt.Errorf("could not parse server response, body=%s : %w", body, err)
+	}
+	return &pbResponse, nil
+}
+
 func (cc *ControlClient) DoJSON(request []byte) (*pb.HostToEnclaveResponse, error) {
 	url := fmt.Sprintf("http://%v/control", cc.Addr)
 	req, err := http.NewRequest(http.MethodPut, url, bytes.NewBuffer(request))

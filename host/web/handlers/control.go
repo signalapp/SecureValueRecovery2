@@ -10,6 +10,7 @@ import (
 	"net/http"
 
 	"github.com/signalapp/svr2/logger"
+	"github.com/signalapp/svr2/peer/peerdb"
 	"google.golang.org/protobuf/encoding/protojson"
 
 	pb "github.com/signalapp/svr2/proto"
@@ -76,4 +77,27 @@ func (c *controlHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if _, err := w.Write(out); err != nil {
 		logger.Warnw("error writing control response", "err", err)
 	}
+}
+
+func NewPeers(peerDB *peerdb.PeerDB) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		peers, err := peerDB.List(r.Context())
+		if err != nil {
+			http.Error(w, fmt.Sprintf("failed to list peers: %v", err), http.StatusInternalServerError)
+			return
+		}
+		var resp pb.PeerMap
+		for id, entry := range peers {
+			resp.Entries = append(resp.Entries, &pb.PeerMap_Entry{Id: id[:], Entry: entry})
+		}
+		out, err := protojson.Marshal(&resp)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("marshaling JSON: %v", err), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if _, err := w.Write(out); err != nil {
+			logger.Warnw("error writing control response", "err", err)
+		}
+	})
 }

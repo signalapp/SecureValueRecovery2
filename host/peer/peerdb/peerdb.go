@@ -134,7 +134,7 @@ func betterThan(e1 *pb.PeerEntry, e2 *pb.PeerEntry) bool {
 func (p *PeerDB) FindRaftMember(ctx context.Context, me peerid.PeerID, localPeerAddr string) (peerid.PeerID, error) {
 	// retry until we find an eligible peer or we acquire the exclusive creation lock
 	return util.RetrySupplierWithBackoff(ctx, func() (peerid.PeerID, error) {
-		peers, err := p.list(ctx)
+		peers, err := p.List(ctx)
 		if err != nil {
 			logger.Infow("failed to fetch raft members", "err", err)
 			return peerid.PeerID{}, err
@@ -184,8 +184,8 @@ func (p *PeerDB) acquireCreationLock(ctx context.Context, me peerid.PeerID) erro
 	return nil
 }
 
-// list fetches all the peers in the database
-func (p *PeerDB) list(ctx context.Context) (map[peerid.PeerID]*pb.PeerEntry, error) {
+// List fetches all the peers in the database
+func (p *PeerDB) List(ctx context.Context) (map[peerid.PeerID]*pb.PeerEntry, error) {
 	var mu sync.Mutex
 	var shardResults [][]string
 

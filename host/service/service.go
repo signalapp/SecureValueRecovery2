@@ -104,6 +104,7 @@ func Start(ctx context.Context, hconfig *config.Config, authenticator auth.Auth,
 	// control endpoints
 	controlMux.Handle("/control/loglevel", middleware.Instrument(handlers.NewSetLogLevel(hconfig, dispatcher)))
 	controlMux.Handle("/control", middleware.Instrument(handlers.NewControl(dispatcher)))
+	controlMux.Handle("/control/peers", middleware.Instrument(handlers.NewPeers(peerDB)))
 
 	g.Go(func() error {
 		logger.Infof("Starting client http server on %v", hconfig.ClientListenAddr)
