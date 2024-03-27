@@ -5,12 +5,6 @@
 # This script is called within the (writable) new disk /dev/vdb2.
 set -euxo pipefail
 
-# TODO: eventually disallow SSH.  For now, lock it down.
-mkdir /home/svr3/.ssh
-cp /dev/shm/debian2/id_rsa.pub /home/svr3/.ssh/authorized_keys
-sed -i 's/.*PasswordAuthentication.*/PasswordAuthentication no/;
-        s/.*PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
-
 # We only care about our root filesystem being created, and that'll all be done
 # with kernel command-line arguments and initramfs scripts.
 # However, some things (dhclient) still expect the file to exist, so make
@@ -56,11 +50,6 @@ GRUB_CMDLINE_LINUX="svr3verity=VERITYHASH loadpin.enabled $AZURE_CMDLINE"
 EOF
 grub-mkconfig -o /boot/grub/grub.cfg
 
-# Remove SSH host keys and request that they be regenerated
-rm -fv /etc/ssh/ssh_host_*key*
-cp -v /dev/shm/debian2/generate_ssh_keys.service /etc/systemd/system/
-systemctl enable generate_ssh_keys.service
-
 # Set SVR3 to start up
 cp -v /dev/shm/debian2/svr3.service /etc/systemd/system/
 systemctl enable svr3.service
@@ -68,3 +57,16 @@ systemctl enable svr3.service
 # Copy binaries.
 chmod a+x /dev/shm/debian2/svr3{,test}
 cp -v /dev/shm/debian2/svr3{,test} /usr/bin
+
+# Turn down anything that could give realtime access to the image.
+passwd --lock svr3
+passwd --lock root
+apt purge -y \
+    openssh-server \
+    openssh-client \
+    jq \
+    nano \
+    ##
+apt purge -y --allow-remove-essential \
+    apt \
+    ##
