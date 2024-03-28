@@ -88,6 +88,7 @@ func NewPeers(peerDB *peerdb.PeerDB) http.Handler {
 		}
 		var resp pb.PeerMap
 		for id, entry := range peers {
+			id := id // shadow/copy
 			resp.Entries = append(resp.Entries, &pb.PeerMap_Entry{Id: id[:], Entry: entry})
 		}
 		out, err := protojson.Marshal(&resp)
