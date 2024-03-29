@@ -1,4 +1,4 @@
-# Secure Value Recovery Service v2
+# Secure Value Recovery Service v2/3
 
 The SecureValueRecovery2 (SVR2) project aims to store client-side secrets
 server-side protected by a human-remembered (and thus, low-entropy) pin.
@@ -9,7 +9,12 @@ SVR2 keeps persistent state on the guess count, along with the secret itself,
 in a multi-replica, strong-consensus, shared storage mechanism based on
 in-memory Raft.
 
-SVR2 is designed, first and foremost, to not leak the secret
+The SVR3 project expands on this approach by implementing secret-sharing
+across multiple hardware-protected backends (SGX, Nitro, SEV-SNP),
+requiring breaking of all underlying hardware security models to extract
+the necessary secrets.
+
+SVR2/3 is designed, first and foremost, to not leak the secret
 material, and, secondarily, to provide the material back to clients.  Given
 this, if there is a choice between "lose the secret material forever" and
 "store the secret material but potentially leak it", we'll choose the former.
@@ -32,6 +37,10 @@ a second version of this system to handle a few specific issues:
 As part of SGX DCAP updates, this project also attempts to be as safe as
 possible while running on SGX TME memory, compared to the differing
 security guarantees of the SGX MEE memory utilized in the original version.
+
+SVR3 builds upon the implemented SVR2 data model, exposing a different client
+request/response protocol that exposes a Ristretto-based oblivious pseudo-
+random function (OPRF) rather than a direct store/retrieve database.
 
 ## Building
 
@@ -70,9 +79,12 @@ Code is divided into a few main directories at the top-level
             starts up an enclave, then communicates with it.  This is a Go codebase.
 *  `docs` - Contains additional documentation above and beyond the host/enclave `README.md`
             docs on specific topics.
+*  `trustedimage` - Builds a trustable VM disk image based on the current enclave code,
+                    for use in AMD SEV-SNP and other environments where the trusted unit is
+                    a VM rather than a binary.
 
 ## License
 
-Copyright 2023 Signal Messenger, LLC
+Copyright 2023-2024 Signal Messenger, LLC
 
 Licensed under the [AGPLv3](LICENSE)
