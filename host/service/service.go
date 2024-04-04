@@ -38,6 +38,8 @@ import (
 // Start starts all SVR components and only returns when a component has encountered an
 // unrecoverable error or the provided context has been cancelled.
 func Start(ctx context.Context, hconfig *config.Config, authenticator auth.Auth, enc enclave.Enclave) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	g, ctx := errgroup.WithContext(ctx)
 
 	// Start up the control server immediately, for debugging and liveness checking.
@@ -64,7 +66,7 @@ func Start(ctx context.Context, hconfig *config.Config, authenticator auth.Auth,
 	// listen for peer network requests
 	ln, err := net.Listen("tcp", hconfig.PeerAddr)
 	if err != nil {
-		logger.Fatalf("failed to net.listen: %v", err)
+		return fmt.Errorf("failed to net.listen: %v", err)
 	}
 	peerServer := peer.NewPeerServer(ctx, nodeID, dispatcher)
 	g.Go(func() error { return peerServer.Listen(ln) })
@@ -76,10 +78,10 @@ func Start(ctx context.Context, hconfig *config.Config, authenticator auth.Auth,
 
 	// let other peers look us up by our nodeID
 	insertCtx, insertCancel := context.WithTimeout(ctx, time.Minute)
+	defer insertCancel()
 	if err := peerDB.Insert(insertCtx, nodeID, hconfig.PeerAddr, hconfig.InitialRedisPeerDBTTL); err != nil {
-		logger.Fatalf("failed to update peerdb : %v", err)
+		return fmt.Errorf("failed to update peerdb : %v", err)
 	}
-	insertCancel()
 
 	logger.Infof("built peer lookup")
 
@@ -117,10 +119,10 @@ func Start(ctx context.Context, hconfig *config.Config, authenticator auth.Auth,
 	// wait until we successfully create a raft group or join an existing one
 	raftManager := raftmanager.New(nodeID, dispatcher, peerDB, hconfig)
 	joinCtx, joinCancel := context.WithTimeout(ctx, time.Minute)
+	defer joinCancel()
 	if err := raftManager.CreateOrJoin(joinCtx); err != nil {
-		logger.Fatalf("failure to join raft : %v", err)
+		return fmt.Errorf("failure to join raft : %v", err)
 	}
-	joinCancel()
 
 	// Successfully joined raft, periodically refresh our peerdb status
 	g.Go(func() error {
@@ -166,7 +168,8 @@ func Start(ctx context.Context, hconfig *config.Config, authenticator auth.Auth,
 		}
 	})
 
-	return g.Wait()
+	<-ctx.Done()
+	return ctx.Err()
 }
 
 func wrapErr(in string, err error) error {
