@@ -43,7 +43,7 @@ namespace svr2::peers {
 
 static NoiseProtocolId peer_to_peer_protocol = {
     .prefix_id = NOISE_PREFIX_STANDARD,
-    .pattern_id = NOISE_PATTERN_KK,
+    .pattern_id = NOISE_PATTERN_KK_HFS,
     .dh_id = NOISE_DH_CURVE25519,
     // We use ChaChaPoly for client communication, because it's easier on clients
     // and the vast majority of client interaction is dominated by the DH key exchange,
@@ -54,7 +54,7 @@ static NoiseProtocolId peer_to_peer_protocol = {
     // have access to hardware-accelerated AES, so we use that.
     .cipher_id = NOISE_CIPHER_AESGCM,
     .hash_id = NOISE_HASH_SHA256,
-    .hybrid_id = 0,
+    .hybrid_id = NOISE_DH_NEWHOPE,
 };
 
 Peer::Peer(const peerid::PeerID& id, PeerManager* parent)
@@ -252,7 +252,7 @@ error::Error Peer::InternalConnect(
   conn->mutable_attestation()->CopyFrom(attestation);
 
   // Create the initial Noise initiator handshake request buffer in [conn->handshake].
-  conn->mutable_handshake()->resize(noise::HANDSHAKE_INIT_SIZE, '\0');
+  conn->mutable_handshake()->resize(noise::HANDSHAKE_HFS_INIT_SIZE, '\0');
   NoiseBuffer buf;
   noise_buffer_set_output(
       buf,
@@ -326,7 +326,7 @@ error::Error Peer::Accept(
   }
   auto conn_response = ctx->Protobuf<e2e::ConnectRequest>();
   conn_response->mutable_attestation()->CopyFrom(attestation);
-  conn_response->mutable_handshake()->resize(noise::HANDSHAKE_INIT_SIZE, '\0');
+  conn_response->mutable_handshake()->resize(noise::HANDSHAKE_HFS_INIT_SIZE, '\0');
   NoiseBuffer write_buf = noise::BufferOutputFromString(conn_response->mutable_handshake());
   if (NOISE_ERROR_NONE != noise_handshakestate_write_message(local_handshake.get(), &write_buf, nullptr)) {
     return COUNTED_ERROR(Peers_AcceptWriteHandshake);
@@ -601,8 +601,8 @@ error::Error PeerManager::ConnectToPeer(
   }
   Peer* peer = CreatePeer(ctx, to);
   auto [dhstate, most_recent_attestation] = ConnectionArgs(ctx);
-  RETURN_IF_ERROR(peer->Connect(ctx, dhstate, *most_recent_attestation));
   LOG(INFO) << ID() << " connecting to new peer " << to;
+  RETURN_IF_ERROR(peer->Connect(ctx, dhstate, *most_recent_attestation));
   return error::OK;
 }
 

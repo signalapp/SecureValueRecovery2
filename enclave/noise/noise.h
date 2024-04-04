@@ -22,6 +22,7 @@
 namespace svr2::noise {
 
 const size_t HANDSHAKE_INIT_SIZE = 64;
+const size_t HANDSHAKE_HFS_INIT_SIZE = 4096;
 
 inline uint8_t* StrU8Ptr(std::string* s) {
   return reinterpret_cast<uint8_t*>(s->data());
