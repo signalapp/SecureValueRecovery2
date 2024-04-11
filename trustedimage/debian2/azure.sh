@@ -4,10 +4,6 @@
 
 set -euxo pipefail
 
-apt-get install -y hyperv-daemons
-
-# TODO: generate new SSH host keys.
-
 # Fix network interface name.
 sed -i 's/enp0s2/eth0/g' /etc/network/interfaces
 

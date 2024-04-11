@@ -55,8 +55,8 @@ cp -v /dev/shm/debian2/svr3.service /etc/systemd/system/
 systemctl enable svr3.service
 
 # Copy binaries.
-chmod a+x /dev/shm/debian2/svr3{,test}
-cp -v /dev/shm/debian2/svr3{,test} /usr/bin
+chmod a+x /dev/shm/debian2/svr3{,test,gcp} /dev/shm/debian2/enclave.*
+cp -v /dev/shm/debian2/svr3{,test,gcp} /dev/shm/debian2/enclave.* /usr/bin
 
 # Turn down anything that could give realtime access to the image.
 passwd --lock svr3

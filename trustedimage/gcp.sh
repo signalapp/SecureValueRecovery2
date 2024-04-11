@@ -25,14 +25,14 @@ function rm_blob() {
 }
 trap rm_blob EXIT
 $GCLOUD storage cp ../host/main gs://$GCP_BUCKET/svr3-$VERSION
+tar --transform="s/$(basename $FROM)/disk.raw/" --format=oldgnu -cvf - -C $(dirname $FROM) $(basename $FROM) | pv -f | pigz >gcp.tar.gz
 if [ -z "$GCP_JUMPHOST" ]; then
-  tar --transform="s/$(basename $FROM)/disk.raw/" --format=oldgnu -cvf - -C $(dirname $FROM) $(basename $FROM) | pv -f | pigz >gcp.tar.gz
-  $GCLOUD storage cp $FROM $BLOB
+  $GCLOUD storage cp ./gcp.tar.gz $BLOB
 else
-  rsync -e ssh --progress --compress --inplace $FROM $GCP_JUMPHOST:./disk.raw
-	ssh $GCP_JUMPHOST "tar --format=oldgnu -cvf - disk.raw | pv -f | pigz --fast >gcp.tar.gz"
+  rsync -e ssh --progress --compress --inplace ./gcp.tar.gz $GCP_JUMPHOST:./gcp.tar.gz
   ACCESS_TOKEN="$($GCLOUD auth print-access-token --lifetime=900 --impersonate-service-account $GCP_SERVICE_ACCOUNT)"
   ssh $GCP_JUMPHOST "CLOUDSDK_AUTH_ACCESS_TOKEN=$ACCESS_TOKEN $GCLOUD storage cp gcp.tar.gz $BLOB"
 fi
 $GCLOUD compute images create svr3-$VERSION_DASH --source-uri $BLOB --guest-os-features=SEV_SNP_CAPABLE,UEFI_COMPATIBLE
+mv -v gcp.tar.gz ../enclave/releases/gcpsnp/${VERSION}.tar.gz
 echo $VERSION > build/gcp_version

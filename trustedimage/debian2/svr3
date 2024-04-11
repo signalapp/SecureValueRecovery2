@@ -1,1 +1,8 @@
-../../enclave/build/enclave.azuresnp
+#!/bin/bash
+cd "$(dirname "$0")"
+
+if dmidecode -s system-product-name | grep -q "Google Compute Engine"; then
+  exec ./enclave.gcpsnp "$@"
+else
+  exec ./enclave.azuresnp "$@"
+fi

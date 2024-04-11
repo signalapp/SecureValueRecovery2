@@ -79,6 +79,7 @@ enclave_release: docker_enclave_releaser
     -e "CHOWN_TO=$$(id -u):$$(id -g)" \
     svr2_nsmeif:latest
 	docker build -f docker/Dockerfile -t svr2_nsmhost --target=nsmhost .
+	$(MAKE) -C trustedimage
 
 enclave_releaser: enclave host  # depends on 'host' so its tests will run
 	cp -vn enclave/build/enclave.signed "enclave/releases/sgx/default.$$(/opt/openenclave/bin/oesign dump -e enclave/build/enclave.signed | fgrep -i mrenclave | cut -d '=' -f2)"

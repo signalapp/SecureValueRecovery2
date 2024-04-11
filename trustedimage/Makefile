@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 SHELL=/bin/bash -o pipefail  # needed for pipefail
 
-all: build/azure_version build/gcp_version
+all: build/gcp_version
 
 build/dir:
 	mkdir -p build
@@ -15,7 +15,7 @@ build/debian3.out: build/debian3.json build/debian2.out
 	rm -rf $@
 	packer build $<
 
-build/debian2.out: build/debian2.json build/debian1.out debian2/*
+build/debian2.out: build/debian2.json build/debian1.out debian2/* ../enclave/build/enclave.gcpsnp ../enclave/build/enclave.azuresnp ../host/main
 	rm -rf $@
 	packer build $<
 

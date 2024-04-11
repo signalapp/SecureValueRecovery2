@@ -1,1 +1,2 @@
 *.eif filter=lfs diff=lfs merge=lfs -text
+enclave/releases/gcpsnp/* filter=lfs diff=lfs merge=lfs -text
