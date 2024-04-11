@@ -67,6 +67,7 @@ class Environment : public ::svr2::env::socket::Environment {
     auto merged_evidence = ctx->Protobuf<attestation::tpm2snp::ASNPEvidence>();
     merged_evidence->MergeFrom(base_evidence_);
     merged_evidence->MergeFrom(*current_evidence);
+    merged_evidence->set_attestation_data(serialized);
     if (!merged_evidence->SerializeToString(out.mutable_evidence())) {
       return std::make_pair(out, error::General_Unimplemented);
     }
