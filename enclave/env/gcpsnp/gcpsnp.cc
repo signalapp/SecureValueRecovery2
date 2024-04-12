@@ -57,22 +57,22 @@ class Environment : public ::svr2::env::socket::Environment {
     e2e::Attestation out;
     std::string serialized;
     if (!data.SerializeToString(&serialized)) {
-      return std::make_pair(out, error::General_Unimplemented);
+      return std::make_pair(out, error::Env_SerializeAttestationData);
     }
     auto hash = hmac::Sha256(serialized);
-    auto current_evidence = ctx->Protobuf<attestation::tpm2snp::ASNPEvidence>();
+    auto current_evidence = ctx->Protobuf<attestation::tpm2snp::TPM2SNPEvidence>();
     if (auto err = GcpEvidenceAndEndorsements(hash, current_evidence, nullptr); err != error::OK) {
       return std::make_pair(out, err);
     }
-    auto merged_evidence = ctx->Protobuf<attestation::tpm2snp::ASNPEvidence>();
+    auto merged_evidence = ctx->Protobuf<attestation::tpm2snp::TPM2SNPEvidence>();
     merged_evidence->MergeFrom(base_evidence_);
     merged_evidence->MergeFrom(*current_evidence);
     merged_evidence->set_attestation_data(serialized);
     if (!merged_evidence->SerializeToString(out.mutable_evidence())) {
-      return std::make_pair(out, error::General_Unimplemented);
+      return std::make_pair(out, error::GCPSNP_SerializeEvidence);
     }
     if (!base_endorsements_.SerializeToString(out.mutable_endorsements())) {
-      return std::make_pair(out, error::General_Unimplemented);
+      return std::make_pair(out, error::GCPSNP_SerializeEndorsements);
     }
     return std::make_pair(out, error::OK);
   }
@@ -88,8 +88,8 @@ class Environment : public ::svr2::env::socket::Environment {
     }
     attestation::AttestationData out;
     LOG(DEBUG) << "Parsing attestation evidence and endorsements";
-    auto evidence = ctx->Protobuf<attestation::tpm2snp::ASNPEvidence>();
-    auto endorsements = ctx->Protobuf<attestation::tpm2snp::ASNPEndorsements>();
+    auto evidence = ctx->Protobuf<attestation::tpm2snp::TPM2SNPEvidence>();
+    auto endorsements = ctx->Protobuf<attestation::tpm2snp::TPM2SNPEndorsements>();
     if (!evidence->ParseFromString(attestation.evidence())) {
       return std::make_pair(out, COUNTED_ERROR(Env_ParseEvidence));
     }
@@ -157,8 +157,8 @@ class Environment : public ::svr2::env::socket::Environment {
  private:
   error::Error GcpEvidenceAndEndorsements(
       const std::array<uint8_t, 32>& nonce,
-      attestation::tpm2snp::ASNPEvidence* evidence,
-      attestation::tpm2snp::ASNPEndorsements* endorsements) const {
+      attestation::tpm2snp::TPM2SNPEvidence* evidence,
+      attestation::tpm2snp::TPM2SNPEndorsements* endorsements) const {
     fs::TmpDir tmpdir;
     RETURN_IF_ERROR(tmpdir.Init());
     std::string cmd = "/usr/bin/svr3gcp --debug=false --nonce_hex=" + util::ToHex(nonce);
@@ -168,20 +168,20 @@ class Environment : public ::svr2::env::socket::Environment {
     if (endorsements) { cmd.append(" --endorsements_output=" + endorsements_proto_file); }
     LOG(INFO) << "Running cmd: " << cmd;
     if (int ret = system(cmd.c_str()); ret != 0) {
-      return COUNTED_ERROR(General_Unimplemented);  // TODO: better error
+      return COUNTED_ERROR(GCPSNP_RunEvidenceEndorsementsBinary);
     }
     if (evidence) {
       auto [evidence_proto, err] = fs::FileContents(evidence_proto_file);
       RETURN_IF_ERROR(err);
       if (!evidence->ParseFromString(evidence_proto)) {
-        return COUNTED_ERROR(General_Unimplemented);  // TODO: better error
+        return COUNTED_ERROR(GCPSNP_ParseEvidenceProtoFile);
       }
     }
     if (endorsements) {
       auto [endorsements_proto, err] = fs::FileContents(endorsements_proto_file);
       RETURN_IF_ERROR(err);
       if (!endorsements->ParseFromString(endorsements_proto)) {
-        return COUNTED_ERROR(General_Unimplemented);  // TODO: better error
+        return COUNTED_ERROR(GCPSNP_ParseEndorsementsProtoFile);
       }
     }
     return error::OK;
@@ -248,8 +248,8 @@ class Environment : public ::svr2::env::socket::Environment {
     return error::OK;
   }
 
-  attestation::tpm2snp::ASNPEvidence base_evidence_;
-  attestation::tpm2snp::ASNPEndorsements base_endorsements_;
+  attestation::tpm2snp::TPM2SNPEvidence base_evidence_;
+  attestation::tpm2snp::TPM2SNPEndorsements base_endorsements_;
   attestation::tpm2::PCRs local_pcrs_;
 };
 

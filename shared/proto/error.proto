@@ -77,6 +77,7 @@ enum Error {
   Env_SerializeMinimumsForEvidence = 315;
   Env_ParseEvidence = 316;
   Env_ParseEndorsements = 317;
+  Env_SerializeAttestationData = 318;
 
   Peers_NS = 400;
   Peers_SendBeforeConnect = 401;
@@ -294,19 +295,29 @@ enum Error {
   AttestationTPM2_PCRDigest = 2008;
   AttestationTPM2_PCRVerify = 2009;
 
-  AzureSNP_NS = 2100;
-  AzureSNP_OpenFile = 2101;
-  AzureSNP_Mkdir = 2102;
-  AzureSNP_InvalidAKCert = 2103;
-  AzureSNP_InvalidAKCertIntermediate = 2104;
-  AzureSNP_CryptoAllocate = 2105;
-  AzureSNP_AKCertificateChainVerify = 2106;
-  AzureSNP_CryptoStoreInit = 2107;
-  AzureSNP_AzureBufferTooSmall = 2108;
-  AzureSNP_ReportDataMismatch = 2109;
-  AzureSNP_RuntimeDataJSON = 2110;
-  AzureSNP_AKCertPubKey = 2111;
-  AzureSNP_AKCertMismatch = 2112;
-  AzureSNP_PCRMismatch = 2113;
-  AzureSNP_AttestationDataHashMismatch = 2114;
+  AttestationTPM2SNP_NS = 2100;
+  AttestationTPM2SNP_InvalidAKCert = 2101;
+  AttestationTPM2SNP_InvalidAKCertIntermediate = 2102;
+  AttestationTPM2SNP_CryptoAllocate = 2103;
+  AttestationTPM2SNP_AKCertificateChainVerify = 2104;
+  AttestationTPM2SNP_CryptoStoreInit = 2105;
+  AttestationTPM2SNP_AzureBufferTooSmall = 2106;
+  AttestationTPM2SNP_ReportDataMismatch = 2107;
+  AttestationTPM2SNP_RuntimeDataJSON = 2108;
+  AttestationTPM2SNP_AKCertPubKey = 2109;
+  AttestationTPM2SNP_AKCertMismatch = 2110;
+  AttestationTPM2SNP_PCRMismatch = 2111;
+  AttestationTPM2SNP_AttestationDataHashMismatch = 2112;
+
+  GCPSNP_NS = 2200;
+  GCPSNP_RunEvidenceEndorsementsBinary = 2201;
+  GCPSNP_SerializeEvidence = 2202;
+  GCPSNP_SerializeEndorsements = 2203;
+  GCPSNP_ParseEvidenceProtoFile = 2204;
+  GCPSNP_ParseEndorsementsProtoFile = 2205;
+
+  FS_NS = 2300;
+  FS_TmpDirAlreadyInitiated = 2301;
+  FS_Mkdir = 2302;
+  FS_OpenFile = 2303;
 };

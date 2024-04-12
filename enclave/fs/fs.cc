@@ -21,7 +21,7 @@ std::pair<std::string, error::Error> FileContents(const std::string& filename) {
   int fd = open(filename.c_str(), O_RDONLY | O_CLOEXEC);
   if (fd <= 0) {
     LOG(ERROR) << "Opening file '" << filename << "' for read: " << strerror(errno);
-    return std::make_pair("", COUNTED_ERROR(AzureSNP_OpenFile));
+    return std::make_pair("", COUNTED_ERROR(FS_OpenFile));
   }
   char buf[64];
   ssize_t ret = -1;
@@ -32,7 +32,7 @@ std::pair<std::string, error::Error> FileContents(const std::string& filename) {
   if (ret < 0) {
     LOG(ERROR) << "Reading file '" << filename << "': " << strerror(errno);
     close(fd);
-    return std::make_pair("", COUNTED_ERROR(AzureSNP_OpenFile));
+    return std::make_pair("", COUNTED_ERROR(FS_OpenFile));
   }
   close(fd);
   return std::make_pair(std::move(out), error::OK);
@@ -40,7 +40,7 @@ std::pair<std::string, error::Error> FileContents(const std::string& filename) {
 
 error::Error TmpDir::Init() {
   if (name_ != "") {
-    return error::General_Unimplemented;  // TODO: change to good err
+    return COUNTED_ERROR(FS_TmpDirAlreadyInitiated);
   }
   std::array<uint8_t, 8> bytes;
   TmpDir out;
@@ -50,7 +50,7 @@ error::Error TmpDir::Init() {
   std::string name = "/tmp/svr." + util::ToHex(bytes);
   if (int ret = mkdir(name.c_str(), 0700); ret != 0) {
     LOG(ERROR) << "Making temp directory failed: " << strerror(errno);
-    return COUNTED_ERROR(AzureSNP_Mkdir);
+    return COUNTED_ERROR(FS_Mkdir);
   }
   LOG(DEBUG) << "New temp directory: " << name;
   name_ = name;

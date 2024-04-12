@@ -68,13 +68,13 @@ std::pair<std::string, error::Error> RuntimeDataBufferFromAzureBuffer(const std:
 //   a SHA256 of evidence.azure_report's runtime data
 // - verifying that evidence.azure_report's runtime data contains the public
 //   key contained within evidence.akcert_der (RSA `n` and `e` match)
-error::Error VerifyAKCert(context::Context* ctx, const ASNPEvidence& evidence, const ASNPEndorsements& endorsements, util::UnixSecs now, const STACK_OF(X509)* const roots_of_trust);
+error::Error VerifyAKCert(context::Context* ctx, const TPM2SNPEvidence& evidence, const TPM2SNPEndorsements& endorsements, util::UnixSecs now, const STACK_OF(X509)* const roots_of_trust);
 
 // Verifies that the TPM2 quote in the provided evidence is valid.
 // Checks that evidence.sig() correctly signs evidence.msg() using
 // evidence.akcert_der(), and that evidence.msg() correctly contains
 // a hash of evidence.pcrs().
-error::Error VerifyTPM2(context::Context* ctx, const ASNPEvidence& evidence, std::array<uint8_t, 32>* nonce, attestation::tpm2::PCRs* pcrs);
+error::Error VerifyTPM2(context::Context* ctx, const TPM2SNPEvidence& evidence, std::array<uint8_t, 32>* nonce, attestation::tpm2::PCRs* pcrs);
 
 // Given a set of PCRs for the local machine and a set of PCRs for
 // a potential remote peer, verify that the potential peer's PCRs are
@@ -83,7 +83,7 @@ error::Error CheckRemotePCRs(context::Context* ctx, const attestation::tpm2::PCR
 
 // CompleteVerification checks the entirety of VerifyAKCert, VerifyTPM2, and CheckRemotePCRs,
 // then returns the associated AttestationData.
-std::pair<attestation::AttestationData, error::Error> CompleteVerification(context::Context* ctx, const ASNPEvidence& evidence, const ASNPEndorsements& endorsements, util::UnixSecs now, const STACK_OF(X509)* const roots_of_trust, const attestation::tpm2::PCRs& local_pcrs);
+std::pair<attestation::AttestationData, error::Error> CompleteVerification(context::Context* ctx, const TPM2SNPEvidence& evidence, const TPM2SNPEndorsements& endorsements, util::UnixSecs now, const STACK_OF(X509)* const roots_of_trust, const attestation::tpm2::PCRs& local_pcrs);
 
 std::pair<std::string, error::Error> AzureRuntimeDataFromCert(X509* rsa_cert);
 

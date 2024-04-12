@@ -58,7 +58,7 @@ TEST_F(TPM2SNPTest, SNPReportBufferFromAzureBuffer) {
   EXPECT_EQ(error::OK, err);
   EXPECT_EQ(buf, azure_report.substr(32, 1184));
   auto [buf2, err2] = SNPReportBufferFromAzureBuffer("abc");
-  EXPECT_EQ(error::AzureSNP_AzureBufferTooSmall, err2);
+  EXPECT_EQ(error::AttestationTPM2SNP_AzureBufferTooSmall, err2);
 }
 
 TEST_F(TPM2SNPTest, RuntimeDataBufferFromAzureBuffer) {
@@ -67,15 +67,15 @@ TEST_F(TPM2SNPTest, RuntimeDataBufferFromAzureBuffer) {
   // This is NOT the entire rest of the buffer; we knock off a bunch of null bytes
   EXPECT_EQ(buf, azure_report.substr(1236, 1110));
   auto [buf2, err2] = SNPReportBufferFromAzureBuffer("abc");
-  EXPECT_EQ(error::AzureSNP_AzureBufferTooSmall, err2);
+  EXPECT_EQ(error::AttestationTPM2SNP_AzureBufferTooSmall, err2);
 }
 
 TEST_F(TPM2SNPTest, VerifyAKCert) {
-  ASNPEvidence evidence;
+  TPM2SNPEvidence evidence;
   evidence.set_akcert_der(akcert_der);
   evidence.set_snp_report(snp_report);
   evidence.set_runtime_data(runtime_data);
-  ASNPEndorsements endorsements;
+  TPM2SNPEndorsements endorsements;
   endorsements.set_intermediate_der(intermediate_der);
   endorsements.set_vcek_der(vcek_der);
   endorsements.set_ask_der(ask_der);

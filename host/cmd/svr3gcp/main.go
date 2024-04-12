@@ -40,8 +40,8 @@ func Run() error {
 	} else if len(nonce) != 32 {
 		return fmt.Errorf("nonce must be 32B as hex")
 	}
-	evidence := pb.ASNPEvidence{}
-	endorsements := pb.ASNPEndorsements{}
+	evidence := pb.TPM2SNPEvidence{}
+	endorsements := pb.TPM2SNPEndorsements{}
 
 	logf("Opening TPM")
 	rw, err := tpm2.OpenTPM("/dev/tpmrm0")

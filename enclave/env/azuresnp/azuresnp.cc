@@ -39,8 +39,8 @@ class Environment : public ::svr2::env::socket::Environment {
   Environment(bool simulated) : ::svr2::env::socket::Environment(simulated) {}
   virtual ~Environment() {
   }
-  // Attestation.evidence will be a serialization of attestation::tpm2snp::ASNPEvidence.
-  // Attestation.endorsements will be a serialization of attestation::tpm2snp::ASNPEndorsements.
+  // Attestation.evidence will be a serialization of attestation::tpm2snp::TPM2SNPEvidence.
+  // Attestation.endorsements will be a serialization of attestation::tpm2snp::TPM2SNPEndorsements.
   virtual std::pair<e2e::Attestation, error::Error> Evidence(
       context::Context* ctx,
       const attestation::AttestationData& data) const {
@@ -48,7 +48,7 @@ class Environment : public ::svr2::env::socket::Environment {
       return SimulatedEvidence(ctx, data);
     }
     e2e::Attestation out;
-    auto evidence = ctx->Protobuf<attestation::tpm2snp::ASNPEvidence>();
+    auto evidence = ctx->Protobuf<attestation::tpm2snp::TPM2SNPEvidence>();
     if (auto err = CurrentEvidence(ctx, data, evidence); err != error::OK) {
       return std::make_pair(out, err);
     }
@@ -73,8 +73,8 @@ class Environment : public ::svr2::env::socket::Environment {
     }
 
     attestation::AttestationData out;
-    auto evidence = ctx->Protobuf<attestation::tpm2snp::ASNPEvidence>();
-    auto endorsements = ctx->Protobuf<attestation::tpm2snp::ASNPEndorsements>();
+    auto evidence = ctx->Protobuf<attestation::tpm2snp::TPM2SNPEvidence>();
+    auto endorsements = ctx->Protobuf<attestation::tpm2snp::TPM2SNPEndorsements>();
     if (!evidence->ParseFromString(attestation.evidence())) {
       return std::make_pair(out, COUNTED_ERROR(Env_ParseEvidence));
     }
@@ -164,7 +164,7 @@ class Environment : public ::svr2::env::socket::Environment {
 
     context::Context ctx;
     auto attestation_data = ctx.Protobuf<attestation::AttestationData>();
-    auto tmp_evidence = ctx.Protobuf<attestation::tpm2snp::ASNPEvidence>();
+    auto tmp_evidence = ctx.Protobuf<attestation::tpm2snp::TPM2SNPEvidence>();
     if (auto err = CurrentEvidence(&ctx, *attestation_data, tmp_evidence)) {
       LOG(FATAL) << "Getting current evidence in Init: " << err;
     } else if (auto err = attestation::tpm2::PCRsFromString(tmp_evidence->pcrs(), &local_pcrs_)) {
@@ -188,7 +188,7 @@ class Environment : public ::svr2::env::socket::Environment {
   }
  
  private:
-  error::Error CurrentEvidence(context::Context* ctx, const attestation::AttestationData& data, attestation::tpm2snp::ASNPEvidence* evidence) const {
+  error::Error CurrentEvidence(context::Context* ctx, const attestation::AttestationData& data, attestation::tpm2snp::TPM2SNPEvidence* evidence) const {
     std::string serialized = data.SerializeAsString();
     auto attestation_data_sha256 = hmac::Sha256(serialized);
 
@@ -231,8 +231,8 @@ class Environment : public ::svr2::env::socket::Environment {
     return error::OK;
   }
 
-  attestation::tpm2snp::ASNPEvidence evidence_;
-  attestation::tpm2snp::ASNPEndorsements endorsements_;
+  attestation::tpm2snp::TPM2SNPEvidence evidence_;
+  attestation::tpm2snp::TPM2SNPEndorsements endorsements_;
   attestation::tpm2::PCRs local_pcrs_;
 };
 
