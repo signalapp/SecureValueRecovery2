@@ -139,6 +139,9 @@ class Environment : public ::svr2::env::socket::Environment {
     if (auto err = attestation::tpm2::PCRsFromString(base_evidence_.pcrs(), &local_pcrs_); err != error::OK) {
       LOG(FATAL) << "Failure to parse PCRs from base evidence: " << err;
     }
+    for (size_t i = 0; i < local_pcrs_.size(); i++) {
+      LOG(INFO) << "PCRs[" << i << "]: " << util::ToHex(local_pcrs_[i]);
+    }
 
     attestation::AttestationData attestation_data;
     if (auto [attestation, err] = Evidence(&ctx, attestation_data); err != error::OK) {
