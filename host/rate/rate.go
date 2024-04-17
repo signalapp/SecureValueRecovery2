@@ -21,7 +21,7 @@ import (
 type ErrLimitExceeded struct{ RetryAfter time.Duration }
 
 func (e ErrLimitExceeded) Error() string {
-	return fmt.Sprintf("rate limit excceded, retry after : %v", e.RetryAfter)
+	return fmt.Sprintf("rate limit exceeded, retry after : %v", e.RetryAfter)
 }
 
 type Limiter interface {
