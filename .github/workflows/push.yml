@@ -35,10 +35,20 @@ jobs:
         run:
           az acr login --name ${{ secrets.AZURE_CONTAINER_REGISTRY_NAME }}
 
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502 #v4.0.2
+        with:
+          role-to-assume: "${{ vars.ECR_ROLE }}"
+          aws-region: us-east-1
+      - name: Login to ECR
+        uses: docker/login-action@343f7c4344506bcbf9b4de18042ae17996df046d # v3.0.0
+        with:
+          registry: "${{ vars.ECR_REGISTRY }}"
+
       - name: Build and push container image
         run: |
           make enclave_release
           docker tag svr2_sgxrun:latest "${{ secrets.REGISTRY_LOGIN_SERVER }}/svr2:${GITHUB_REF_NAME}"
           docker push "${{ secrets.REGISTRY_LOGIN_SERVER }}/svr2:${GITHUB_REF_NAME}"
-          docker tag svr2_nsmhost:latest "${{ secrets.REGISTRY_LOGIN_SERVER }}/svr2_nsmhost:${GITHUB_REF_NAME}"
-          docker push "${{ secrets.REGISTRY_LOGIN_SERVER }}/svr2_nsmhost:${GITHUB_REF_NAME}"
+          docker tag svr2_nsmhost:latest "${{ vars.ECR_REGISTRY }}/signal-ecr/svr:${GITHUB_REF_NAME}"
+          docker push "${{ vars.ECR_REGISTRY }}/signal-ecr/svr:${GITHUB_REF_NAME}"
