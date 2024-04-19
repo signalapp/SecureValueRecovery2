@@ -79,6 +79,8 @@ enclave_release: docker_enclave_releaser
     -e "CHOWN_TO=$$(id -u):$$(id -g)" \
     svr2_nsmeif:latest
 	docker build -f docker/Dockerfile -t svr2_nsmhost --target=nsmhost .
+
+trustedimage:
 	$(MAKE) -C trustedimage
 
 enclave_releaser: enclave host  # depends on 'host' so its tests will run
