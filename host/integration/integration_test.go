@@ -289,17 +289,6 @@ func (g *group) stop() {
 	os.RemoveAll(g.dir)
 }
 
-// keep trying ready endpoint on each node until 200 or timeout
-func waitForReady() error {
-	for portOffset := 1; portOffset <= *numNodes; portOffset++ {
-		url := fmt.Sprintf("http://localhost:%v/health/ready", port(controlType, portOffset))
-		if err := servicetest.WaitFor200(time.Minute, url); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func start(enclaveType string) group {
 	ctx, cancel := context.WithCancel(context.Background())
 	eg, ctx := errgroup.WithContext(ctx)
@@ -358,14 +347,14 @@ func start(enclaveType string) group {
 		eg.Go(func() error {
 			return cmd.Wait()
 		})
-	}
 
-	// wait for all nodes to join raft
-	err = waitForReady()
-	if err != nil {
-		cancel()
-		eg.Wait()
-		log.Fatal(err)
+		url := fmt.Sprintf("http://localhost:%v/health/ready", port(controlType, i))
+		if err := servicetest.WaitFor200(time.Minute, url); err != nil {
+			log.Printf("ERROR: %v", err)
+			cancel()
+			eg.Wait()
+			log.Fatal(err)
+		}
 	}
 
 	return group{

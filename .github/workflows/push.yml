@@ -4,25 +4,33 @@ on:
   release:
     types: [published]
 
+env:
+  DOCKER_BUILD_ARGS: --cache-from type=gha --cache-to type=gha
+  DOCKER_BUILDKIT: 1
+  BUILDX_CONTAINER: container
+
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
     permissions:
       id-token: write # This is required for requesting the JWT
       contents: read  # This is required for actions/checkout
+
     steps:
       - name: Checkout main project
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
         with:
           submodules: true
 
-      - name: Docker cache
-        uses: ./.github/workflows/dockercache
-        with:
-          dockerdir: .
-          imagename: svr2_buildenv
-          target: builder
-          dockerfile: docker/Dockerfile
+      - name: Expose Docker environmental variables for gha cache
+        # This action takes in the ID tokens etc provided by the permissions,
+        # as well as some environmental data, and exposes them to future steps
+        # in the correct locations and formats for their use with the `gha`
+        # GitHub Actions cache for Docker.
+        uses: crazy-max/ghaction-github-runtime@b3a9207c0e1ef41f4cf215303c976869d0c2c1c4 # v3.0.0
+
+      - name: Setup Docker
+        run: docker buildx create --use --name container --driver docker-container
 
       - name: 'Az CLI login'
         uses: azure/login@cb79c773a3cfa27f31f25eb3f677781210c9ce3d # v1.6.1

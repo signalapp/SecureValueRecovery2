@@ -1,12 +1,18 @@
 name: CI
 on: [push]
 
+env:
+  DOCKER_BUILD_ARGS: --cache-from type=gha --cache-to type=gha
+  DOCKER_BUILDKIT: 1
+  BUILDX_CONTAINER: container
+
 jobs:
   test:
     runs-on: ubuntu-latest
     permissions:
       packages: read
       contents: read
+      id-token: write
 
     steps:
       - name: Checkout main project
@@ -14,13 +20,15 @@ jobs:
         with:
           submodules: true
 
-      - name: Docker cache
-        uses: ./.github/workflows/dockercache
-        with:
-          dockerdir: .
-          imagename: svr2_buildenv
-          target: builder
-          dockerfile: docker/Dockerfile
+      - name: Expose Docker environmental variables for gha cache
+        # This action takes in the ID tokens etc provided by the permissions,
+        # as well as some environmental data, and exposes them to future steps
+        # in the correct locations and formats for their use with the `gha`
+        # GitHub Actions cache for Docker.
+        uses: crazy-max/ghaction-github-runtime@b3a9207c0e1ef41f4cf215303c976869d0c2c1c4 # v3.0.0
+
+      - name: Setup Docker
+        run: docker buildx create --use --name container --driver docker-container
 
       - name: Test
         run: make docker_enclave_test

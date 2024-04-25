@@ -41,7 +41,7 @@ clean:
 
 dockerbase: | git
 	[ "" != "$(SKIP_DOCKER_BUILD)" ] || \
-	    docker build -f docker/Dockerfile -t svr2_buildenv --target=builder .
+	    docker buildx build $(DOCKER_BUILD_ARGS) --load -f docker/Dockerfile -t svr2_buildenv --target=builder .
 
 PARALLEL ?= $(shell cat /proc/cpuinfo | grep '^cpu cores' | awk 'BEGIN { sum = 1 } { sum += $$4 } END { print sum }')
 DOCKER_MAKE_ARGS ?= -j$(PARALLEL) MAKE_ARGS="$(MAKE_ARGS)"
@@ -49,12 +49,13 @@ ARCH ?= $(shell arch)
 ifeq ($(ARCH),arm64)
 	DOCKER_MAKE_ARGS += 'GO_TEST_FLAGS=-short' # long tests can cause qemu crashes in x86 emulation
 endif
-DOCKER_ARGS ?=
+DOCKER_RUN_ARGS ?=
+DOCKER_BUILD_ARGS ?= 
 docker_%: dockerbase
 	docker run \
 	  -v "$$(pwd):/src" \
 	  -u "$$(id -u):$$(id -g)" \
-	  $(DOCKER_ARGS) \
+	  $(DOCKER_RUN_ARGS) \
 	  svr2_buildenv /bin/bash -c "make V=$(V) $(DOCKER_MAKE_ARGS) $*"
 
 dockersh: dockerbase
@@ -62,14 +63,14 @@ dockersh: dockerbase
 	  -v "$$(pwd):/src" \
 	  -u "$$(id -u):$$(id -g)" \
 	  -e "TERM=xterm-256color" \
-	  $(DOCKER_ARGS) \
+	  $(DOCKER_RUN_ARGS) \
 	  svr2_buildenv
 
 enclave_release: docker_enclave_releaser
-	docker build -f docker/Dockerfile -t svr2_nsmrun --target=nsmrun .
-	docker build -f docker/Dockerfile -t svr2_nsmeif --target=nsmeif .
-	docker build -f docker/Dockerfile -t svr2_sgxrun --target=sgxrun .
-	docker run --rm \
+	docker buildx build $(DOCKER_BUILD_ARGS) --load -f docker/Dockerfile -t svr2_nsmrun --target=nsmrun .
+	docker buildx build $(DOCKER_BUILD_ARGS) --load -f docker/Dockerfile -t svr2_nsmeif --target=nsmeif .
+	docker buildx build $(DOCKER_BUILD_ARGS) --load -f docker/Dockerfile -t svr2_sgxrun --target=sgxrun .
+	docker run $(DOCKER_RUN_ARGS) --rm \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v $${PWD}/enclave/releases/nitro:/out/ \
 	  -u "0:0" \
@@ -78,7 +79,7 @@ enclave_release: docker_enclave_releaser
     -e "OUTPUT_DIR=/out" \
     -e "CHOWN_TO=$$(id -u):$$(id -g)" \
     svr2_nsmeif:latest
-	docker build -f docker/Dockerfile -t svr2_nsmhost --target=nsmhost .
+	docker buildx build $(DOCKER_BUILD_ARGS) --load -f docker/Dockerfile -t svr2_nsmhost --target=nsmhost .
 
 trustedimage:
 	$(MAKE) -C trustedimage
