@@ -5,12 +5,19 @@
 #define __SVR2_WATERMARKS_WATERMARKS_H__
 
 #include <unordered_map>
+#include <ostream>
 #include "proto/minimums.pb.h"
 #include "proto/error.pb.h"
 #include "util/mutex.h"
 #include "util/bytes.h"
 #include "util/endian.h"
 #include "context/context.h"
+
+namespace svr2::minimums {
+class Minimums;
+}  // namespace svr2::Minimums;
+
+std::ostream& operator<<(std::ostream& os, const svr2::minimums::Minimums& min);
 
 namespace svr2::minimums {
 
@@ -28,11 +35,16 @@ class Minimums {
     util::BigEndian64Bytes(value, reinterpret_cast<uint8_t*>(v.data()));
     return v;
   }
+  static std::string U8(uint8_t value) {
+    std::string v(1, value);
+    return v;
+  }
   // CombineMin combines two MinimumValues.  In cases where both have the same
   // key, the minimum value is returned.  Note that we choose the minimum
   // because this is _values_ we're combining.
-  static MinimumValues CombineValues(const MinimumValues& a, const MinimumValues& b);
+  static void CombineValues(const MinimumValues& from, MinimumValues* into);
  private:
+  friend std::ostream& ::operator<<(std::ostream& os, const svr2::minimums::Minimums& min);
   static error::Error CheckValuesAgainstSet(const MinimumLimits& s, const MinimumValues& values);
   static error::Error CheckValueAgainstSet(const MinimumLimits& s, const std::string& key, const std::string& value);
 
@@ -41,5 +53,8 @@ class Minimums {
 };
 
 }  // namespace svr2::minimums
+
+std::ostream& operator<<(std::ostream& os, const svr2::minimums::MinimumValues& val);
+std::ostream& operator<<(std::ostream& os, const svr2::minimums::MinimumLimits& lim);
 
 #endif  // __SVR2_WATERMARKS_WATERMARKS_H__

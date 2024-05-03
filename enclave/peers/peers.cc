@@ -19,6 +19,7 @@
 #include "util/constant.h"
 #include "sender/sender.h"
 #include "metrics/metrics.h"
+#include "minimums/minimums.h"
 
 // There's some mildly complicated locking going on between Peer and PeerManager
 // objects to maintain the necessary invariants for smooth operation.
@@ -182,6 +183,7 @@ error::Error Peer::FinishConnection(
   if (!util::ConstantTimeEquals(key, this->ID().Get())) {
     return error::Peers_FinishIDMismatch; 
   }
+  LOG(INFO) << "Peer " << id_ << ": " << att.minimum_values();
   RETURN_IF_ERROR(parent_->Minimums().CheckValues(ctx, att.minimum_values()));
 
   NoiseBuffer buf = noise::BufferInputFromString(conn->mutable_handshake());
@@ -314,6 +316,7 @@ error::Error Peer::Accept(
     LOG(ERROR) << "ID mismatch with peer, want " << this->ID() << ", have " << util::ToHex(att.public_key());
     return error::Peers_AcceptIDMismatch; 
   }
+  LOG(INFO) << "Peer " << id_ << ": " << att.minimum_values();
   RETURN_IF_ERROR(parent_->Minimums().CheckValues(ctx, att.minimum_values()));
 
   NoiseBuffer read_buf = noise::BufferInputFromString(conn_request->mutable_handshake());
@@ -435,6 +438,7 @@ error::Error Peer::CheckNextAttestation(context::Context* ctx, const e2e::Attest
     LOG(ERROR) << "Peer " << id_ << " sent attestation with incorrect key";
     return COUNTED_ERROR(Peers_AttestationKeyChanged);
   }
+  RETURN_IF_ERROR(parent_->Minimums().CheckValues(ctx, att.minimum_values()));
   LOG(DEBUG) << "Peer " << id_ << " re-attested at " << now;
   last_attestation_ = now;
   minimums_ = att.minimum_values();
@@ -469,7 +473,11 @@ error::Error Peer::CheckMinimums(context::Context* ctx, const minimums::Minimums
   // A peer that isn't fully connected we consider successful, since its transition to
   // connected will re-check minimums.
   if (InternalCurrentState() != PEER_CONNECTED) { return error::OK; }
-  return minimums.CheckValues(ctx, minimums_);
+  if (auto err = minimums.CheckValues(ctx, minimums_); err != error::OK) {
+    LOG(WARNING) << "Peer minimums failure " << err << ": parent=" << minimums << ", peer=" << minimums_;
+    return err;
+  }
+  return error::OK;
 }
 
 PeerManager::PeerManager(minimums::Minimums* mins)
@@ -719,7 +727,6 @@ void PeerManager::MinimumsUpdated(context::Context* ctx) {
   ACQUIRE_LOCK(mu_, ctx, lock_peermanager);
   for (auto iter = peers_.begin(); iter != peers_.end(); ++iter) {
     if (auto err = iter->second->CheckMinimums(ctx, Minimums()); err != error::OK) {
-      LOG(WARNING) << "Minimums for peer " << iter->first << " failed so disconnecting peer: " << err;
       iter->second->Disconnect(ctx);
     }
   }
@@ -727,13 +734,13 @@ void PeerManager::MinimumsUpdated(context::Context* ctx) {
 
 error::Error PeerManager::CheckPeerMinimums(context::Context* ctx, const minimums::Minimums& to_check) const {
   ACQUIRE_LOCK(mu_, ctx, lock_peermanager);
+  auto return_err = error::OK;
   for (auto iter = peers_.begin(); iter != peers_.end(); ++iter) {
     if (auto err = iter->second->CheckMinimums(ctx, to_check); err != error::OK) {
-      LOG(INFO) << "Minimums for peer " << iter->first << " failed: " << err;
-      return err;
+      return_err = err;
     }
   }
-  return error::OK;
+  return return_err;
 }
 
 void PeerManager::PeerStatus(context::Context* ctx, const peerid::PeerID& id, ConnectionStatus* status) const {

@@ -183,15 +183,15 @@ std::pair<attestation_report, error::Error> ReportFromUnverifiedBuffer(const std
 
 minimums::MinimumValues MinimumsFromReport(const attestation_report& report) {
   minimums::MinimumValues v;
-  auto map = *v.mutable_val();
-  map["sev_platform_version_boot_loader"] = minimums::Minimums::U64(report.platform_version.boot_loader);
-  map["sev_platform_version_tee"] = minimums::Minimums::U64(report.platform_version.tee);
-  map["sev_platform_version_snp"] = minimums::Minimums::U64(report.platform_version.snp);
-  map["sev_platform_version_microcode"] = minimums::Minimums::U64(report.platform_version.microcode);
-  map["sev_reported_tcb_boot_loader"] = minimums::Minimums::U64(report.reported_tcb.boot_loader);
-  map["sev_reported_tcb_tee"] = minimums::Minimums::U64(report.reported_tcb.tee);
-  map["sev_reported_tcb_snp"] = minimums::Minimums::U64(report.reported_tcb.snp);
-  map["sev_reported_tcb_microcode"] = minimums::Minimums::U64(report.reported_tcb.microcode);
+  auto& map = *v.mutable_val();
+  map["snp_platform_version_boot_loader"] = minimums::Minimums::U8(report.platform_version.boot_loader);
+  map["snp_platform_version_tee"] = minimums::Minimums::U8(report.platform_version.tee);
+  map["snp_platform_version_snp"] = minimums::Minimums::U8(report.platform_version.snp);
+  map["snp_platform_version_microcode"] = minimums::Minimums::U8(report.platform_version.microcode);
+  map["snp_reported_tcb_boot_loader"] = minimums::Minimums::U8(report.reported_tcb.boot_loader);
+  map["snp_reported_tcb_tee"] = minimums::Minimums::U8(report.reported_tcb.tee);
+  map["snp_reported_tcb_snp"] = minimums::Minimums::U8(report.reported_tcb.snp);
+  map["snp_reported_tcb_microcode"] = minimums::Minimums::U8(report.reported_tcb.microcode);
   return v;
 }
 
@@ -379,8 +379,7 @@ std::pair<attestation::AttestationData, error::Error> DataFromVerifiedAttestatio
 
   out.mutable_public_key()->resize(sizeof(env::PublicKey));
   memcpy(out.mutable_public_key()->data(), report.report_data, sizeof(env::PublicKey));
-  minimums::MinimumValues mins = minimums::Minimums::CombineValues(out.minimum_values(), MinimumsFromReport(report));
-  *out.mutable_minimum_values() = std::move(mins);
+  minimums::Minimums::CombineValues(MinimumsFromReport(report), out.mutable_minimum_values());
   return std::make_pair(out, error::OK);
 }
 

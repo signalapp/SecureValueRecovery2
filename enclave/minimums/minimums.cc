@@ -66,16 +66,35 @@ error::Error Minimums::CheckValueAgainstSet(const MinimumLimits& s, const std::s
   return error::OK;
 }
 
-
-MinimumValues Minimums::CombineValues(const MinimumValues& a, const MinimumValues& b) {
-  MinimumValues v(a);
-  for (auto iter = b.val().begin(); iter != b.val().end(); ++iter) {
-    auto finder = v.val().find(iter->first);
-    if (finder == v.val().end() || finder->second > iter->second) {
-      (*v.mutable_val())[iter->first] = iter->second;
+void Minimums::CombineValues(const MinimumValues& from, MinimumValues* into) {
+  for (auto iter = from.val().begin(); iter != from.val().end(); ++iter) {
+    auto finder = into->val().find(iter->first);
+    if (finder == into->val().end() || finder->second > iter->second) {
+      (*into->mutable_val())[iter->first] = iter->second;
     }
   }
-  return v;
 }
 
 }  // namespace svr2::minimums
+
+std::ostream& operator<<(std::ostream& os, const svr2::minimums::MinimumValues& val) {
+  os << "MIN_VAL{";
+  for (auto iter : val.val()) {
+    os << " " << iter.first << "=0x" << svr2::util::ToHex(iter.second);
+  }
+  os << " }";
+  return os;
+}
+std::ostream& operator<<(std::ostream& os, const svr2::minimums::MinimumLimits& lim) {
+  os << "MIN_LIM{";
+  for (auto iter : lim.lim()) {
+    os << " " << iter.first << "=0x" << svr2::util::ToHex(iter.second);
+  }
+  os << " }";
+  return os;
+}
+std::ostream& operator<<(std::ostream& os, const svr2::minimums::Minimums& min) {
+  svr2::util::unique_lock lock(min.mu_);
+  os << min.s_;
+  return os;
+}

@@ -19,6 +19,7 @@
 #include "util/log.h"
 #include "util/hex.h"
 #include "attestation/sev/sev.h"
+#include "minimums/minimums.h"
 
 namespace svr2::attestation::sev {
 
@@ -92,6 +93,22 @@ TEST_F(AttestSEVTest, InvalidVCEKSignature) {
   ASSERT_EQ(error::OK, err1);
   auto [data, err2] = DataFromVerifiedAttestation(report, attestation_, valid_timestamp_);
   ASSERT_EQ(error::AttestationSEV_CertificateChainVerify, err2);
+}
+
+TEST_F(AttestSEVTest, MinimumsFromReport) {
+  auto [report, err1] = ReportFromUnverifiedAttestation(attestation_);
+  ASSERT_EQ(error::OK, err1);
+  auto mins = MinimumsFromReport(report);
+  LOG(INFO) << mins;
+  EXPECT_EQ(mins.val().size(), 8);
+  EXPECT_EQ(util::ToHex(mins.val().at("snp_platform_version_boot_loader")), "03");
+  EXPECT_EQ(util::ToHex(mins.val().at("snp_platform_version_microcode")), "a8");
+  EXPECT_EQ(util::ToHex(mins.val().at("snp_platform_version_snp")), "08");
+  EXPECT_EQ(util::ToHex(mins.val().at("snp_platform_version_tee")), "00");
+  EXPECT_EQ(util::ToHex(mins.val().at("snp_reported_tcb_boot_loader")), "03");
+  EXPECT_EQ(util::ToHex(mins.val().at("snp_reported_tcb_microcode")), "a8");
+  EXPECT_EQ(util::ToHex(mins.val().at("snp_reported_tcb_snp")), "08");
+  EXPECT_EQ(util::ToHex(mins.val().at("snp_reported_tcb_tee")), "00");
 }
 
 }  // namespace svr2::attestation::sev

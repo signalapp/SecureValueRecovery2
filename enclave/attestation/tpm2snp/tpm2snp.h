@@ -10,6 +10,7 @@
 #include "attestation/tpm2/tpm2.h"
 #include "context/context.h"
 #include "util/ticks.h"
+#include "minimums/minimums.h"
 
 namespace svr2::attestation::tpm2snp {
 
@@ -68,7 +69,7 @@ std::pair<std::string, error::Error> RuntimeDataBufferFromAzureBuffer(const std:
 //   a SHA256 of evidence.azure_report's runtime data
 // - verifying that evidence.azure_report's runtime data contains the public
 //   key contained within evidence.akcert_der (RSA `n` and `e` match)
-error::Error VerifyAKCert(context::Context* ctx, const TPM2SNPEvidence& evidence, const TPM2SNPEndorsements& endorsements, util::UnixSecs now, const STACK_OF(X509)* const roots_of_trust);
+error::Error VerifyAKCert(context::Context* ctx, const TPM2SNPEvidence& evidence, const TPM2SNPEndorsements& endorsements, util::UnixSecs now, const STACK_OF(X509)* const roots_of_trust, minimums::MinimumValues* mins);
 
 // Verifies that the TPM2 quote in the provided evidence is valid.
 // Checks that evidence.sig() correctly signs evidence.msg() using

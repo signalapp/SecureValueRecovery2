@@ -146,7 +146,7 @@ std::pair<std::string, error::Error> RuntimeDataBufferFromAzureBuffer(const std:
   return std::make_pair(std::string(start, size), error::OK);
 }
 
-error::Error VerifyAKCert(context::Context* ctx, const TPM2SNPEvidence& evidence, const TPM2SNPEndorsements& endorsements, util::UnixSecs now, const STACK_OF(X509)* const roots_of_trust) {
+error::Error VerifyAKCert(context::Context* ctx, const TPM2SNPEvidence& evidence, const TPM2SNPEndorsements& endorsements, util::UnixSecs now, const STACK_OF(X509)* const roots_of_trust, minimums::MinimumValues* mins) {
   LOG(DEBUG) << "Parsing AKCert DER";
   auto akcert_start = reinterpret_cast<const uint8_t*>(evidence.akcert_der().data());
   bssl::UniquePtr<X509> akcert(d2i_X509(nullptr, &akcert_start, evidence.akcert_der().size()));
@@ -252,6 +252,7 @@ error::Error VerifyAKCert(context::Context* ctx, const TPM2SNPEvidence& evidence
   }
 
   LOG(DEBUG) << "AKCert verified successfully";
+  minimums::Minimums::CombineValues(sev::MinimumsFromReport(snp_report), mins);
   return error::OK;
 }
 
@@ -338,7 +339,8 @@ error::Error VerifyTPM2(context::Context* ctx, const TPM2SNPEvidence& evidence, 
 std::pair<attestation::AttestationData, error::Error> CompleteVerification(context::Context* ctx, const TPM2SNPEvidence& evidence, const TPM2SNPEndorsements& endorsements, util::UnixSecs now, const STACK_OF(X509)* const roots_of_trust, const attestation::tpm2::PCRs& local_pcrs) {
   attestation::AttestationData out;
   LOG(DEBUG) << "Verifing that the provided AKCert is valid and verified by the SNP report and MSFT root of trust";
-  if (auto err = attestation::tpm2snp::VerifyAKCert(ctx, evidence, endorsements, now, roots_of_trust); err != error::OK) {
+  minimums::MinimumValues mins;
+  if (auto err = attestation::tpm2snp::VerifyAKCert(ctx, evidence, endorsements, now, roots_of_trust, &mins); err != error::OK) {
     return std::make_pair(out, err);
   }
 
@@ -362,6 +364,7 @@ std::pair<attestation::AttestationData, error::Error> CompleteVerification(conte
   if (!out.ParseFromString(evidence.attestation_data())) {
     return std::make_pair(std::move(out), COUNTED_ERROR(Env_ParseEvidence));
   }
+  minimums::Minimums::CombineValues(mins, out.mutable_minimum_values());
   return std::make_pair(std::move(out), error::OK);
 }
 

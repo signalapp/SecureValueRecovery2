@@ -96,7 +96,6 @@ class Environment : public ::svr2::env::socket::Environment {
     if (!endorsements->ParseFromString(attestation.endorsements())) {
       return std::make_pair(out, COUNTED_ERROR(Env_ParseEndorsements));
     }
-
     return attestation::tpm2snp::CompleteVerification(ctx, *evidence, *endorsements, now, attestation::tpm2snp::gcp_roots_of_trust, local_pcrs_);
   }
 

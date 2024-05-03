@@ -79,8 +79,9 @@ TEST_F(TPM2SNPTest, VerifyAKCert) {
   endorsements.set_intermediate_der(intermediate_der);
   endorsements.set_vcek_der(vcek_der);
   endorsements.set_ask_der(ask_der);
+  minimums::MinimumValues mins;
 
-  EXPECT_EQ(error::OK, VerifyAKCert(&ctx, evidence, endorsements, now, azure_roots_of_trust));
+  EXPECT_EQ(error::OK, VerifyAKCert(&ctx, evidence, endorsements, now, azure_roots_of_trust, &mins));
 }
 
 TEST_F(TPM2SNPTest, AzureRuntimeDataFromCert) {

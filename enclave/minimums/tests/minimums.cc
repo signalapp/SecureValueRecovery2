@@ -134,4 +134,20 @@ TEST_F(MinimumsTest, U64s) {
   ASSERT_EQ(error::Minimums_LimitDecreased, m.UpdateLimits(&ctx, lim));
 }
 
+TEST_F(MinimumsTest, Combine) {
+  MinimumValues into;
+  (*into.mutable_val())["a"] = "aa";
+  (*into.mutable_val())["b"] = "ba";
+  (*into.mutable_val())["c"] = "ca";
+  MinimumValues from;
+  (*from.mutable_val())["a"] = "bb";
+  (*from.mutable_val())["b"] = "ab";
+  (*from.mutable_val())["d"] = "db";
+  Minimums::CombineValues(from, &into);
+  EXPECT_EQ(into.val().at("a"), "aa");
+  EXPECT_EQ(into.val().at("b"), "ab");
+  EXPECT_EQ(into.val().at("c"), "ca");
+  EXPECT_EQ(into.val().at("d"), "db");
+}
+
 }  // namespace svr2::minimums
