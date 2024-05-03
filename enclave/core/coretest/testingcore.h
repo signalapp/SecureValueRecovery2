@@ -91,6 +91,7 @@ class TestingCore {
   error::Error DeleteBackup(const std::string& client_authenticated_id);
   error::Error RaftRemoval();
   error::Error UpdateMinimums(const minimums::MinimumLimits& lim);
+  error::Error DBRequest(const DatabaseRequest& req);
 
   // Peer communication
   error::Error AddPeerMessage(PeerMessage&& peer_message);

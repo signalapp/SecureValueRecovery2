@@ -254,6 +254,16 @@ error::Error TestingCore::UpdateMinimums(const minimums::MinimumLimits& lim) {
   return error::OK;
 }
 
+error::Error TestingCore::DBRequest(const DatabaseRequest& d) {
+  LOG(VERBOSE) << "database_request " << core_->ID();
+  UntrustedMessage msg;
+  auto host = msg.mutable_h2e_request();
+  host->set_request_id(next_request_id());
+  host->mutable_database_request()->MergeFrom(d);
+  input_messages_.emplace_back(std::move(msg));
+  return error::OK;
+}
+
 error::Error TestingCore::NewClientRequest(
     TestingClient* client, std::string client_authenticated_id) {
   LOG(VERBOSE) << "newclient " << core_->ID();

@@ -2613,4 +2613,31 @@ TEST_F(CoreTest, AcceptsMultiKeyMinimums) {
   }
 }
 
+TEST_F(CoreTest, HostDatabaseRequest) {
+  ReplicaGroup replica_group;
+  replica_group.Init(valid_init_config, 3, 0, 0);
+  auto leader = replica_group.get_leader_core();
+  leader->take_host_to_enclave_responses();  // clear out any prior responses
+  {
+    client::Request req;
+    std::array<uint8_t, 16> backup_id = {1};
+
+    auto b = req.mutable_backup();
+    b->set_data("12345678901234567890123456789012");
+    b->set_pin("12345678901234567890123456789012");
+    b->set_max_tries(10);
+
+    DatabaseRequest d;
+    d.set_authenticated_id(util::ByteArrayToString(backup_id));
+    req.SerializeToString(d.mutable_request());
+    leader->DBRequest(d);
+    replica_group.PassMessagesUntilQuiet();
+    auto h2e_msgs = leader->take_host_to_enclave_responses();
+    ASSERT_EQ(h2e_msgs.size(), 1);
+    auto& h2e_response = h2e_msgs[0];
+    ASSERT_EQ(h2e_response.inner_case(), HostToEnclaveResponse::kStatus);
+    ASSERT_EQ(h2e_response.status(), error::OK);
+  }
+}
+
 }  // namespace svr2::core

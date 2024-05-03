@@ -308,7 +308,9 @@ error::Error Core::HandleHostToEnclave(context::Context* ctx, const HostToEnclav
     } return error::OK;
     case HostToEnclaveRequest::kDatabaseRequest: {
       MEASURE_CPU(ctx, cpu_core_host_database_req);
-      RETURN_IF_ERROR(HandleHostDatabaseRequest(ctx, tx, msg.database_request()));
+      if (auto err = HandleHostDatabaseRequest(ctx, tx, msg.database_request()); err != error::OK) {
+        ReplyWithError(ctx, tx, err);
+      }
     } return error::OK;
     case HostToEnclaveRequest::kReconfigure: {
       auto err = HandleReconfigure(ctx, tx, msg.reconfigure());
