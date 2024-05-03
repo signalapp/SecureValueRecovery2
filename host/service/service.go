@@ -142,6 +142,8 @@ func Start(ctx context.Context, hconfig *config.Config, authenticator auth.Auth,
 		select {
 		case <-sigtermC:
 			logger.Errorf("Received SIGTERM, gracefully shutting down")
+			// We shouldn't accept any more requests, as we're actively trying to shut down.
+			ready.Set(errors.New("SIGTERM"))
 			// If we're the leader, stop being the leader.
 			for sleep := time.Second * 0; ; sleep += time.Second {
 				time.Sleep(sleep) // first time will not sleep
