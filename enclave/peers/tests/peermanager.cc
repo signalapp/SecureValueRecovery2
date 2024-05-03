@@ -222,5 +222,25 @@ TEST_F(PeerManagerTest, SendEnoughToRekey) {
   }
 }
 
+TEST_F(PeerManagerTest, HalfConnectedDisconnects) {
+  Connect1To2();
+
+  mgr2->ResetPeer(&ctx, mgr1->ID());
+  EnclaveMessage em1 = Sent();
+  ASSERT_EQ(em1.peer_message().inner_case(), PeerMessage::kRst);
+  // We drop this RST without passing it to mgr1.
+  // At this point, mgr1 thinks it's connected to mgr2, but mgr2 thinks it's disconnected from mgr1.
+
+  e2e::EnclaveToEnclaveMessage* e2e;
+  e2e::EnclaveToEnclaveMessage send;
+  send.mutable_raft_message()->set_term(123);
+
+  ASSERT_EQ(error::OK, mgr1->SendToPeer(&ctx, mgr2->ID(), send));
+  EnclaveMessage em2 = Sent();
+  ASSERT_EQ(em2.peer_message().inner_case(), PeerMessage::kData);
+  ASSERT_EQ(error::Peers_DataNotConnected, mgr2->RecvFromPeer(&ctx, *FromEnclaveMessage(em2, mgr1->ID()), &e2e));
+  EnclaveMessage em3 = Sent();
+  ASSERT_EQ(em3.peer_message().inner_case(), PeerMessage::kRst);
+}
 
 }  // namespace svr2::peers

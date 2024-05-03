@@ -121,6 +121,11 @@ error::Error Peer::Recv(
     case PeerMessage::kData: {
       MEASURE_CPU(ctx, cpu_peer_decrypt);
       if (InternalCurrentState() != PEER_CONNECTED) {
+        // We received data from a peer, so they think we're connected.
+        // We're not, so let's let them know.  Since we might also be in
+        // state PEER_CONNECTING, we'll do a full InternalDisconnect.
+        InternalDisconnect();
+        SendRst(ctx, id_);
         return COUNTED_ERROR(Peers_DataNotConnected);
       }
       auto [plaintext, err] = noise::Decrypt(rx_.get(), msg.data());
