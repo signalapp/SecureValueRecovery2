@@ -2588,4 +2588,29 @@ TEST_F(CoreTest, ReplicationReset) {
   }
 }
 
+TEST_F(CoreTest, AcceptsMultiKeyMinimums) {
+  ReplicaGroup replica_group;
+  replica_group.Init(valid_init_config, 3, 0, 0);
+  auto leader = replica_group.get_leader_core();
+  leader->take_host_to_enclave_responses();  // clear out any prior responses
+  {
+    minimums::MinimumLimits lims;
+    (*lims.mutable_lim())["a"] = minimums::Minimums::U64(1);
+    (*lims.mutable_lim())["b"] = minimums::Minimums::U64(2);
+    (*lims.mutable_lim())["c"] = minimums::Minimums::U64(3);
+    (*lims.mutable_lim())["d"] = minimums::Minimums::U64(4);
+    (*lims.mutable_lim())["e"] = minimums::Minimums::U64(5);
+    (*lims.mutable_lim())["f"] = minimums::Minimums::U64(6);
+    (*lims.mutable_lim())["g"] = minimums::Minimums::U64(7);
+    (*lims.mutable_lim())["h"] = minimums::Minimums::U64(8);
+    leader->UpdateMinimums(lims);
+    replica_group.PassMessagesUntilQuiet();
+    auto h2e_msgs = leader->take_host_to_enclave_responses();
+    ASSERT_EQ(h2e_msgs.size(), 1);
+    auto& h2e_response = h2e_msgs[0];
+    ASSERT_EQ(h2e_response.inner_case(), HostToEnclaveResponse::kStatus);
+    ASSERT_EQ(h2e_response.status(), error::OK);
+  }
+}
+
 }  // namespace svr2::core

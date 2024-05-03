@@ -34,9 +34,7 @@ error::Error Minimums::UpdateLimits(context::Context* ctx, const MinimumLimits& 
     }
   }
   s_ = s;
-  for (const auto& iter : s.lim()) {
-    LOG(INFO) << "Minimums update: '" << iter.first << "' = 0x" << util::ToHex(iter.second);
-  }
+  LOG(INFO) << "Minimums update: " << s_;
   return error::OK;
 }
 

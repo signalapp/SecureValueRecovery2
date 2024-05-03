@@ -836,7 +836,7 @@ void Core::HandleUpdateMinimums(context::Context* ctx, internal::TransactionID t
     return;
   }
   auto log_entry = ctx->Protobuf<raft::LogEntry>();
-  log_entry->mutable_minimums()->MergeFrom(update);
+  update.SerializeToString(log_entry->mutable_minimums());
   if (auto err = RaftWriteLogTransaction(ctx, log_entry, [tx](
       context::Context* ctx,
       error::Error err,
@@ -1681,7 +1681,9 @@ void Core::RaftHandleCommittedLogs(context::Context* ctx) {
         response = RaftApplyLogToDatabase(ctx, idx, entry);
       } break;
       case raft::LogEntry::kMinimums: {
-        HandleRaftMinimumsChange(ctx, idx, entry.term(), entry.minimums());
+        minimums::MinimumLimits mins;
+        CHECK(mins.ParseFromString(entry.minimums()));
+        HandleRaftMinimumsChange(ctx, idx, entry.term(), mins);
       } break;
       case raft::LogEntry::INNER_NOT_SET: {
       } break;
