@@ -280,6 +280,7 @@ func runLoadTest(parallel, count int, hs *hostSet) error {
 		}
 		defer f.Close()
 		w := bufio.NewWriter(f)
+		defer w.Flush()
 
 		fmt.Fprintf(w, "count,%d\n", count)
 		fmt.Fprintf(w, "parallel,%d\n", parallel)
@@ -297,7 +298,6 @@ func runLoadTest(parallel, count int, hs *hostSet) error {
 		for u := 0; u < count; u++ {
 			fmt.Fprintf(w, "%d,%d\n", create_latencies[u], restore_latencies[u])
 		}
-
 	}
 
 	return nil
