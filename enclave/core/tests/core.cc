@@ -135,6 +135,7 @@ class CoreTest : public ::testing::Test {
     raft_config->set_replica_voting_timeout_ticks(16);
     raft_config->set_replica_membership_timeout_ticks(32);
     raft_config->set_log_max_bytes(1<<20);
+    raft_config->set_batch_messages_if_backlog_reaches(0);
     valid_enclave_config.set_e2e_txn_timeout_ticks(30);
     valid_enclave_config.set_send_timestamp_ticks(10);
     client_request = 10000;
@@ -154,7 +155,7 @@ class CoreTest : public ::testing::Test {
   // Passes back and forth all PeerMessage messages, and returns all non-PeerMessage
   // messages, until there are no more messages to pass.  The messages in SentMessages
   // are considered to be from [first].
-  PassMessagesOut PassMessages(const CoreMap& cores, Core* first) {
+  PassMessagesOut PassMessages(const CoreMap& cores, Core* first, bool drop_offline=true) {
     PassMessagesOut out;
     bool quiescent = false;
     std::map<peerid::PeerID, std::deque<EnclaveMessage>> to_send;
@@ -185,7 +186,9 @@ class CoreTest : public ::testing::Test {
       auto find = cores.find(to);
       if (find == cores.end()) {
         LOG(INFO) << "# offline recipient " << to;
-        out[from].push_back(std::move(msg));
+        if (!drop_offline) {
+          out[from].push_back(std::move(msg));
+        }
         continue;
       }
       LOG(INFO) << "#####################################################";
@@ -201,7 +204,7 @@ class CoreTest : public ::testing::Test {
 
   uint64_t client_request;
 
-  void ClientRequest(const CoreMap& cores, Core* core, const google::protobuf::MessageLite& req, google::protobuf::MessageLite* cli_resp, const std::string auth_id) {
+  void ClientRequest(const CoreMap& cores, Core* core, const google::protobuf::MessageLite& req, google::protobuf::MessageLite* cli_resp, const std::string auth_id, bool drop_offline=true) {
     // Set up client handshake.
     NoiseHandshakeState* hsp;
     NOISE_OK(noise_handshakestate_new_by_id(&hsp, &client::client_protocol, NOISE_ROLE_INITIATOR));
@@ -216,7 +219,7 @@ class CoreTest : public ::testing::Test {
       newc->set_client_authenticated_id(auth_id);
       context::Context ctx;
       ASSERT_EQ(error::OK, core->Receive(&ctx, msg));
-      auto out = PassMessages(cores, core);
+      auto out = PassMessages(cores, core, drop_offline);
       ASSERT_EQ(out[core->ID()].size(), 1);
       auto resp = out[core->ID()][0].h2e_response();
       ASSERT_EQ(resp.request_id(), client_request);
@@ -246,7 +249,7 @@ class CoreTest : public ::testing::Test {
       ec->set_client_id(client_id);
       context::Context ctx;
       ASSERT_EQ(error::OK, core->Receive(&ctx, msg));
-      auto out = PassMessages(cores, core);
+      auto out = PassMessages(cores, core, drop_offline);
       ASSERT_EQ(out[core->ID()].size(), 1);
       auto resp = out[core->ID()][0].h2e_response();
       ASSERT_EQ(resp.request_id(), client_request);
@@ -274,7 +277,7 @@ class CoreTest : public ::testing::Test {
       ec->set_data(ciphertext);
       context::Context ctx;
       ASSERT_EQ(error::OK, core->Receive(&ctx, msg));
-      auto out = PassMessages(cores, core);
+      auto out = PassMessages(cores, core, drop_offline);
       ASSERT_EQ(out[core->ID()].size(), 1);
       auto resp = out[core->ID()][0].h2e_response();
       ASSERT_EQ(resp.request_id(), client_request);
@@ -815,6 +818,10 @@ TEST_F(CoreTest, BackupRestorePartitionNetworkTest) {
   BackupRestoreTest(cfg, CoreRole::Leader, false, partition);
   BackupRestoreTest(cfg, CoreRole::VotingNonLeader, false, partition);
   BackupRestoreTest(cfg, CoreRole::NonVoting, false, partition);
+  cfg.ecfg.mutable_raft()->set_batch_messages_if_backlog_reaches(10);
+  BackupRestoreTest(cfg, CoreRole::Leader, false, partition);
+  BackupRestoreTest(cfg, CoreRole::VotingNonLeader, false, partition);
+  BackupRestoreTest(cfg, CoreRole::NonVoting, false, partition);
 }
 
 TEST_F(CoreTest, WrongPINPartitionNetworkTest) {
@@ -832,6 +839,10 @@ TEST_F(CoreTest, WrongPINPartitionNetworkTest) {
   };
 
   // TODO: Consider parameterized tests (http://google.github.io/googletest/reference/testing.html#TEST_P)
+  WrongPINTest(cfg, CoreRole::Leader, false, partition);
+  WrongPINTest(cfg, CoreRole::VotingNonLeader, false, partition);
+  WrongPINTest(cfg, CoreRole::NonVoting, false, partition);
+  cfg.ecfg.mutable_raft()->set_batch_messages_if_backlog_reaches(10);
   WrongPINTest(cfg, CoreRole::Leader, false, partition);
   WrongPINTest(cfg, CoreRole::VotingNonLeader, false, partition);
   WrongPINTest(cfg, CoreRole::NonVoting, false, partition);
@@ -854,6 +865,10 @@ TEST_F(CoreTest, BackupRestoreHealthyNetworkTest) {
   BackupRestoreTest(cfg, CoreRole::Leader, false, partition);
   BackupRestoreTest(cfg, CoreRole::VotingNonLeader, false, partition);
   BackupRestoreTest(cfg, CoreRole::NonVoting, false, partition);
+  cfg.ecfg.mutable_raft()->set_batch_messages_if_backlog_reaches(10);
+  BackupRestoreTest(cfg, CoreRole::Leader, false, partition);
+  BackupRestoreTest(cfg, CoreRole::VotingNonLeader, false, partition);
+  BackupRestoreTest(cfg, CoreRole::NonVoting, false, partition);
 }
 
 TEST_F(CoreTest, WrongPINHealthyNetworkTest) {
@@ -870,6 +885,10 @@ TEST_F(CoreTest, WrongPINHealthyNetworkTest) {
     {0,1}, {1,1}, {5,1}, {6,1}, {9,1},
     {2,1}, {3,1}, {4,1}, {7,1}, {8,1}
   };
+  WrongPINTest(cfg, CoreRole::Leader, false, partition);
+  WrongPINTest(cfg, CoreRole::VotingNonLeader, false, partition);
+  WrongPINTest(cfg, CoreRole::NonVoting, false, partition);
+  cfg.ecfg.mutable_raft()->set_batch_messages_if_backlog_reaches(10);
   WrongPINTest(cfg, CoreRole::Leader, false, partition);
   WrongPINTest(cfg, CoreRole::VotingNonLeader, false, partition);
   WrongPINTest(cfg, CoreRole::NonVoting, false, partition);
@@ -892,6 +911,10 @@ TEST_F(CoreTest, BackupRestoreDropLeaderTest) {
   BackupRestoreTest(cfg, CoreRole::Leader, true, partition);
   BackupRestoreTest(cfg, CoreRole::VotingNonLeader, true, partition);
   BackupRestoreTest(cfg, CoreRole::NonVoting, true, partition);
+  cfg.ecfg.mutable_raft()->set_batch_messages_if_backlog_reaches(10);
+  BackupRestoreTest(cfg, CoreRole::Leader, true, partition);
+  BackupRestoreTest(cfg, CoreRole::VotingNonLeader, true, partition);
+  BackupRestoreTest(cfg, CoreRole::NonVoting, true, partition);
 }
 
 TEST_F(CoreTest, WrongPINDropLeaderTest) {
@@ -908,6 +931,10 @@ TEST_F(CoreTest, WrongPINDropLeaderTest) {
     {0,1}, {1,1}, {5,1}, {6,1}, {9,1},
     {2,1}, {3,1}, {4,1}, {7,1}, {8,1}
   };
+  WrongPINTest(cfg, CoreRole::Leader, true, partition);
+  WrongPINTest(cfg, CoreRole::VotingNonLeader, true, partition);
+  WrongPINTest(cfg, CoreRole::NonVoting, true, partition);
+  cfg.ecfg.mutable_raft()->set_batch_messages_if_backlog_reaches(10);
   WrongPINTest(cfg, CoreRole::Leader, true, partition);
   WrongPINTest(cfg, CoreRole::VotingNonLeader, true, partition);
   WrongPINTest(cfg, CoreRole::NonVoting, true, partition);
@@ -1185,7 +1212,7 @@ TEST_F(CoreTest, MultiNodeRaft) {
 
     context::Context ctx;
     ASSERT_EQ(error::OK, core2->Receive(&ctx, msg));
-    PassMessages(cores, core2.get());
+    ASSERT_EQ(0, PassMessages(cores, core2.get()).size());
   }
   EXPECT_TRUE(core2->serving());
   EXPECT_TRUE(core2->leader());
@@ -2343,10 +2370,10 @@ TEST_F(CoreTest, Hashes3) {
     ASSERT_EQ(resp.inner_case(), HostToEnclaveResponse::kHashes);
     ASSERT_EQ(resp.status(), error::OK);
     EXPECT_EQ(util::BigEndian64FromBytes(reinterpret_cast<const uint8_t*>(resp.hashes().db_hash().data())),
-              17342237326178964508ULL);
+              3322583038679501158ULL);
     EXPECT_EQ(resp.hashes().commit_idx(), 2);
     EXPECT_EQ(util::BigEndian64FromBytes(reinterpret_cast<const uint8_t*>(resp.hashes().commit_hash_chain().data())),
-              11621631547147759174ULL);
+              2153902264364497466ULL);
   }
 }
 

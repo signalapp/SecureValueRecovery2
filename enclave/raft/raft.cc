@@ -161,6 +161,7 @@ void Raft::ResetPeer(context::Context* ctx, const peerid::PeerID& id) {
       state.next_idx = log_->last_idx() + 1;
       state.send_probe = true;
       state.send_heartbeat = true;
+      state.send_update = false;
       state.inflight.reset();
       // We don't reset last_seen_ticks yet, because we haven't gotten
       // a RAFT message from them.  But the above means that we will
@@ -303,10 +304,26 @@ void Raft::AppendEntries(context::Context* ctx, const peerid::PeerID& peer) {
   if (0 == leader_.followers.count(peer)) { return; }
   internal::ReplicationState& replication = leader_.followers[peer];
   uint64_t last_log_idx = log_->last_idx();
-  uint64_t next_idx = replication.next_idx;
+  uint64_t next_idx = std::max(replication.next_idx, replication.inflight.value_or(0) + 1);
+  bool send_heartbeat = replication.send_heartbeat && !replication.inflight.has_value();
+  uint64_t backlog = log_->last_idx() - commit_idx_;
+  bool backlog_reached_threshold = backlog >= config_.batch_messages_if_backlog_reaches();
   bool send_entries = last_log_idx >= next_idx && !replication.send_probe;
-  if (!send_entries && !replication.send_heartbeat && !replication.send_probe) { return; }
-  if (replication.inflight.has_value()) { return; }
+
+  bool have_message_to_send = send_entries || send_heartbeat || replication.send_probe || replication.send_update;
+  if (!have_message_to_send) {
+    COUNTER(raft, appendentries_nomsg)->Increment();
+    return;
+  }
+  if (replication.inflight.has_value()) {
+    if (backlog_reached_threshold) {
+      COUNTER(raft, appendentries_inflight_defer)->Increment();
+      return;
+    }
+    COUNTER(raft, appendentries_inflight_send)->Increment();
+  } else {
+    COUNTER(raft, appendentries_send)->Increment();
+  }
   MELOG(VERBOSE) << "sending appendentries to " << peer;
 
   // /\ LET prevLogIndex == nextIndex[i][j] - 1
@@ -382,6 +399,7 @@ void Raft::AppendEntries(context::Context* ctx, const peerid::PeerID& peer) {
   append->set_leader_promise(std::min(promise_idx_, last_entry));
 
   replication.send_heartbeat = false;
+  replication.send_update = false;
   replication.inflight = last_entry;
   AddSendableMessage(SendableRaftMessage::Reply(peer, msg));
 }
@@ -429,6 +447,7 @@ void Raft::HandleMembershipChange() {
           .next_idx = log_->next_idx(),
           .send_probe = true,
           .send_heartbeat = true,
+          .send_update = false,
           // We set this to a number high enough that we won't immediately add
           // this replica to the set of voting replicas, and low enough that we
           // won't immediately kick them for being unresponsive.
@@ -650,11 +669,11 @@ void Raft::MaybeAdvanceCommitIndex(context::Context* ctx) {
     // in cases where we do have lulls in traffic, it should keep client latency
     // low.
     //
-    // TLDR:  when we update commits, we queue up a send_heartbeat for
+    // TLDR:  when we update commits, we queue up a send_update for
     // all followers in order to allow them to advance their commits without
     // waiting for the next TimerTick.
     for (auto iter = leader_.followers.begin(); iter != leader_.followers.end(); ++iter) {
-      iter->second.send_heartbeat = true;
+      iter->second.send_update = true;
     }
   }
 }
@@ -929,6 +948,12 @@ void Raft::HandleAppendRequest(context::Context* ctx, const TermId& msg_term, co
     }
     update_merkle = true;
   }
+  if (leader_promise > promise_idx_) {
+    LOG(VERBOSE) << "promised transactions from " << promise_idx_ << " to " << leader_promise;
+    COUNTER(raft, logs_promised)->IncrementBy(leader_promise - promise_idx_);
+    promise_idx_ = leader_promise;
+    GAUGE(raft, promise_index)->Set(promise_idx_);
+  }
   if (leader_commit > commit_idx_) {
     LOG(VERBOSE) << "committed transactions from " << commit_idx_ << " to " << leader_commit;
     COUNTER(raft, logs_committed)->IncrementBy(leader_commit - commit_idx_);
@@ -937,12 +962,6 @@ void Raft::HandleAppendRequest(context::Context* ctx, const TermId& msg_term, co
     // Updating the commit index has the potential to commit an uncommitted
     // membership; check that:
     MaybeChangeUncommittedMembershipsBasedOnLog();
-  }
-  if (leader_promise > promise_idx_) {
-    LOG(VERBOSE) << "promised transactions from " << promise_idx_ << " to " << leader_promise;
-    COUNTER(raft, logs_promised)->IncrementBy(leader_promise - promise_idx_);
-    promise_idx_ = leader_promise;
-    GAUGE(raft, promise_index)->Set(promise_idx_);
   }
   if (update_merkle) {
     UpdateMerkleTree(ctx);
@@ -1001,8 +1020,6 @@ void Raft::MaybeChangeUncommittedMembershipsBasedOnLog() {
 // \* Server i receives an AppendEntries response from server j with
 // \* m.mterm = currentTerm[i].
 void Raft::HandleAppendResponse(context::Context* ctx, const TermId& msg_term, const AppendResponse& msg, const peerid::PeerID& from) {
-  
-  
   // HandleAppendEntriesResponse(i, j, m) ==
   // /\ m.mterm = currentTerm[i]
   if (msg_term != current_term_) { return; }
@@ -1074,9 +1091,9 @@ void Raft::HandleAppendResponse(context::Context* ctx, const TermId& msg_term, c
   }
   //    \/ /\ \lnot m.msuccess \* not successful
   if (replication.send_probe) {
-    LOG(VERBOSE) << "received probe append rejection at " << replication.next_idx << " from " << from << " having " << msg.last_log_idx();
+    MELOG(VERBOSE) << "received probe append rejection at " << replication.next_idx << " from " << from << " having " << msg.last_log_idx();
   } else {
-    LOG(INFO) << "received append rejection at " << replication.next_idx << " from " << from << " having " << msg.last_log_idx();
+    MELOG(INFO) << "received append rejection at " << replication.next_idx << " from " << from << " having " << msg.last_log_idx();
   }
   //       /\ nextIndex' = [nextIndex EXCEPT ![i][j] = Max({nextIndex[i][j] - 1, 1})]
   replication.next_idx = std::max(

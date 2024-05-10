@@ -82,7 +82,10 @@ void ReplicaGroup::TickTock(PartitionID pid, bool ignore_h2e_errors) {
   ASSERT_EQ(error::OK, TickAllTimers(pid));
   ASSERT_EQ(error::OK, PassMessagesUntilQuiet());
   auto err = ProcessAllH2EResponses();
-  if (!ignore_h2e_errors) ASSERT_EQ(error::OK, err);
+  if (!ignore_h2e_errors) {
+    LOG(ERROR) << "H2E Error: " << err;
+    ASSERT_EQ(error::OK, err);
+  }
 }
 
 void ReplicaGroup::add_peer() {

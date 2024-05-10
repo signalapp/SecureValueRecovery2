@@ -34,6 +34,11 @@ message RaftConfig {
   uint32 replica_membership_timeout_ticks = 5;
   uint64 log_max_bytes = 6;
   uint32 replication_pipeline = 7;
+  // If the backlog (the number of logs that have been appended but not committed)
+  // reaches or exceeds this value, Raft will switch to an optimized network mode,
+  // where messages are batched together.  This mode lowers leader CPU, packet count,
+  // and network bytes sent/received, but potentially increases client latency.
+  uint32 batch_messages_if_backlog_reaches = 8;
 }
 
 message EnclaveConfig {

@@ -49,7 +49,12 @@ struct ReplicationState {
   // not contain any actual entries, just the log index we think they're
   // at.  This allows them to correct us without over-sending logs.
   bool send_probe;
+  // send_heartbeat is set when nothing has changed, but the leader needs
+  // to remind the followers that it does in fact still exist.
   bool send_heartbeat;
+  // send_update is set when the leader needs to send a non-log update
+  // to the followers (an update of promise or commit index).
+  bool send_update;
 
   // the number of ticks since we last got a Raft message from this replica.
   util::Ticks last_seen_ticks;
