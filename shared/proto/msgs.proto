@@ -78,6 +78,7 @@ message HostToEnclaveRequest {
     MetricsRequest metrics = 18;
     bytes reset_peer_id = 19;
     minimums.MinimumLimits update_minimums = 20;
+    bytes connect_peer_id = 21;
   }
 }
 

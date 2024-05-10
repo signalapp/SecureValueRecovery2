@@ -2667,4 +2667,105 @@ TEST_F(CoreTest, HostDatabaseRequest) {
   }
 }
 
+TEST_F(CoreTest, OldLeaderRelinquishesLeadershipWhenItCannotTalkToNewLeader) {
+  ReplicaGroup replica_group;
+  auto config = valid_init_config;
+  auto raft = config.mutable_enclave_config()->mutable_raft();
+  raft->set_election_ticks(10);
+  raft->set_heartbeat_ticks(7);
+  raft->set_replica_voting_timeout_ticks(100);
+  raft->set_replica_membership_timeout_ticks(200);
+  
+  LOG(INFO) << "INIT";
+  replica_group.Init(config, 3, 0, 0);
+  auto leader1_idx = replica_group.GroupLeaderIndex();
+  ASSERT_EQ(leader1_idx, 0);
+  std::map<size_t, test::PartitionID> part = {
+    {0, 3},
+    {1, 4},
+    {2, 4},
+  };
+  LOG(INFO) << "PARTITION - remove current leader from other replicas";
+  replica_group.CreatePartition(part);
+  LOG(INFO) << "ELECT LEADER - create a new leader";
+  for (int i = 0; i < 20 && replica_group.GroupLeaderIndex() >= 3; i++) {
+    replica_group.TickTock(4, true);
+  }
+  auto leader2_idx = replica_group.GroupLeaderIndex();
+  ASSERT_LT(leader2_idx, 3);
+  ASSERT_NE(leader1_idx, leader2_idx);
+  auto leader2_core = replica_group.get_core(leader2_idx);
+  LOG(INFO) << "LIMITS1 - create a few logs in the new leader, to get its logs ahead of the old one";
+  minimums::MinimumLimits lim;
+  (*lim.mutable_lim())["a"] = "b";
+  leader2_core->UpdateMinimums(lim);
+  leader2_core->UpdateMinimums(lim);
+  leader2_core->UpdateMinimums(lim);
+  leader2_core->UpdateMinimums(lim);
+  replica_group.PassMessagesUntilQuiet();
+  leader2_core->take_host_to_enclave_responses();
+
+  LOG(INFO) << "DISCONNECT - since we drop some messages, reset all the peer connections to old leader";
+  replica_group.ClearPartition();
+  replica_group.get_core(0)->ResetPeer(replica_group.get_core(1)->ID());
+  replica_group.get_core(0)->ResetPeer(replica_group.get_core(2)->ID());
+  replica_group.get_core(1)->ResetPeer(replica_group.get_core(0)->ID());
+  replica_group.get_core(2)->ResetPeer(replica_group.get_core(0)->ID());
+  replica_group.PassMessagesUntilQuiet();
+  LOG(INFO) << "RECONNECT - since we drop some messages, reset all the peer connections to old leader";
+  replica_group.get_core(0)->ConnectPeer(replica_group.get_core(1)->ID());
+  replica_group.get_core(0)->ConnectPeer(replica_group.get_core(2)->ID());
+  replica_group.PassMessagesUntilQuiet();
+  replica_group.ClearBlockedMessages();
+  LOG(INFO) << "REPARTITION - put the old leader and the current follower together, away from the new leader";
+  std::map<size_t, test::PartitionID> part2 = {
+    {0, 3},
+    {1, leader2_idx == 1 ? 4 : 3},
+    {2, leader2_idx == 2 ? 4 : 3},
+  };
+  replica_group.CreatePartition(part2);
+  LOG(INFO) << "LIMITS2 - have the old leader try to append a log entry";
+  auto leader1_core = replica_group.get_core(leader1_idx);
+  leader1_core->UpdateMinimums(lim);
+  replica_group.PassMessagesUntilQuiet(3);
+  LOG(INFO) << "CHECK - the old leader should learn that the term has increased from the follower, relinquishing leadership";
+  ASSERT_FALSE(leader1_core->leader());
+  LOG(INFO) << "REPARTITION - put the new leader and follower together, have some time pass";
+  std::map<size_t, test::PartitionID> part3 = {
+    {0, 3},
+    {1, 4},
+    {2, 4},
+  };
+  replica_group.CreatePartition(part3);
+  LOG(INFO) << "LIMITS3 - write more logs, which should stop the old leader from becoming leader when it reconnects";
+  leader2_core->UpdateMinimums(lim);
+  leader2_core->UpdateMinimums(lim);
+  replica_group.PassMessagesUntilQuiet();
+  LOG(INFO) << "TIME PASSES - both partitions experience a few election cycles";
+  for (int i = 0; i < 30; i++) {
+    replica_group.TickTock(3, true);
+    replica_group.TickTock(4, true);
+  }
+  LOG(INFO) << "PASS ALL - allow all messages to flow freely";
+  replica_group.ClearPartition();
+  replica_group.ForwardBlockedMessages();
+  replica_group.PassMessagesUntilQuiet();
+  ASSERT_FALSE(leader1_core->leader());
+  LOG(INFO) << "LEADER ELECT - allow for a few election cycles to go by, since first may not elect a leader";
+  for (int i = 0; i < 100 && replica_group.GroupLeaderIndex() >= 3; i++) {
+    replica_group.TickAllTimers();
+    replica_group.PassMessagesUntilQuiet();
+  }
+  ASSERT_LT(replica_group.GroupLeaderIndex(), 3);
+  ASSERT_FALSE(leader1_core->leader());
+
+  LOG(INFO) << "H2E_RESPONSE - get response from leader1_core->UpdateMinimums request";
+  // It should have brought leader1_core up to date, and it should realize that its
+  // log transaction has been canceled.
+  auto h2e_msgs = leader1_core->take_host_to_enclave_responses();
+  ASSERT_EQ(h2e_msgs.size(), 1);
+  auto& h2e_response = h2e_msgs[0];
+  ASSERT_EQ(h2e_msgs[0].status(), error::Core_LogTransactionCancelled);
+}
+
 }  // namespace svr2::core

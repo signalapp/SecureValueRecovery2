@@ -243,6 +243,7 @@ error::Error Peer::InternalConnect(
     context::Context* ctx,
     const noise::DHState& priv,
     const e2e::Attestation& attestation) {
+  LOG(INFO) << "InternalConnect to " << id_;
   MEASURE_CPU(ctx, cpu_peer_connect);
   RETURN_IF_ERROR(Reset(priv, NOISE_ROLE_INITIATOR));
   CHECK(handshake_.get());

@@ -140,8 +140,19 @@ error::Error TestingCore::ForwardOutgoingMessages() {
 error::Error TestingCore::ResetPeer(peerid::PeerID peer_id) {
   LOG(VERBOSE) << "resetpeerreq " << core_->ID() << " -> " << peer_id;
   UntrustedMessage msg;
-  auto reset_req = msg.mutable_reset_peer();
-  peer_id.ToString(reset_req->mutable_peer_id());
+  auto host = msg.mutable_h2e_request();
+  host->set_request_id(next_request_id());
+  peer_id.ToString(host->mutable_reset_peer_id());
+  input_messages_.emplace_back(std::move(msg));
+  return error::OK;
+}
+
+error::Error TestingCore::ConnectPeer(peerid::PeerID peer_id) {
+  LOG(VERBOSE) << "connectpeerreq " << core_->ID() << " -> " << peer_id;
+  UntrustedMessage msg;
+  auto host = msg.mutable_h2e_request();
+  host->set_request_id(next_request_id());
+  peer_id.ToString(host->mutable_connect_peer_id());
   input_messages_.emplace_back(std::move(msg));
   return error::OK;
 }

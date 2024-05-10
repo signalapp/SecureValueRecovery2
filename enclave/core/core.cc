@@ -336,11 +336,22 @@ error::Error Core::HandleHostToEnclave(context::Context* ctx, const HostToEnclav
     } return error::OK;
     case HostToEnclaveRequest::kResetPeerId: {
       peerid::PeerID peer_id;
-      RETURN_IF_ERROR(peer_id.FromString(msg.reset_peer_id()));
-      ReplyWithError(ctx, tx, ResetPeer(ctx, peer_id));
+      if (auto err = peer_id.FromString(msg.reset_peer_id()); err != error::OK) {
+        ReplyWithError(ctx, tx, err);
+      } else {
+        ReplyWithError(ctx, tx, ResetPeer(ctx, peer_id));
+      }
     } return error::OK;
     case HostToEnclaveRequest::kUpdateMinimums: {
       HandleUpdateMinimums(ctx, tx, msg.update_minimums());
+    } return error::OK;
+    case HostToEnclaveRequest::kConnectPeerId: {
+      peerid::PeerID peer_id;
+      if (auto err = peer_id.FromString(msg.connect_peer_id()); err != error::OK) {
+        ReplyWithError(ctx, tx, err);
+      } else {
+        ReplyWithError(ctx, tx, peer_manager_->MaybeConnectToPeer(ctx, peer_id));
+      }
     } return error::OK;
     default:
       return error::General_Unimplemented;

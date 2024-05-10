@@ -81,6 +81,7 @@ class TestingCore {
 
   // Host to Enclave commands
   error::Error ResetPeer(peerid::PeerID peer_id);
+  error::Error ConnectPeer(peerid::PeerID peer_id);
   error::Error PingPeer(peerid::PeerID peer_id);
   error::Error GetEnclaveStatus();
   error::Error TimerTick();

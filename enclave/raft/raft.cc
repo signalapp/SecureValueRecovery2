@@ -1170,7 +1170,7 @@ bool Raft::ShouldDropResponseDueToStaleTerm(const peerid::PeerID& from, const Ra
   return false;
 }
 
-error::Error Raft::CheckLogHash(const Log& log, LogIdx idx, TermId term, const std::string& hash, Raft::CLH_Options opts) {
+error::Error Raft::CheckLogHash(const Log& log, LogIdx idx, TermId term, const std::string& hash) {
   if (idx == 0) {
     return error::OK;
   }
@@ -1178,7 +1178,7 @@ error::Error Raft::CheckLogHash(const Log& log, LogIdx idx, TermId term, const s
     return COUNTED_ERROR(Raft_MsgTruncated);
   }
   if (idx > log.last_idx()) {
-    return (opts & CLH_AllowFuture) ? error::OK : COUNTED_ERROR(Raft_MsgInFuture);
+    return error::OK;
   } 
   auto iter = log.At(idx);
   CHECK(iter.Valid());
@@ -1207,8 +1207,7 @@ error::Error Raft::ValidateReceivedMessage(context::Context* ctx, const RaftMess
       RETURN_IF_ERROR(CheckLogHash(*log_,
           m.last_log_idx(),
           m.last_log_term(),
-          m.last_log_hash_chain(),
-          CLH_AllowFuture));
+          m.last_log_hash_chain()));
     } break;
     case RaftMessage::kVoteResponse: {
     } break;
@@ -1217,8 +1216,7 @@ error::Error Raft::ValidateReceivedMessage(context::Context* ctx, const RaftMess
       RETURN_IF_ERROR(CheckLogHash(*log_,
           m.prev_log_idx(),
           m.prev_log_term(),
-          m.prev_log_hash_chain(),
-          CLH_AllowFuture));
+          m.prev_log_hash_chain()));
       if (m.leader_commit() > m.prev_log_idx() + m.entries_size()) {
         return COUNTED_ERROR(Raft_MsgAppendEntryIndex);
       }
@@ -1233,8 +1231,7 @@ error::Error Raft::ValidateReceivedMessage(context::Context* ctx, const RaftMess
         RETURN_IF_ERROR(CheckLogHash(*log_,
             m.prev_log_idx() + i + 1,
             e.term(),
-            e.hash_chain(),
-            CLH_AllowFuture));
+            e.hash_chain()));
       }
     } break;
     case RaftMessage::kAppendResponse: {
@@ -1242,8 +1239,7 @@ error::Error Raft::ValidateReceivedMessage(context::Context* ctx, const RaftMess
       RETURN_IF_ERROR(CheckLogHash(*log_,
           m.match_idx(),
           0,
-          m.match_hash_chain(),
-          CLH_AllowNothing));
+          m.match_hash_chain()));
       if (m.match_idx() > m.last_log_idx() ||
           m.promise_idx() > m.last_log_idx()) {
         return COUNTED_ERROR(Raft_MsgLogIndexOrdering);
