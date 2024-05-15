@@ -56,6 +56,7 @@ jobs:
 
       - name: Build binaries
         run: |
+          make docker_enclave_test
           make
 
       - name: Build and push container image
