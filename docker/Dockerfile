@@ -23,16 +23,16 @@ RUN wget -qO - https://download.01.org/intel-sgx/sgx_repo/ubuntu/intel-sgx-deb.k
     wget -qO - https://packages.microsoft.com/keys/microsoft.asc | apt-key add - && \
     while true; do apt update && break; done && \
     while true; do apt install -y \
-    libsgx-ae-id-enclave=1.20.100.2-focal1 \
-    libsgx-ae-pce=2.23.100.2-focal1 \
-    libsgx-ae-qe3=1.20.100.2-focal1 \
-    libsgx-dcap-ql=1.20.100.2-focal1 \
-    libsgx-dcap-ql-dev=1.20.100.2-focal1 \
-    libsgx-enclave-common=2.23.100.2-focal1 \
-    libsgx-headers=2.23.100.2-focal1 \
-    libsgx-pce-logic=1.20.100.2-focal1 \
-    libsgx-qe3-logic=1.20.100.2-focal1 \
-    libsgx-urts=2.23.100.2-focal1 \
+    libsgx-ae-id-enclave=1.21.100.3-focal1 \
+    libsgx-ae-pce=2.24.100.3-focal1 \
+    libsgx-ae-qe3=1.21.100.3-focal1 \
+    libsgx-dcap-ql=1.21.100.3-focal1 \
+    libsgx-dcap-ql-dev=1.21.100.3-focal1 \
+    libsgx-enclave-common=2.24.100.3-focal1 \
+    libsgx-headers=2.24.100.3-focal1 \
+    libsgx-pce-logic=1.21.100.3-focal1 \
+    libsgx-qe3-logic=1.21.100.3-focal1 \
+    libsgx-urts=2.24.100.3-focal1 \
     open-enclave=0.19.4 \
     && break; done
 
@@ -124,8 +124,8 @@ CMD ["/bin/bash"]
 FROM base AS sgxrun
 
 RUN apt-get update && apt-get install -y \
-    libsgx-dcap-default-qpl=1.20.100.2-focal1 \
-    libsgx-dcap-default-qpl-dev=1.20.100.2-focal1 \
+    libsgx-dcap-default-qpl=1.21.100.3-focal1 \
+    libsgx-dcap-default-qpl-dev=1.21.100.3-focal1 \
     libcurl4
 COPY docker/sgx_default_qcnl_azure.conf /etc/sgx_default_qcnl.conf
 COPY host/main /bin/svr2
