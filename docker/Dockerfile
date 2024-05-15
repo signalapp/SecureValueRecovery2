@@ -161,13 +161,14 @@ RUN yum install -y \
     aws-nitro-enclaves-cli.x86_64 \
     jq
 ADD --checksum=sha256:cf3098950cb4d853ad95c0841f1f9c6d3dc102dccfcacd521d93925208b76ac8 https://www.openssl.org/source/openssl-1.1.1w.tar.gz /tmp/
-RUN cd /tmp && \
+RUN set -x && \
+    cd /tmp && \
     yum install -y perl tar && \
     tar xvzf openssl-1.1.1w.tar.gz && \
     cd openssl-1.1.1w && \
     ./config && \
-    make -j16 && \
-    make install -j16 && \
+    make -j16 >/dev/null && \
+    make install -j16 >/dev/null && \
     echo /usr/local/lib64 | tee /etc/ld.so.conf.d/openssl.conf && \
     ldconfig && \
     yum remove -y perl tar && \
