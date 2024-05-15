@@ -48,10 +48,15 @@ jobs:
         with:
           role-to-assume: "${{ vars.ECR_ROLE }}"
           aws-region: us-east-1
+
       - name: Login to ECR
         uses: docker/login-action@343f7c4344506bcbf9b4de18042ae17996df046d # v3.0.0
         with:
           registry: "${{ vars.ECR_REGISTRY }}"
+
+      - name: Build binaries
+        run: |
+          make
 
       - name: Build and push container image
         run: |
