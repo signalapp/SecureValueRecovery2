@@ -21,6 +21,10 @@ jobs:
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
         with:
           submodules: true
+          lfs: true
+
+      - name: Show releases
+        run: find enclave/releases -ls
 
       - name: Expose Docker environmental variables for gha cache
         # This action takes in the ID tokens etc provided by the permissions,
