@@ -74,5 +74,8 @@ func (cc *ControlClient) DoJSON(request []byte) (*pb.HostToEnclaveResponse, erro
 	if err := protojson.Unmarshal(body, &pbResponse); err != nil {
 		return nil, fmt.Errorf("could not parse server response, body=%s : %w", body, err)
 	}
+	if status, ok := pbResponse.Inner.(*pb.HostToEnclaveResponse_Status); ok && status.Status != pb.Error_OK {
+		return nil, status.Status
+	}
 	return &pbResponse, nil
 }

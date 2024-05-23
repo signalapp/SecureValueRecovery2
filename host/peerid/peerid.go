@@ -25,15 +25,27 @@ func Make(s []byte) (PeerID, error) {
 
 // Hex parses a hexidecimal formatted peerID
 func FromHex(s string) (PeerID, error) {
+	if len(s) != 64 {
+		return PeerID{}, fmt.Errorf("must provide 32-byte value as hex (64 characters)")
+	}
 	bs, err := hex.DecodeString(s)
 	if err != nil {
 		return PeerID{}, err
 	}
 	return Make(bs)
-
 }
 
 // String returns a hexidecimal formatted peerID (just an 8-char prefix)
 func (p PeerID) String() string {
 	return hex.EncodeToString(p[:4])
+}
+
+// Set implements flag.Value and sets the PeerID from a hex string.
+func (p *PeerID) Set(in string) error {
+	pid, err := FromHex(in)
+	if err != nil {
+		return err
+	}
+	*p = pid
+	return nil
 }
