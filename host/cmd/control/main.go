@@ -51,6 +51,11 @@ var (
 		metrics struct {
 			updateEnvStats bool
 		}
+		updateMinimum struct {
+			key           string
+			value         string
+			valueEncoding string
+		}
 	}
 	commands = map[string]*command{
 		"command": &command{
@@ -116,6 +121,16 @@ var (
 			fs: func() *flag.FlagSet {
 				fs := flag.NewFlagSet("metrics", flag.ExitOnError)
 				fs.BoolVar(&args.metrics.updateEnvStats, "updateEnvStats", false, "Whether to request that environmental stats be updated prior to returning statistics")
+				return fs
+			}(),
+		},
+		"updateMinimum": &command{
+			f:           updateMinimum,
+			description: "Update a minimum value",
+			fs: func() *flag.FlagSet {
+				fs := flag.NewFlagSet("updateMinimum", flag.ExitOnError)
+				fs.StringVar(&args.updateMinimum.key, "key", "", "Minimum key to update")
+				fs.StringVar(&args.updateMinimum.value, "value", "", "Minimum value to update, AS HEX")
 				return fs
 			}(),
 		},
@@ -354,4 +369,25 @@ func metrics(cc *client.ControlClient) error {
 		fmt.Println(s)
 	}
 	return nil
+}
+
+func updateMinimum(cc *client.ControlClient) error {
+	if args.updateMinimum.key == "" {
+		return fmt.Errorf("must set --key")
+	}
+	if args.updateMinimum.value == "" {
+		return fmt.Errorf("must set --value")
+	}
+	bytes, err := hex.DecodeString(args.updateMinimum.value)
+	if err != nil {
+		return fmt.Errorf("decoding hex --value=%q: %w", args.updateMinimum.value, err)
+	}
+	_, err = cc.Do(&pb.HostToEnclaveRequest{
+		Inner: &pb.HostToEnclaveRequest_UpdateMinimums{UpdateMinimums: &pb.MinimumLimits{
+			Lim: map[string][]byte{
+				args.updateMinimum.key: bytes,
+			},
+		}},
+	})
+	return err
 }
