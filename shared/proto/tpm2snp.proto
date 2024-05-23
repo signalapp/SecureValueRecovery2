@@ -11,12 +11,16 @@ message TPM2SNPEvidence {
   // Serialized AttestationData
   bytes attestation_data = 1;
 
-  // tpm2_quote -c 0x81000003 -l sha256:all -q "<sha256 of attestation_data>" -m msg -s sig -o pcrs --pcrs_format values
+  // TPM2 quote.  On Azure:
+  //   tpm2_quote -c 0x81000003 -l sha256:all -q "<sha256 of attestation_data>" -m msg -s sig -o pcrs --pcrs_format values
+  // On GCP, this information is pulled via the host/cmd/svr3gcp binary.
   bytes pcrs = 2;
   bytes msg = 3;
   bytes sig = 4;
 
-  // tpm2_nvread -C o 0x01400001 # contains snp_report and runtimedata
+  // SNP report containing hash of runtime_data.  On Azure:
+  //   tpm2_nvread -C o 0x01400001 # contains snp_report and runtimedata
+  // On GCP, this is pulled from the /dev/sev or /dev/sev-guest directly.
   bytes snp_report = 5;  // contains snp_report and runtimedata
   // runtime_data should be in the form used by Azure, and must
   // contain at least the following:
@@ -27,15 +31,20 @@ message TPM2SNPEvidence {
   //       "n": base64(big-endian-bignum(rsa modulus)),
   //       ...
   //   }]}
+  // In GCP, we generate the above format ourselves.
   bytes runtime_data = 6;
-  // tpm2_nvread -C o 0x1C101D0
+  // AK certificate, wrapping the TPM2 public key.  On Azure:
+  //   tpm2_nvread -C o 0x1C101D0
+  // On GCP, this information is pulled via the host/cmd/svr3gcp binary.
   bytes akcert_der = 7;
 }
 
 message TPM2SNPEndorsements {
-  // From https://learn.microsoft.com/en-us/azure/virtual-machines/trusted-launch-faq?tabs=cli%2Cdebianbased#certificates
+  // Azure:  pulled from https://learn.microsoft.com/en-us/azure/virtual-machines/trusted-launch-faq?tabs=cli%2Cdebianbased#certificates
+  // GCP:  retrieved via host/cmd/svr3gcp.
   bytes intermediate_der = 1;
-  // From http://169.254.169.254/metadata/THIM/amd/certification
+  // Azure:  http://169.254.169.254/metadata/THIM/amd/certification
+  // GCP:  retrieved via host/cmd/svr3gcp.
   bytes vcek_der = 2;
   bytes ask_der = 3;
 }
