@@ -36,7 +36,7 @@ RUN wget -qO - https://download.01.org/intel-sgx/sgx_repo/ubuntu/intel-sgx-deb.k
     open-enclave=0.19.4 \
     && break; done
 
-FROM public.ecr.aws/amazonlinux/amazonlinux@sha256:94e7183b0739140dbd5b639fb7600f0a2299cec5df8780c26d9cb409da5315a9 AS nsmbuild
+FROM --platform=linux/amd64 public.ecr.aws/amazonlinux/amazonlinux@sha256:94e7183b0739140dbd5b639fb7600f0a2299cec5df8780c26d9cb409da5315a9 AS nsmbuild
 ENV HOST_MACHINE=x86_64
 ENV RUST_VERSION=1.58.1
 ENV RUSTUP_HOME=/usr/local/rustup \
@@ -134,7 +134,7 @@ COPY host/cmd/control/control /bin/svr2control
 
 ENTRYPOINT ["/bin/svr2"]
 
-FROM public.ecr.aws/amazonlinux/amazonlinux@sha256:94e7183b0739140dbd5b639fb7600f0a2299cec5df8780c26d9cb409da5315a9 AS nsmrun
+FROM --platform=linux/amd64 public.ecr.aws/amazonlinux/amazonlinux@sha256:94e7183b0739140dbd5b639fb7600f0a2299cec5df8780c26d9cb409da5315a9 AS nsmrun
 ADD enclave/build/enclave.nsm /bin/svr2
 ENTRYPOINT ["/bin/svr2", "--sock_type=af_vsock"]
 
@@ -143,7 +143,7 @@ COPY enclave/build/enclave.sev /bin/svr2
 EXPOSE 27427
 ENTRYPOINT ["/bin/svr2", "--sock_type=af_inet"]
 
-FROM public.ecr.aws/amazonlinux/amazonlinux@sha256:94e7183b0739140dbd5b639fb7600f0a2299cec5df8780c26d9cb409da5315a9 AS nsmeif
+FROM --platform=linux/amd64 public.ecr.aws/amazonlinux/amazonlinux@sha256:94e7183b0739140dbd5b639fb7600f0a2299cec5df8780c26d9cb409da5315a9 AS nsmeif
 RUN yum install -y \
     aws-nitro-enclaves-cli.x86_64 \
     aws-nitro-enclaves-cli-devel.x86_64 \
@@ -156,7 +156,7 @@ ENV CHOWN_TO 0:0
 COPY docker/build_eif.sh build_eif.sh
 ENTRYPOINT ./build_eif.sh
 
-FROM public.ecr.aws/amazonlinux/amazonlinux@sha256:94e7183b0739140dbd5b639fb7600f0a2299cec5df8780c26d9cb409da5315a9 AS nsmhost
+FROM --platform=linux/amd64 public.ecr.aws/amazonlinux/amazonlinux@sha256:94e7183b0739140dbd5b639fb7600f0a2299cec5df8780c26d9cb409da5315a9 AS nsmhost
 RUN yum install -y \
     aws-nitro-enclaves-cli.x86_64 \
     jq
