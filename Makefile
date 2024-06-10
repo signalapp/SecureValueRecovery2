@@ -43,7 +43,14 @@ dockerbase: | git
 	[ "" != "$(SKIP_DOCKER_BUILD)" ] || \
 	    docker buildx build $(DOCKER_BUILD_ARGS) --load -f docker/Dockerfile -t svr2_buildenv --target=builder .
 
-PARALLEL ?= $(shell cat /proc/cpuinfo | grep '^cpu cores' | awk 'BEGIN { sum = 1 } { sum += $$4 } END { print sum }')
+OS:=$(shell uname -s)
+ifeq ($(OS), Linux)
+	PARALLEL ?= $(shell cat /proc/cpuinfo | grep '^cpu cores' | awk 'BEGIN { sum = 1 } { sum += $$4 } END { print sum }')
+endif
+ifeq ($(OS), Darwin)
+	PARALLEL ?= $(shell sysctl -n hw.ncpu)
+endif
+
 DOCKER_MAKE_ARGS ?= -j$(PARALLEL) MAKE_ARGS="$(MAKE_ARGS)"
 ARCH ?= $(shell arch)
 ifeq ($(ARCH),arm64)
