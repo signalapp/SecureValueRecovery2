@@ -127,7 +127,6 @@ RUN apt-get update && apt-get install -y \
     libsgx-dcap-default-qpl=1.21.100.3-focal1 \
     libsgx-dcap-default-qpl-dev=1.21.100.3-focal1 \
     libcurl4
-COPY docker/sgx_default_qcnl_azure.conf /etc/sgx_default_qcnl.conf
 COPY host/main /bin/svr2
 COPY enclave/releases/sgx /enclaves
 COPY host/cmd/control/control /bin/svr2control
