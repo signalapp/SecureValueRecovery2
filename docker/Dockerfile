@@ -134,7 +134,7 @@ COPY host/cmd/control/control /bin/svr2control
 ENTRYPOINT ["/bin/svr2"]
 
 FROM --platform=linux/amd64 public.ecr.aws/amazonlinux/amazonlinux:2023.4.20240611.0@sha256:e96baa46e2effb0f69d488007bde35a7d01d7fc2ec9f4e1cd65c59846c01775e AS nsmrun
-ADD enclave/build/enclave.nsm /bin/svr2
+ADD --chown=0:0 enclave/build/enclave.nsm /bin/svr2
 ENTRYPOINT ["/bin/svr2", "--sock_type=af_vsock"]
 
 FROM alpine@sha256:ff6bdca1701f3a8a67e328815ff2346b0e4067d32ec36b7992c1fdc001dc8517 AS sevrun

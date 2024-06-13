@@ -38,10 +38,18 @@ cmds: | git
 clean:
 	$(MAKE) $(MAKE_ARGS) -C enclave clean
 	$(MAKE) $(MAKE_ARGS) -C host clean
+	rm -rf docker/build
 
 dockerbase: | git
 	[ "" != "$(SKIP_DOCKER_BUILD)" ] || \
 	    docker buildx build $(DOCKER_BUILD_ARGS) --load -f docker/Dockerfile -t svr2_buildenv --target=builder .
+
+enclave_releaser: enclave host  # depends on 'host' so its tests will run
+	cp -vn enclave/build/enclave.signed "enclave/releases/sgx/default.$$(/opt/openenclave/bin/oesign dump -e enclave/build/enclave.signed | fgrep -i mrenclave | cut -d '=' -f2)"
+	cp -vn enclave/build/enclave.small "enclave/releases/sgx/small.$$(/opt/openenclave/bin/oesign dump -e enclave/build/enclave.small | fgrep -i mrenclave | cut -d '=' -f2)"
+
+
+### Remaining targets run docker/packer and should be run directly on the host (not with docker_) ###
 
 OS:=$(shell uname -s)
 ifeq ($(OS), Linux)
@@ -50,7 +58,6 @@ endif
 ifeq ($(OS), Darwin)
 	PARALLEL ?= $(shell sysctl -n hw.ncpu)
 endif
-
 DOCKER_MAKE_ARGS ?= -j$(PARALLEL) MAKE_ARGS="$(MAKE_ARGS)"
 ARCH ?= $(shell arch)
 ifeq ($(ARCH),arm64)
@@ -73,8 +80,22 @@ dockersh: dockerbase
 	  $(DOCKER_RUN_ARGS) \
 	  svr2_buildenv
 
-enclave_release: docker_enclave_releaser
-	docker buildx build $(DOCKER_BUILD_ARGS) --load -f docker/Dockerfile -t svr2_nsmrun --target=nsmrun .
+docker/build/nsmrun.tar: docker_enclave
+	mkdir -p docker/build
+	docker run --rm \
+		-v $${PWD}:/workspace \
+		gcr.io/kaniko-project/executor@sha256:7914350eda14b43f3dcc6925afca88d6b7ba5dff13d221bb70ef44d4da73a1e8 \
+		--dockerfile /workspace/docker/Dockerfile --context dir:///workspace/ \
+		--reproducible --no-push --skip-unused-stages \
+		--destination svr2_nsmrun:latest \
+		--custom-platform linux/amd64 \
+		--tar-path /workspace/docker/build/nsmrun.tar \
+		--target nsmrun
+
+nsmrun: docker/build/nsmrun.tar
+	docker load < docker/build/nsmrun.tar
+
+enclave_release: docker_enclave_releaser nsmrun
 	docker buildx build $(DOCKER_BUILD_ARGS) --load -f docker/Dockerfile -t svr2_nsmeif --target=nsmeif .
 	docker buildx build $(DOCKER_BUILD_ARGS) --load -f docker/Dockerfile -t svr2_sgxrun --target=sgxrun .
 	docker run $(DOCKER_RUN_ARGS) --rm \
@@ -91,8 +112,4 @@ enclave_release: docker_enclave_releaser
 .PHONY: trustedimage
 trustedimage:
 	$(MAKE) -C trustedimage
-
-enclave_releaser: enclave host  # depends on 'host' so its tests will run
-	cp -vn enclave/build/enclave.signed "enclave/releases/sgx/default.$$(/opt/openenclave/bin/oesign dump -e enclave/build/enclave.signed | fgrep -i mrenclave | cut -d '=' -f2)"
-	cp -vn enclave/build/enclave.small "enclave/releases/sgx/small.$$(/opt/openenclave/bin/oesign dump -e enclave/build/enclave.small | fgrep -i mrenclave | cut -d '=' -f2)"
 
