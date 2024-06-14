@@ -88,6 +88,7 @@ enclave_release: docker_enclave_releaser
     svr2_nsmeif:latest
 	docker buildx build $(DOCKER_BUILD_ARGS) --load -f docker/Dockerfile -t svr2_nsmhost --target=nsmhost .
 
+.PHONY: trustedimage
 trustedimage:
 	$(MAKE) -C trustedimage
 
