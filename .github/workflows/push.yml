@@ -58,6 +58,14 @@ jobs:
         with:
           registry: "${{ vars.ECR_REGISTRY }}"
 
+      # https://github.com/actions/runner-images/issues/2840#issuecomment-790492173
+      - name: Clear some disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+
       - name: Build binaries
         run: |
           make docker_enclave_test
