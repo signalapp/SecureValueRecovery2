@@ -5,7 +5,7 @@ all: test build sign
 MAKEFILTER=| (grep --line-buffered -v '^make\[' || true)
 
 include Makefile.base
-.testdepends: $(shell find ./ -type f -wholename '*/tests/*.cc')
+.testdepends: $(shell find ./ -wholename '*/tests/*.cc' -o -wholename '*/tests')
 	$(QUIET) echo -e "GEN\t.testdepends"
 	$(QUIET) ./test_deps.sh $(QUIET_OUT)
 include .testdepends
