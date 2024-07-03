@@ -48,6 +48,10 @@ class Environment {
   // FlushAllLogsIfAble attempts to log everything that's been seen by
   // Log() up to a place where operators can see it.
   virtual void FlushAllLogsIfAble() const = 0;
+  virtual error::Error Metadata(
+      context::Context* ctx, EnvMetadataRequest req, EnvMetadataResponse* resp) const {
+    return error::Env_MetadataNotSupported;
+  }
 };
 
 extern std::unique_ptr<Environment> environment;

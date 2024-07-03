@@ -353,6 +353,16 @@ error::Error Core::HandleHostToEnclave(context::Context* ctx, const HostToEnclav
         ReplyWithError(ctx, tx, peer_manager_->MaybeConnectToPeer(ctx, peer_id));
       }
     } return error::OK;
+    case HostToEnclaveRequest::kEnvMetadata: {
+      EnclaveMessage* out = ctx->Protobuf<EnclaveMessage>();
+      auto resp = out->mutable_h2e_response();
+      resp->set_request_id(tx);
+      if (auto err = env::environment->Metadata(ctx, msg.env_metadata(), resp->mutable_env_metadata()); err == error::OK) {
+        sender::Send(ctx, *out);
+      } else {
+        ReplyWithError(ctx, tx, err);
+      }
+    } return error::OK;
     default:
       return error::General_Unimplemented;
   }

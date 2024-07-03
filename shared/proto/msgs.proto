@@ -56,6 +56,17 @@ message MetricsRequest {
   bool update_env_stats = 1;  // CPU usage scales with RAM used
 }
 
+enum EnvMetadataRequest {
+  ENV_METADATA_UNKNOWN = 0;
+  ENV_METADATA_TPM2_EVENTLOG = 1;
+}
+
+message EnvMetadataResponse {
+  oneof inner {
+    bytes tpm2_eventlog = 1;
+  }
+}
+
 message HostToEnclaveRequest {
   uint64 request_id = 1;
   oneof inner {
@@ -79,6 +90,7 @@ message HostToEnclaveRequest {
     bytes reset_peer_id = 19;
     minimums.MinimumLimits update_minimums = 20;
     bytes connect_peer_id = 21;
+    EnvMetadataRequest env_metadata = 22;
   }
 }
 
@@ -91,6 +103,7 @@ message HostToEnclaveResponse {
     ExistingClientReply existing_client_reply = 5;
     metrics.MetricsPB metrics_reply = 6;
     HashResponse hashes = 7;
+    EnvMetadataResponse env_metadata = 8;
   }
 }
 

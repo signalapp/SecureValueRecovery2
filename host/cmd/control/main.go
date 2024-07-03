@@ -56,6 +56,9 @@ var (
 			value         string
 			valueEncoding string
 		}
+		eventLog struct {
+			filename string
+		}
 	}
 	commands = map[string]*command{
 		"command": &command{
@@ -131,6 +134,15 @@ var (
 				fs := flag.NewFlagSet("updateMinimum", flag.ExitOnError)
 				fs.StringVar(&args.updateMinimum.key, "key", "", "Minimum key to update")
 				fs.StringVar(&args.updateMinimum.value, "value", "", "Minimum value to update, AS HEX")
+				return fs
+			}(),
+		},
+		"eventLog": &command{
+			f:           eventLog,
+			description: "Request eventlog from (GCPSNP) server",
+			fs: func() *flag.FlagSet {
+				fs := flag.NewFlagSet("eventLog", flag.ExitOnError)
+				fs.StringVar(&args.eventLog.filename, "filename", "/tmp/eventlog", "Filename to write eventlog to")
 				return fs
 			}(),
 		},
@@ -390,4 +402,23 @@ func updateMinimum(cc *client.ControlClient) error {
 		}},
 	})
 	return err
+}
+
+func eventLog(cc *client.ControlClient) error {
+	if resp, err := cc.Do(&pb.HostToEnclaveRequest{
+		Inner: &pb.HostToEnclaveRequest_EnvMetadata{EnvMetadata: pb.EnvMetadataRequest_ENV_METADATA_TPM2_EVENTLOG},
+	}); err != nil {
+		return fmt.Errorf("getting metadata: %w", err)
+	} else if s, ok := resp.Inner.(*pb.HostToEnclaveResponse_Status); ok {
+		return fmt.Errorf("failure: %w", s.Status)
+	} else if em, ok := resp.Inner.(*pb.HostToEnclaveResponse_EnvMetadata); !ok {
+		return fmt.Errorf("bad response type: %T", resp.Inner)
+	} else if elog, ok := em.EnvMetadata.Inner.(*pb.EnvMetadataResponse_Tpm2Eventlog); !ok {
+		return fmt.Errorf("bad inner type: %T", em.EnvMetadata.Inner)
+	} else if err := os.WriteFile(args.eventLog.filename, elog.Tpm2Eventlog, 0644); err != nil {
+		return fmt.Errorf("writing file %q: %w", args.eventLog.filename, err)
+	} else {
+		log.Printf("successfully wrote %d bytes to %q", len(elog.Tpm2Eventlog), args.eventLog.filename)
+	}
+	return nil
 }

@@ -152,7 +152,26 @@ class Environment : public ::svr2::env::socket::Environment {
     if (auto [elog, err] = fs::FileContents("/sys/kernel/security/tpm0/binary_bios_measurements"); err != error::OK) {
       LOG(ERROR) << "Unable to retrieve event log: " << err;
     } else {
-      LOG(INFO) << "Event log: " << util::Base64Encode(elog, util::B64STD, true);
+      // Split it up into pieces since our logging sometimes truncates large logs.
+      std::string b64 = util::Base64Encode(elog, util::B64STD, true);
+      for (size_t i = 0; i < b64.size(); i += 1024) {
+        LOG(INFO) << "Event log: " << b64.substr(i, 1024);
+      }
+    }
+  }
+
+  virtual error::Error Metadata(
+      context::Context* ctx,
+      EnvMetadataRequest req,
+      EnvMetadataResponse* resp) const {
+    switch (req) {
+    case ENV_METADATA_TPM2_EVENTLOG: {
+      auto [elog, err] = fs::FileContents("/sys/kernel/security/tpm0/binary_bios_measurements");
+      RETURN_IF_ERROR(err);
+      resp->set_tpm2_eventlog(elog);
+    } return error::OK;
+    default:
+      return error::Env_MetadataNotSupported;
     }
   }
 

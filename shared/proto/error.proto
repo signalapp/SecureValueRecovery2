@@ -78,6 +78,7 @@ enum Error {
   Env_ParseEvidence = 316;
   Env_ParseEndorsements = 317;
   Env_SerializeAttestationData = 318;
+  Env_MetadataNotSupported = 319;
 
   Peers_NS = 400;
   Peers_SendBeforeConnect = 401;
