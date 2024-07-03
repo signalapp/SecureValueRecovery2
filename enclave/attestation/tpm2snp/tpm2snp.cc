@@ -262,13 +262,21 @@ error::Error CheckRemotePCRs(context::Context* ctx, const attestation::tpm2::PCR
   // - https://wiki.archlinux.org/title/Trusted_Platform_Module
   // - https://uapi-group.org/specifications/specs/linux_tpm_pcr_registry/
   // Note: we verify UEFI by checking AKCert against MSFT root-of-trust, NOT by checking PCRs here.
+  //
+  // PCR[5] is interesting, in that it's sometimes nondeterministic due to ExitBootServices()
+  // failing, then being re-run and succeeding, each invocation of which produces some set
+  // of PCR[5] logs.  PCR[5] also contains config information passed to the boot loader (Grub)
+  // from the UEFI firmware, particularly the GUID partition table (GPT).  This would normally
+  // be security-relevant, but since our booting kernel hashes the root partition and Grub
+  // itself hashes all relevant files on the boot partition, changes to the GPT should be
+  // irrelevant.  For these reasons, we ignore PCR[5].
   for (size_t i : {
       // 0,  // Core system firmware executable code (UEFI)
       // 1,  // Core system firmware data/host platform configuration (serial/model #s)
       2,  // Extended/pluggable executable code (option ROMs on pluggable hardware)
       3,  // Extended/pluggable firmware data, set during UEFI boot select
       4,  // Boot loader and additional drivers, binaries and extensions loaded by boot loader
-      5,  // config to bootloaders, GPT partition table
+      // 5,  // config to bootloaders, GPT partition table, ExitBootServices() success/failure (may be nondeterministic)
       // 6,  // resume from S4/S5 power state events.  On Azure, this PCR contains the VM ID, a UUID, and is thus unique across all VMs.
       7,  // secure boot state, including PK/KEK/db, specific certificates used
       8,  // Kernel command line (grub and systemd-boot only)
