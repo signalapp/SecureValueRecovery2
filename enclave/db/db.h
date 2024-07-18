@@ -37,21 +37,74 @@ namespace svr2::db {
 //
 // Generally, the lifecycle of a request is:
 //   - the Request is received by one replica
+//   - if the client session's ClientState can, it generates a response and returns it immediately
 //   - that replica uses it to generate a Log
 //   - that Log is submitted to Raft for ordering and persistence
 //   - Raft commits the Log
-//   - the Log is then applied to the database via the Run method
-//   - the Run method generates a Response
-//   - on the replica that received the Request, the Response is returned to the client
+//   - the Log is then applied to the database via the Run method, creating an Effect
+//   - if there is a client session associated with that log, the Effect is converted to a Response and returned to the client
 class DB {
  public:
   DELETE_COPY_AND_ASSIGN(DB);
   DB() {}
   virtual ~DB() {}
 
+  // A Request is a protobuf received from a client.
   typedef google::protobuf::MessageLite Request;
+  // A Log is the protobuf that's added to the Raft log, generally encapsulating
+  // the Request and any additional generated state that must agree across all
+  // replicas (random numbers or timestamps that need to be generated, etc) to
+  // make the request deterministic.
   typedef google::protobuf::MessageLite Log;
+  // An Effect is the changes associated with a Log, and should at least encapsulate
+  // enough information to craft a response to the client.  It may also contain
+  // additional information utlizable by ClientState to serve potential subsequent
+  // client requests.
+  typedef google::protobuf::MessageLite Effect;
+  // A Response is the protobuf that's returned to the client that initiated the
+  // original Request.  This is the information that is able to leave the server.
   typedef google::protobuf::MessageLite Response;
+
+  // ClientState represents the state of a single client session.
+  // If a ClientState implementation utilizes its member variables
+  // in order to actually serve state, it should utilize locking to
+  // protect them.  While a well-behaved host process and client will
+  // only ever access a single client sequentially, a malicious host
+  // may attempt to corrupt state by accessing a single client in
+  // parallel.
+  class ClientState {
+   public:
+    ClientState(const std::string& authenticated_id) : authenticated_id_(authenticated_id) {}
+    virtual ~ClientState() {}
+    // ResponseFromRequest is called prior to a Request being translated into
+    // a Log and applied to the Raft database.  If a non-null response
+    // is returned from here, the Raft process is skipped and the response is
+    // immediately returned to the client.  The default implementation
+    // always returns null, thus always utilizing Raft.  An error returned
+    // here will kill this client.
+    virtual std::pair<const Response*, error::Error> ResponseFromRequest(context::Context* ctx, const Request& req) {
+      return std::make_pair(nullptr, error::OK);
+    }
+    // LogFromRequest is called if ResponseFromRequest returns null, and it
+    // returns a Raft log entry to be presented to Raft for application.
+    virtual std::pair<const Log*, error::Error> LogFromRequest (context::Context* ctx, const Request& req) = 0;
+    // ResponseFromEffect is called after a Request has been tranlated into
+    // a Log and applied to the Raft database.  Returning a null response from
+    // this function is erroneous.  The default implementation utilizes the
+    // Effect as a Response and returns it unchanged.
+    virtual const Response* ResponseFromEffect(context::Context* ctx, const Effect& effect) { return &effect; }
+
+    // authenticated_id returns the authenticated identifier associated
+    // with this client.
+    const std::string& authenticated_id() const { return authenticated_id_; }
+
+   private:
+    const std::string authenticated_id_;
+  };
+
+  // The GLOBAL_KEY is used for logs that have a global effect on the
+  // database, rather than an effect on a single row.
+  static const std::string GLOBAL_KEY;
 
   // Protocol encapsulates typing requests and responses for clients.
   class Protocol {
@@ -60,20 +113,16 @@ class DB {
     virtual Request* RequestPB(context::Context* ctx) const = 0;
     // LogPB creates a new log protobuf in the scope of `ctx`
     virtual Log* LogPB(context::Context* ctx) const = 0;
-    // Given a request, creates a log.  Note that this potentially std::move's
-    // the request into the log, so care should be taken to not use the request
-    // after calling LogPBFromRequest.
-    virtual std::pair<Log*, error::Error> LogPBFromRequest(
-        context::Context* ctx,
-        Request&& request,
-        const std::string& authenticated_id) const = 0;
     // LogKey returns the database key associated with the given request proto.
     virtual const std::string& LogKey(const Log& r) const = 0;
     // Validate that a log has the right shape, size, etc.
     virtual error::Error ValidateClientLog(const Log& log) const = 0;
     // Returns the maximum size of a database row when serialized.
     virtual size_t MaxRowSerializedSize() const = 0;
+    // NewDB returns a new database associated with this protocol.
     virtual std::unique_ptr<DB> NewDB(merkle::Tree* t) const = 0;
+    // Returns a new client state object associated with this database type.
+    virtual std::unique_ptr<ClientState> NewClientState(const std::string& authenticated_id) const = 0;
   };
   // P() returns a pointer to a _static_ Protocol object,
   // which will outlast the DB object.
@@ -88,7 +137,7 @@ class DB {
   // outputs from the Raft log are already validated.
   //
   // Output response is valid within the passed-in context.
-  virtual Response* Run(context::Context* ctx, const Log& log) = 0;
+  virtual Effect* Run(context::Context* ctx, const Log& log) = 0;
 
   // Get rows from this database in range (exclusive_start, ...], returning
   // no more than [size] rows.  If it returns <[size] rows, the end of the database

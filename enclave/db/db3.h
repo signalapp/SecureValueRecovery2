@@ -37,21 +37,30 @@ class DB3 : public DB {
   static const uint16_t MAX_ALLOWED_MAX_TRIES = 255;
   static const uint16_t MIN_ALLOWED_MAX_TRIES = 1;
 
+  class ClientState : public DB::ClientState {
+   public:
+    DELETE_COPY_AND_ASSIGN(ClientState);
+    ClientState(ClientState&& move) = default;
+    ClientState(const std::string& authenticated_id) : DB::ClientState(authenticated_id) {}
+    virtual ~ClientState() {}
+    // LogFromRequest is called if ResponseFromRequest returns null, and it
+    // returns a Raft log entry to be presented to Raft for application.
+    virtual std::pair<const Log*, error::Error> LogFromRequest (context::Context* ctx, const Request& req);
+   public_for_test:
+    static PrivateKey NewKey();
+  };
   // Protocol encapsulates typing requests and responses for clients.
   class Protocol : public DB::Protocol {
    public:
     virtual DB::Request* RequestPB(context::Context* ctx) const;
     virtual DB::Log* LogPB(context::Context* ctx) const;
-    virtual std::pair<Log*, error::Error> LogPBFromRequest(
-        context::Context* ctx,
-        Request&& request,
-        const std::string& authenticated_id) const;
     virtual const std::string& LogKey(const DB::Log& r) const;
     virtual error::Error ValidateClientLog(const DB::Log& log) const;
     virtual size_t MaxRowSerializedSize() const;
     virtual std::unique_ptr<DB> NewDB(merkle::Tree* t) const;
-   public_for_test:
-    static PrivateKey NewKey();
+    virtual std::unique_ptr<DB::ClientState> NewClientState(const std::string& authenticated_id) const {
+      return std::make_unique<ClientState>(authenticated_id);
+    }
   };
   // P() returns a pointer to a _static_ Protocol object,
   // which will outlast the DB object.

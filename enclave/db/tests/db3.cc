@@ -64,7 +64,7 @@ TEST_F(DB3Test, SingleBackupLifecycle) {
     auto b = log.mutable_req()->mutable_create();
     b->set_max_tries(3);
     b->set_blinded_element(blinded_element);
-    auto priv = DB3::Protocol::NewKey();
+    auto priv = DB3::ClientState::NewKey();
     log.set_create_privkey(util::ByteArrayToString(priv));
 
     auto resp = dynamic_cast<client::Response3*>(db.Run(&ctx, log));
@@ -119,7 +119,7 @@ TEST_F(DB3Test, Remove) {
     auto b = log.mutable_req()->mutable_create();
     b->set_max_tries(3);
     b->set_blinded_element(blinded_element);
-    auto priv = DB3::Protocol::NewKey();
+    auto priv = DB3::ClientState::NewKey();
     log.set_create_privkey(util::ByteArrayToString(priv));
 
     auto resp = dynamic_cast<client::Response3*>(db.Run(&ctx, log));
@@ -393,7 +393,7 @@ TEST_F(DB3Test, LoadRowsThenRecover) {
     auto b = log.mutable_req()->mutable_create();
     b->set_max_tries(3);
     b->set_blinded_element(blinded_element);
-    auto priv = DB3::Protocol::NewKey();
+    auto priv = DB3::ClientState::NewKey();
     log.set_create_privkey(util::ByteArrayToString(priv));
 
     auto resp = dynamic_cast<client::Response3*>(db.Run(&ctx, log));
@@ -440,7 +440,7 @@ TEST_F(DB3Test, LoadManyRows) {
   auto b = log.mutable_req()->mutable_create();
   b->set_max_tries(3);
   b->set_blinded_element(blinded_element);
-  auto priv = DB3::Protocol::NewKey();
+  auto priv = DB3::ClientState::NewKey();
   log.set_create_privkey(util::ByteArrayToString(priv));
   for (size_t i = 0; i <= 10000; i++) {
     if (i % 1000000 == 0) LOG(INFO) << i;
@@ -465,7 +465,7 @@ TEST_F(DB3Test, ReplicateManyRows) {
     auto b = log.mutable_req()->mutable_create();
     b->set_max_tries(3);
     b->set_blinded_element(blinded_element);
-    auto priv = DB3::Protocol::NewKey();
+    auto priv = DB3::ClientState::NewKey();
     log.set_create_privkey(util::ByteArrayToString(priv));
 
     auto resp = dynamic_cast<client::Response3*>(db.Run(&ctx, log));
@@ -503,7 +503,7 @@ TEST_F(DB3Test, KnownKey) {
     auto b = log.mutable_req()->mutable_create();
     b->set_max_tries(3);
     b->set_blinded_element(blinded_element);
-    auto priv = DB3::Protocol::NewKey();
+    auto priv = DB3::ClientState::NewKey();
     log.set_create_privkey(util::ByteArrayToString(priv));
 
     ASSERT_EQ(db3_protocol.ValidateClientLog(log), error::OK);
@@ -515,7 +515,7 @@ TEST_F(DB3Test, KnownKey) {
 
 TEST_F(DB3Test, BitFlipKey) {
   std::string blinded_element("\x46\x32\x3c\xfb\xf6\x3c\x3f\x7b\x59\xcb\x43\xba\x7b\x14\x2e\xae\x7b\x09\x02\xff\xc2\x20\x85\x90\x9b\x52\x74\xde\x9b\xce\xad\x72", 32);
-  auto priv = DB3::Protocol::NewKey();
+  auto priv = DB3::ClientState::NewKey();
   CHECK(priv.size() == DB3::SCALAR_SIZE);
   int failures = 0;
   // bytes
@@ -544,7 +544,7 @@ TEST_F(DB3Test, BitFlipKey) {
 
 TEST_F(DB3Test, BitFlipElement) {
   std::string blinded_element("\x46\x32\x3c\xfb\xf6\x3c\x3f\x7b\x59\xcb\x43\xba\x7b\x14\x2e\xae\x7b\x09\x02\xff\xc2\x20\x85\x90\x9b\x52\x74\xde\x9b\xce\xad\x72", 32);
-  auto priv = DB3::Protocol::NewKey();
+  auto priv = DB3::ClientState::NewKey();
   CHECK(priv.size() == DB3::SCALAR_SIZE);
   int failures = 0;
   // bytes

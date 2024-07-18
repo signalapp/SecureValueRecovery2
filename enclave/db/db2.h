@@ -28,18 +28,27 @@ class DB2 : public DB {
   DB2(merkle::Tree* t) : merkle_tree_(t) {}
   virtual ~DB2() {}
 
+  class ClientState : public DB::ClientState {
+   public:
+    DELETE_COPY_AND_ASSIGN(ClientState);
+    ClientState(ClientState&& move) = default;
+    ClientState(const std::string& authenticated_id) : DB::ClientState(authenticated_id) {}
+    virtual ~ClientState() {}
+    // LogFromRequest is called if ResponseFromRequest returns null, and it
+    // returns a Raft log entry to be presented to Raft for application.
+    virtual std::pair<const Log*, error::Error> LogFromRequest (context::Context* ctx, const Request& req);
+  };
   class Protocol : public DB::Protocol {
    public:
     virtual Request* RequestPB(context::Context* ctx) const;
     virtual Log* LogPB(context::Context* ctx) const;
-    virtual std::pair<Log*, error::Error> LogPBFromRequest(
-        context::Context* ctx,
-        Request&& request,
-        const std::string& authenticated_id) const;
     virtual const std::string& LogKey(const Log& r) const;
     virtual error::Error ValidateClientLog(const Log& log) const;
     virtual size_t MaxRowSerializedSize() const;
     virtual std::unique_ptr<DB> NewDB(merkle::Tree* t) const;
+    virtual std::unique_ptr<DB::ClientState> NewClientState(const std::string& authenticated_id) const {
+      return std::make_unique<ClientState>(authenticated_id);
+    }
   };
   virtual const DB::Protocol* P() const;
 

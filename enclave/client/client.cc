@@ -23,12 +23,13 @@ const NoiseProtocolId client_protocol = {
     .hybrid_id = 0,
 };
 
-Client::Client(const std::string& authenticated_id)
+Client::Client(
+    std::unique_ptr<db::DB::ClientState> cs)
     : hs_(noise::WrapHandshakeState(nullptr)),
       tx_(noise::WrapCipherState(nullptr)),
       rx_(noise::WrapCipherState(nullptr)),
       id_(id_gen.fetch_add(1)),
-      authenticated_id_(authenticated_id) {
+      cs_(std::move(cs)) {
 }
 
 Client::~Client() {
@@ -126,9 +127,11 @@ std::pair<std::string, error::Error> Client::EncryptResponse(context::Context* c
   return noise::Encrypt(tx_.get(), plaintext);
 }
 
-std::pair<Client*, error::Error> ClientManager::NewClient(context::Context* ctx, const std::string& authenticated_id) {
+std::pair<Client*, error::Error> ClientManager::NewClient(
+    context::Context* ctx,
+    std::unique_ptr<db::DB::ClientState> cs) {
   MEASURE_CPU(ctx, cpu_client_hs_start);
-  std::unique_ptr<Client> c(new Client(authenticated_id));
+  std::unique_ptr<Client> c(new Client(std::move(cs)));
   auto [dhstate, attestation] = ClientArgs(ctx);
   error::Error err = c->Init(dhstate, attestation);
   if (err != error::OK) {

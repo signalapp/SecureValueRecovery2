@@ -13,6 +13,7 @@ enum Error {
 
   General_NS = 100;
   General_Unimplemented = 101;
+  Generic_Unknown = 102;
 
   Core_NS = 200;
   Core_ConfigProtobufParse = 201;
@@ -166,6 +167,7 @@ enum Error {
   Client_TransactionCancelled = 712;
   Client_TransactionInvalid = 713;
   Client_AlreadyClosed = 714;
+  Client_ResponseFromEffect = 715;
 
   Config_NS = 800;
   Config_ElectionTicks = 801;

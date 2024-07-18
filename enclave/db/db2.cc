@@ -45,20 +45,19 @@ DB::Log* DB2::Protocol::LogPB(context::Context* ctx) const {
   return ctx->Protobuf<client::Log2>();
 }
 
-std::pair<DB::Log*, error::Error> DB2::Protocol::LogPBFromRequest(
-        context::Context* ctx,
-        Request&& request,
-        const std::string& authenticated_id) const {
-  auto r = dynamic_cast<client::Request*>(&request);
+std::pair<const DB::Log*, error::Error> DB2::ClientState::LogFromRequest(
+    context::Context* ctx,
+    const Request& request) {
+  auto r = dynamic_cast<const client::Request*>(&request);
   if (r == nullptr) {
     return std::make_pair(nullptr, COUNTED_ERROR(DB2_InvalidRequestType));
   }
   auto log = ctx->Protobuf<client::Log2>();
-  if (authenticated_id.size() != BACKUP_ID_SIZE) {
+  if (authenticated_id().size() != BACKUP_ID_SIZE) {
     return std::make_pair(nullptr, COUNTED_ERROR(DB2_ClientBackupIDSize));
   }
-  log->set_backup_id(authenticated_id);
-  *log->mutable_req() = std::move(*r);
+  log->set_backup_id(authenticated_id());
+  log->mutable_req()->MergeFrom(*r);
   return std::make_pair(log, error::OK);
 }
 

@@ -29,20 +29,19 @@ DB::Log* DB3::Protocol::LogPB(context::Context* ctx) const {
   return ctx->Protobuf<client::Log3>();
 }
 
-std::pair<DB::Log*, error::Error> DB3::Protocol::LogPBFromRequest(
+std::pair<const DB::Log*, error::Error> DB3::ClientState::LogFromRequest(
     context::Context* ctx,
-    Request&& request,
-    const std::string& authenticated_id) const {
-  auto r = dynamic_cast<client::Request3*>(&request);
+    const Request& request) {
+  auto r = dynamic_cast<const client::Request3*>(&request);
   if (r == nullptr) {
     return std::make_pair(nullptr, COUNTED_ERROR(DB3_RequestInvalid));
   }
-  if (authenticated_id.size() != BACKUP_ID_SIZE) {
+  if (authenticated_id().size() != BACKUP_ID_SIZE) {
     return std::make_pair(nullptr, COUNTED_ERROR(DB3_BackupIDSize));
   }
   auto log = ctx->Protobuf<client::Log3>();
-  log->set_backup_id(authenticated_id);
-  *log->mutable_req() = std::move(*r);
+  log->set_backup_id(authenticated_id());
+  log->mutable_req()->MergeFrom(*r);
   if (log->req().inner_case() == client::Request3::kCreate) {
     MEASURE_CPU(ctx, cpu_db3_new_keys);
     auto priv = NewKey();
@@ -252,7 +251,7 @@ std::pair<DB3::Element, error::Error> DB3::BlindEvaluate(
   return std::make_pair(out, error::OK);
 }
 
-DB3::PrivateKey DB3::Protocol::NewKey() {
+DB3::PrivateKey DB3::ClientState::NewKey() {
   PrivateKey priv{0};
   crypto_core_ristretto255_scalar_random(priv.data());
   return priv;

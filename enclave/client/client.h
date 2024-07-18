@@ -13,6 +13,7 @@
 #include "util/endian.h"
 #include "util/mutex.h"
 #include "context/context.h"
+#include "db/db.h"
 
 namespace svr2::client {
 
@@ -39,11 +40,11 @@ class Client {
   error::Error DecryptRequest(context::Context* ctx, const std::string& data, google::protobuf::MessageLite* request) EXCLUDES(mu_);
   std::pair<std::string, error::Error> EncryptResponse(context::Context* ctx, const google::protobuf::MessageLite& response) EXCLUDES(mu_);
 
-  const std::string& authenticated_id() const { return authenticated_id_; }
+  db::DB::ClientState* State() { return cs_.get(); }
 
  private:
   ~Client();
-  explicit Client(const std::string& authenticated_id);
+  explicit Client(std::unique_ptr<db::DB::ClientState> cs);
   error::Error Init(const noise::DHState& dhstate, const e2e::Attestation& attestation) EXCLUDES(mu_);
   friend class ClientManager;
   friend std::unique_ptr<Client>::deleter_type;
@@ -54,7 +55,7 @@ class Client {
   noise::CipherState tx_ GUARDED_BY(mu_);
   noise::CipherState rx_ GUARDED_BY(mu_);
   const size_t id_;
-  const std::string authenticated_id_;
+  std::unique_ptr<db::DB::ClientState> cs_;
 };
 
 class ClientManager {
@@ -64,7 +65,9 @@ class ClientManager {
   error::Error RotateKeyAndRefreshAttestation(context::Context* ctx, const enclaveconfig::RaftGroupConfig& config) EXCLUDES(mu_);
   static noise::DHState NewDHState();
 
-  std::pair<Client*, error::Error> NewClient(context::Context* ctx, const std::string& authenticated_id) EXCLUDES(mu_);
+  std::pair<Client*, error::Error> NewClient(
+      context::Context* ctx,
+      std::unique_ptr<db::DB::ClientState> cs) EXCLUDES(mu_);
   Client* GetClient(context::Context* ctx, ClientID id) const EXCLUDES(mu_);
   // Deallocate and remove a client by its ID.
   // Client pointers are owned by the ClientManager and can only be deallocated
@@ -79,7 +82,6 @@ class ClientManager {
   noise::DHState dhstate_ GUARDED_BY(mu_);
   e2e::Attestation attestation_ GUARDED_BY(mu_);
   std::unordered_map<ClientID, std::unique_ptr<Client>> clients_ GUARDED_BY(mu_);
-
 };
 
 }  // namespace svr2::client

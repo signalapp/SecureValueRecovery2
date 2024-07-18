@@ -208,10 +208,10 @@ class Core {
           raft::TermId term,
           const minimums::MinimumLimits& minimums) REQUIRES(raft_.mu);
       // Attempt to apply the committed log entry to the db::DB.  On success,
-      // return a db::DB::Response (owned by [ctx]).  On failure, return
+      // return a db::DB::Effect (owned by [ctx]).  On failure, return
       // nullptr.  Regardless, [committed_entry] is considered to be successfully
       // committed to the database after this call.
-      db::DB::Response* RaftApplyLogToDatabase(
+      db::DB::Effect* RaftApplyLogToDatabase(
           context::Context* ctx,
           raft::LogIdx idx,
           const raft::LogEntry& committed_entry) REQUIRES(raft_.mu);
@@ -223,7 +223,7 @@ class Core {
           raft::LogIdx idx,
           const raft::LogEntry& entry,
           // response may be null in the case where we failed to parse it from the Raft log.
-          const db::DB::Response* response) REQUIRES(raft_.mu);
+          const db::DB::Effect* response) REQUIRES(raft_.mu);
 
   // Send a local timestamp to remote peer `to`.
   void SendTimestamp(context::Context* ctx, peerid::PeerID to, uint64_t unix_seconds);
@@ -265,9 +265,9 @@ class Core {
       error::Error,
       // The committed log entry.  Null if err!=OK.
       const raft::LogEntry* entry,
-      // If this log was a client request, the associated client response.
+      // If this log was a client request, the associated client-visible database effect.
       // Null if err!=OK.
-      const db::DB::Response* response)> LogTransactionCallback;
+      const db::DB::Effect* effect)> LogTransactionCallback;
   // When we submit a transaction to the log, we get back the idx/term
   // at which it should be committed.  Later, we see that LogIdx go by, and
   // if the term matches, we're in business and can execute the transaction.

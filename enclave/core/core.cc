@@ -369,7 +369,8 @@ error::Error Core::HandleHostToEnclave(context::Context* ctx, const HostToEnclav
 }
 
 void Core::HandleNewClient(context::Context* ctx, const NewClientRequest& msg, internal::TransactionID tx) {
-  auto [client, err] = client_manager_->NewClient(ctx, msg.client_authenticated_id());
+  auto [client, err] = client_manager_->NewClient(
+      ctx, db_protocol_->NewClientState(msg.client_authenticated_id()));
   if (err != error::OK) {
     ReplyWithError(ctx, tx, err);
     COUNTER(core, new_client_failure)->Increment();
@@ -403,7 +404,30 @@ error::Error Core::HandleExistingClient(context::Context* ctx, const ExistingCli
   }
   auto request = db_protocol_->RequestPB(ctx);
   RETURN_IF_ERROR(c->DecryptRequest(ctx, msg.data(), request));
-  auto [log, err] = db_protocol_->LogPBFromRequest(ctx, std::move(*request), c->authenticated_id());
+
+  // See if the client state can handle the request itself, without
+  // doing a Raft log request.
+  if (auto [resp, err] = c->State()->ResponseFromRequest(ctx, *request); err != error::OK) {
+    COUNTER(core, client_transaction_clientstate_error)->Increment();
+    return err;
+  } else if (resp != nullptr) {
+    auto [ciphertext, encrypt_err] = c->EncryptResponse(ctx, *resp);
+    if (encrypt_err != error::OK) {
+      COUNTER(core, client_transaction_clientstate_encrypterr)->Increment();
+      return encrypt_err;
+    }
+
+    COUNTER(core, client_transaction_clientstate_success)->Increment();
+    auto enclave_msg = ctx->Protobuf<EnclaveMessage>();
+    auto resp = enclave_msg->mutable_h2e_response();
+    resp->set_request_id(tx);
+    auto existing_client = resp->mutable_existing_client_reply();
+    *existing_client->mutable_data() = std::move(ciphertext);
+    sender::Send(ctx, *enclave_msg);
+    return error::OK;
+  }
+
+  auto [log, err] = c->State()->LogFromRequest(ctx, *request);
   RETURN_IF_ERROR(err);
   RETURN_IF_ERROR(db_protocol_->ValidateClientLog(*log));
   std::string serialized;
@@ -666,7 +690,7 @@ void Core::RaftRequestMembership(context::Context* ctx, internal::TransactionID 
               context::Context* ctx,
               error::Error err,
               const raft::LogEntry* entry,
-              const db::DB::Response* response) {
+              const db::DB::Effect* effect) {
             // HandleRaftMembershipChange does the actual state changes, this
             // just tells our requester that we've succeeded.
             if (err == error::OK) {
@@ -739,7 +763,8 @@ error::Error Core::HandleHostDatabaseRequest(context::Context* ctx, internal::Tr
   if (!cli_req->ParseFromString(req.request())) {
     return COUNTED_ERROR(Core_DeserializeHostDatabaseRequest);
   }
-  auto [log, err] = db_protocol_->LogPBFromRequest(ctx, std::move(*cli_req), req.authenticated_id());
+  auto client_state = db_protocol_->NewClientState(req.authenticated_id());
+  auto [log, err] = client_state->LogFromRequest(ctx, *cli_req);
   RETURN_IF_ERROR(err);
   std::string serialized;
   if (!log->SerializeToString(&serialized)) {
@@ -751,7 +776,7 @@ error::Error Core::HandleHostDatabaseRequest(context::Context* ctx, internal::Tr
       context::Context* ctx,
       error::Error err,
       const raft::LogEntry* entry,
-      const db::DB::Response* resp) {
+      const db::DB::Effect* effect) {
     if (err == error::OK) {
       COUNTER(core, host_delete_success)->Increment();
     } else {
@@ -797,7 +822,7 @@ void Core::HandleRelinquishLeadership(context::Context* ctx, internal::Transacti
       context::Context* ctx,
       error::Error err,
       const raft::LogEntry* entry,
-      const db::DB::Response* resp) {
+      const db::DB::Effect* effect) {
     ReplyWithError(ctx, tx, err);
   });
   RaftStep(ctx);
@@ -864,7 +889,7 @@ void Core::HandleUpdateMinimums(context::Context* ctx, internal::TransactionID t
       context::Context* ctx,
       error::Error err,
       const raft::LogEntry* entry,
-      const db::DB::Response* response) {
+      const db::DB::Effect* effect) {
     LOG(INFO) << "Minimums update returned: " << err;
     ReplyWithError(ctx, tx, err);
   }); err != error::OK) {
@@ -1346,7 +1371,8 @@ error::Error Core::MaybeApplyLogToReplicatingDatabase(context::Context* ctx, con
   if (!clog->ParseFromString(entry.data())) {
     return COUNTED_ERROR(Core_ReplicatedLogSerialization);
   }
-  if (raft_.loading.lexigraphically_largest_row_loaded_into_db < db_protocol_->LogKey(*clog)) {
+  auto key = db_protocol_->LogKey(*clog);
+  if (raft_.loading.lexigraphically_largest_row_loaded_into_db < key && key != db::DB::GLOBAL_KEY) {
     return error::OK;
   }
   RETURN_IF_ERROR(db_protocol_->ValidateClientLog(*clog));
@@ -1471,7 +1497,7 @@ error::Error Core::HandlePeerRequestedRaftRemoval(context::Context* ctx, const p
       context::Context* ctx,
       error::Error err,
       const raft::LogEntry* entry,
-      const db::DB::Response* resp) {
+      const db::DB::Effect* effect) {
     SendE2EError(ctx, f, tx, err);
   });
   RaftStep(ctx);
@@ -1528,37 +1554,42 @@ Core::LogTransactionCallback Core::ClientLogTransaction(context::Context* ctx, c
       context::Context* ctx,
       error::Error err,
       const raft::LogEntry* entry,
-      const db::DB::Response* response) {
+      const db::DB::Effect* effect) {
+    const char* err2log = "unknown";
+    metrics::Counter* errctr = nullptr;
+    error::Error err2return = error::Generic_Unknown;
     if (err == error::Core_LogTransactionCancelled) {
-      COUNTER(core, client_transaction_cancelled)->Increment();
-      LOG(VERBOSE) << "- client " << client_id << " - cancelled";
-      ReplyWithError(ctx, tx, COUNTED_ERROR(Client_TransactionCancelled));
-      client_manager_->RemoveClient(ctx, client_id);
+      err2log = "cancelled";
+      errctr = COUNTER(core, client_transaction_cancelled);
+      err2return = COUNTED_ERROR(Client_TransactionCancelled);
     } else if (err != error::OK) {
-      COUNTER(core, client_transaction_error)->Increment();
-      LOG(VERBOSE) << "- client " << client_id << " - error";
-      ReplyWithError(ctx, tx, err);
-      client_manager_->RemoveClient(ctx, client_id);
-    } else if (response == nullptr) {
-      COUNTER(core, client_transaction_invalid)->Increment();
-      LOG(VERBOSE) << "- client " << client_id << " - invalid";
-      ReplyWithError(ctx, tx, COUNTED_ERROR(Client_TransactionInvalid));
-      client_manager_->RemoveClient(ctx, client_id);
+      err2log = "error";
+      errctr = COUNTER(core, client_transaction_error);
+      err2return = err;
+    } else if (effect == nullptr) {
+      err2log = "invalid";
+      errctr = COUNTER(core, client_transaction_invalid);
+      err2return = COUNTED_ERROR(Client_TransactionInvalid);
     } else if (
         client::Client* client = client_manager_->GetClient(ctx, client_id);
         client == nullptr) {
-      COUNTER(core, client_transaction_dne)->Increment();
-      LOG(VERBOSE) << "- client " << client_id << " - does_not_exist";
-      ReplyWithError(ctx, tx, COUNTED_ERROR(Client_AlreadyClosed));
-      client_manager_->RemoveClient(ctx, client_id);
+      err2log = "does_not_exist";
+      errctr = COUNTER(core, client_transaction_dne);
+      err2return = COUNTED_ERROR(Client_AlreadyClosed);
+    } else if (
+        auto response = client->State()->ResponseFromEffect(ctx, *effect);
+        response == nullptr) {
+      err2log = "effect2response";
+      errctr = COUNTER(core, client_transaction_effect2response);
+      err2return = COUNTED_ERROR(Client_ResponseFromEffect);
     } else if (
         auto [ciphertext, encrypt_err] = client->EncryptResponse(ctx, *response);
         encrypt_err != error::OK) {
-      COUNTER(core, client_transaction_encrypterr)->Increment();
-      LOG(VERBOSE) << "- client " << client_id << " - encrypt_fail:" << encrypt_err;
-      ReplyWithError(ctx, tx, encrypt_err);
-      client_manager_->RemoveClient(ctx, client_id);
+      err2log = "encrypt_fail";
+      errctr = COUNTER(core, client_transaction_encrypterr);
+      err2return = encrypt_err;
     } else {
+      // SUCCESS!
       COUNTER(core, client_transaction_success)->Increment();
       LOG(VERBOSE) << "- client " << client_id << " - success";
       auto enclave_msg = ctx->Protobuf<EnclaveMessage>();
@@ -1567,7 +1598,12 @@ Core::LogTransactionCallback Core::ClientLogTransaction(context::Context* ctx, c
       auto existing_client = resp->mutable_existing_client_reply();
       *existing_client->mutable_data() = std::move(ciphertext);
       sender::Send(ctx, *enclave_msg);
+      return;
     }
+    errctr->Increment();
+    LOG(VERBOSE) << "- client " << client_id << " - " << err2log;
+    ReplyWithError(ctx, tx, err2return);
+    client_manager_->RemoveClient(ctx, client_id);
   };
 }
 
@@ -1695,13 +1731,13 @@ void Core::RaftHandleCommittedLogs(context::Context* ctx) {
     raft_.loaded.UpdateLastAppliedLog(ctx, idx);
     LOG(VERBOSE) << "at db_last_applied_log " << idx;
     GAUGE(core, last_index_applied_to_db)->Set(idx);
-    db::DB::Response* response = nullptr;
+    db::DB::Effect* effect = nullptr;
     switch (entry.inner_case()) {
       case raft::LogEntry::kMembershipChange: {
         HandleRaftMembershipChange(ctx, idx, entry.term(), entry.membership_change());
       } break;
       case raft::LogEntry::kData: {
-        response = RaftApplyLogToDatabase(ctx, idx, entry);
+        effect = RaftApplyLogToDatabase(ctx, idx, entry);
       } break;
       case raft::LogEntry::kMinimums: {
         minimums::MinimumLimits mins;
@@ -1712,8 +1748,8 @@ void Core::RaftHandleCommittedLogs(context::Context* ctx) {
       } break;
     }
     // Unless this log contained a valid client transaction,
-    // [response] will be null at this point.
-    HandleLogTransactionsForRaftLog(ctx, idx, entry, response);
+    // [effect] will be null at this point.
+    HandleLogTransactionsForRaftLog(ctx, idx, entry, effect);
     COUNTER(core, raft_log_applied)->Increment();
   }
 }
@@ -1761,7 +1797,7 @@ void Core::HandleRaftMinimumsChange(
   peer_manager_->MinimumsUpdated(ctx);
 }
 
-db::DB::Response* Core::RaftApplyLogToDatabase(
+db::DB::Effect* Core::RaftApplyLogToDatabase(
     context::Context* ctx,
     raft::LogIdx idx,
     const raft::LogEntry& committed_entry) {
