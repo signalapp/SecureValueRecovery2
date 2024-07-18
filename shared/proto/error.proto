@@ -323,4 +323,11 @@ enum Error {
   FS_TmpDirAlreadyInitiated = 2301;
   FS_Mkdir = 2302;
   FS_OpenFile = 2303;
+
+  DB4_NS = 2400;
+  DB4_BackupIDSize = 2401;
+  DB4_ToplevelRequestType = 2402;
+  DB4_RequestInvalid = 2403;
+  DB4_LogRequestType = 2404;
+  DB4_Restore2StateMissing = 2405;
 };

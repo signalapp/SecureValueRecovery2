@@ -103,7 +103,7 @@ size_t DB3::Protocol::MaxRowSerializedSize() const {
       PROTOBUF_SMALL_INT;                                // tries
 }
 
-DB::Response* DB3::Run(context::Context* ctx, const DB::Log& log_pb) {
+DB::Effect* DB3::Run(context::Context* ctx, const DB::Log& log_pb) {
   MEASURE_CPU(ctx, cpu_db_client_request);
   CHECK(P()->ValidateClientLog(log_pb) == error::OK);
   auto log = dynamic_cast<const client::Log3*>(&log_pb);

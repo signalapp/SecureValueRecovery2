@@ -94,6 +94,12 @@ CREATE_COUNTER(db3, ops_evaluate, ops, ({{"type", "evaluate"}}))
 CREATE_COUNTER(db3, ops_remove, ops, ({{"type", "remove"}}))
 CREATE_COUNTER(db3, ops_query, ops, ({{"type", "query"}}))
 
+CREATE_COUNTER(db4, ops_create, ops, ({{"type", "create"}}))
+CREATE_COUNTER(db4, ops_restore1, ops, ({{"type", "restore1"}}))
+CREATE_COUNTER(db4, ops_restore2, ops, ({{"type", "restore2"}}))
+CREATE_COUNTER(db4, ops_remove, ops, ({{"type", "remove"}}))
+CREATE_COUNTER(db4, ops_query, ops, ({{"type", "query"}}))
+
 CREATE_COUNTER(merkle, nodes, nodes, ({}))
 CREATE_COUNTER(merkle, leaves, leaves, ({}))
 

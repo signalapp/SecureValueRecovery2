@@ -8,6 +8,7 @@ option optimize_for = LITE_RUNTIME;
 
 import "client.proto";
 import "client3.proto";
+import "client4.proto";
 
 // Log2 is the logged message used by the SVR2 (db2) database.
 message Log2 {
@@ -22,4 +23,17 @@ message Log3 {
   // If req.create(), then we need to generate new keys.
   // These fields will be filled in with the generated keys.
   bytes create_privkey = 3;
+}
+
+// Log4 is the logged message used by the SVR4 (db4) database.
+message Log4 {
+  bytes backup_id = 1;
+  client.Request4 req = 2;
+}
+
+// Effect4 is the effect of applying a Log4 on a SVR4 (db4) database.
+message Effect4 {
+  client.Response4 resp = 1;
+  message Restore2State {}
+  Restore2State restore2_client_state = 2;
 }

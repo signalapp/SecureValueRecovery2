@@ -59,7 +59,7 @@ class DB2 : public DB {
   // outputs from the Raft log are already validated.
   //
   // Output response is valid within the passed-in context.
-  virtual Response* Run(context::Context* ctx, const Log& request);
+  virtual Effect* Run(context::Context* ctx, const Log& request);
 
   // Limits on sizes/etc for validation.
   static const size_t BACKUP_ID_SIZE = 16;

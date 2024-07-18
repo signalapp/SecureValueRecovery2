@@ -109,7 +109,7 @@ const DB::Protocol* DB2::P() const {
   return &db2_protocol;
 }
 
-DB::Response* DB2::Run(context::Context* ctx, const DB::Log& log_pb) {
+DB::Effect* DB2::Run(context::Context* ctx, const DB::Log& log_pb) {
   // We CHECK here because this should have already been validated when it
   // was added to the Raft log.
   MEASURE_CPU(ctx, cpu_db_client_request);
