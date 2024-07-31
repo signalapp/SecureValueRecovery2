@@ -5,6 +5,7 @@ env:
   DOCKER_BUILD_ARGS: --cache-from type=gha --cache-to type=gha
   DOCKER_BUILDKIT: 1
   BUILDX_CONTAINER: container
+  V: 1
 
 jobs:
   test:
