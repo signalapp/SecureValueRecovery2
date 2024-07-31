@@ -28,9 +28,10 @@ class DB4 : public DB {
   virtual ~DB4() {}
 
   static const uint16_t MAX_ALLOWED_MAX_TRIES = 255;
-  static const uint16_t MIN_ALLOWED_MAX_TRIES = 1;
-  static const size_t BACKUP_ID_SIZE = 16;
-  typedef std::array<uint8_t, BACKUP_ID_SIZE> BackupID;
+  typedef std::array<uint8_t, 16> BackupID;
+  typedef std::array<uint8_t, crypto_scalarmult_ristretto255_SCALARBYTES> RistrettoScalar;
+  typedef std::array<uint8_t, crypto_scalarmult_ristretto255_BYTES> RistrettoPoint;
+  typedef std::array<uint8_t, 32> AESKey;
 
   class ClientState : public DB::ClientState {
    public:
@@ -106,6 +107,16 @@ class DB4 : public DB {
   merkle::Tree* merkle_tree_;
   struct Row {
     Row(merkle::Tree* t);
+    RistrettoPoint auth_commitment;
+    RistrettoScalar oprf_secretshare;
+    AESKey encryption_secretshare;
+    RistrettoScalar zero_secretshare;
+
+    // Delta
+    RistrettoScalar oprf_secretshare_delta;
+    AESKey encryption_secretshare_delta;
+    uint8_t has_delta;
+
     uint8_t tries;
     merkle::Leaf merkle_leaf_;
   };

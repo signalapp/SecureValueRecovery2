@@ -22,13 +22,19 @@ std::string ByteArrayToString(const std::array<uint8_t, N>& bytes) {
 }
 
 template<size_t N>
+error::Error StringIntoByteArray(const std::string& str, std::array<uint8_t, N>* result) {
+  if (str.size() > N) {
+    return error::Util_ArrayCopyTooBig;
+  }
+  std::copy(str.begin(), str.end(), result->begin());
+  return error::OK;
+}
+
+template<size_t N>
 std::pair<std::array<uint8_t, N>, error::Error> StringToByteArray(const std::string& str) {
   std::array<uint8_t, N> result{0};
-  if (str.size() > N) {
-    return std::make_pair(result, error::Util_ArrayCopyTooBig);
-  }
-  std::copy(str.begin(), str.end(), result.begin());
-  return std::make_pair(result, error::OK);
+  error::Error err = StringIntoByteArray(str, &result);
+  return std::make_pair(result, err);
 }
 
 std::string ByteVectorToString(const std::vector<uint8_t>& bytes);

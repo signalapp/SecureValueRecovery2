@@ -36,17 +36,15 @@ std::pair<const DB::Log*, error::Error> DB4::ClientState::LogFromRequest(
   if (r == nullptr) {
     return std::make_pair(nullptr, COUNTED_ERROR(DB4_RequestInvalid));
   }
-  if (authenticated_id().size() != BACKUP_ID_SIZE) {
+  if (authenticated_id().size() != sizeof(BackupID)) {
     return std::make_pair(nullptr, COUNTED_ERROR(DB4_BackupIDSize));
   }
   switch (r->inner_case()) {
     case client::Request4::kCreate:
-      break;
     case client::Request4::kRestore1:
-      break;
     case client::Request4::kRemove:
-      break;
     case client::Request4::kQuery:
+      // error checked in ValidateClientLog.
       break;
     default:
       return std::make_pair(nullptr, COUNTED_ERROR(DB4_LogRequestType));
@@ -72,6 +70,9 @@ std::pair<const DB::Response*, error::Error> DB4::ClientState::ResponseFromReque
     restore2_client_state = std::move(restore2_);
   }
   if (r->inner_case() != client::Request4::kRestore2) {
+    // Only Restore2 is handled within this function; all other
+    // operations are handled by ResponseFromEffect.  Returning
+    // (null, OK) here signals that we should continue on to that.
     return std::make_pair(nullptr, error::OK);
   }
   if (!restore2_client_state) {
@@ -106,16 +107,24 @@ const std::string& DB4::Protocol::LogKey(const DB::Log& req) const {
 error::Error DB4::Protocol::ValidateClientLog(const DB::Log& log_pb) const {
   auto log = dynamic_cast<const client::Log4*>(&log_pb);
   if (log == nullptr) { return COUNTED_ERROR(DB4_RequestInvalid); }
-  if (log->backup_id().size() != BACKUP_ID_SIZE) { return COUNTED_ERROR(DB4_BackupIDSize); }
+  if (log->backup_id().size() != sizeof(BackupID)) { return COUNTED_ERROR(DB4_BackupIDSize); }
   switch (log->req().inner_case()) {
-    case client::Request4::kCreate:
-      break;
+    case client::Request4::kCreate: {
+      const auto& req = log->req().create();
+      if (req.max_tries() > MAX_ALLOWED_MAX_TRIES ||
+          req.oprf_secretshare().size() != sizeof(RistrettoScalar) ||
+          req.auth_commitment().size() != sizeof(RistrettoPoint) ||
+          req.encryption_secretshare().size() != sizeof(AESKey) ||
+          req.zero_secretshare().size() != sizeof(RistrettoScalar)) {
+        return COUNTED_ERROR(DB4_RequestInvalid);
+      }
+    } break;
     case client::Request4::kRestore1:
-      break;
+      return COUNTED_ERROR(General_Unimplemented);
     case client::Request4::kRemove:
-      break;
+      return COUNTED_ERROR(General_Unimplemented);
     case client::Request4::kQuery: 
-      break;
+      return COUNTED_ERROR(General_Unimplemented);
     default:
       return COUNTED_ERROR(DB4_ToplevelRequestType);
   }
@@ -131,8 +140,18 @@ const DB::Protocol* DB4::P() const {
 }
 
 size_t DB4::Protocol::MaxRowSerializedSize() const {
-  // TODO: update this as row is updated
-  return BACKUP_ID_SIZE;
+  const size_t PROTOBUF_SMALL_STRING_EXTRA = 2;  // additional bytes for serializing string
+  const size_t PROTOBUF_SMALL_INT = 2;           // bytes for serializing a small integer
+  static const DB4::Row* row = nullptr;
+  return sizeof(BackupID) + PROTOBUF_SMALL_STRING_EXTRA +
+         PROTOBUF_SMALL_INT +  // tries
+         sizeof(row->auth_commitment) + PROTOBUF_SMALL_STRING_EXTRA +
+         sizeof(row->oprf_secretshare) + PROTOBUF_SMALL_STRING_EXTRA +
+         sizeof(row->encryption_secretshare) + PROTOBUF_SMALL_STRING_EXTRA +
+         sizeof(row->zero_secretshare) + PROTOBUF_SMALL_STRING_EXTRA +
+         sizeof(row->oprf_secretshare_delta) + PROTOBUF_SMALL_STRING_EXTRA +
+         sizeof(row->encryption_secretshare_delta) + PROTOBUF_SMALL_STRING_EXTRA +
+         0;
 }
 
 DB::Effect* DB4::Run(context::Context* ctx, const DB::Log& log_pb) {
@@ -141,7 +160,7 @@ DB::Effect* DB4::Run(context::Context* ctx, const DB::Log& log_pb) {
   auto log = dynamic_cast<const client::Log4*>(&log_pb);
   CHECK(log != nullptr);
   auto out = ctx->Protobuf<client::Effect4>();
-  auto [id, err] = util::StringToByteArray<BACKUP_ID_SIZE>(log->backup_id());
+  auto [id, err] = util::StringToByteArray<sizeof(BackupID)>(log->backup_id());
   CHECK(err == error::OK);
   switch (log->req().inner_case()) {
     case client::Request4::kCreate: {
@@ -174,16 +193,42 @@ std::pair<std::string, error::Error> DB4::LoadRowsFromProtos(context::Context* c
   return std::make_pair("", error::General_Unimplemented);
 }
 
+
 std::array<uint8_t, 16> DB4::HashRow(const BackupID& id, const Row& row) {
-  // TODO: this
-  std::array<uint8_t, BACKUP_ID_SIZE> scratch = {0}; // id
+  std::array<uint8_t,
+      sizeof(BackupID) +
+      sizeof(row.auth_commitment) +
+      sizeof(row.oprf_secretshare) +
+      sizeof(row.encryption_secretshare) +
+      sizeof(row.zero_secretshare) +
+      1 +  // has_delta
+      sizeof(row.oprf_secretshare_delta) +
+      sizeof(row.encryption_secretshare_delta) +
+      1 +  // tries
+      0> scratch = {0};
   size_t offset = 0;
-  CHECK(id.size() == BACKUP_ID_SIZE);
-  memcpy(scratch.data() + offset, id.data(), id.size());  offset += BACKUP_ID_SIZE;
+
+#define FILL_SCRATCH(x) { \
+  CHECK(offset + sizeof(x) <= scratch.size()); \
+  memcpy(scratch.data() + offset, reinterpret_cast<const uint8_t*>(&x), sizeof(x)); \
+  offset += sizeof(x); \
+}
+  FILL_SCRATCH(id);
+  FILL_SCRATCH(row.auth_commitment);
+  FILL_SCRATCH(row.oprf_secretshare);
+  FILL_SCRATCH(row.encryption_secretshare);
+  FILL_SCRATCH(row.zero_secretshare);
+  FILL_SCRATCH(row.has_delta);
+  FILL_SCRATCH(row.oprf_secretshare_delta);
+  FILL_SCRATCH(row.encryption_secretshare_delta);
+  FILL_SCRATCH(row.tries);
+#undef FILL_SCRATCH
+
   CHECK(offset == scratch.size());
 
   return sip::FullZero.Hash16(scratch.data(), scratch.size());
 }
+
 
 std::array<uint8_t, 32> DB4::Hash(context::Context* ctx) const {
   MEASURE_CPU(ctx, cpu_db_hash);
@@ -208,12 +253,29 @@ void DB4::Create(
     client::Response4::Create* resp) {
   auto find = rows_.find(id);
   if (find == rows_.end()) {
+    if (req.max_tries() == 0) {
+      resp->set_status(client::Response4::Create::INVALID_REQUEST);
+      return;
+    }
     auto e = rows_.emplace(id, merkle_tree_);
     find = e.first;
     GAUGE(db, rows)->Set(rows_.size());
   }
   Row* r = &find->second;
-  r->tries = (uint8_t) req.max_tries();
+
+  // If max_tries is zero, use the previous tries rather than resetting.
+  if (req.max_tries()) {
+    r->tries = (uint8_t) req.max_tries();
+  }
+  CHECK(error::OK == util::StringIntoByteArray(req.auth_commitment(), &r->auth_commitment));
+  CHECK(error::OK == util::StringIntoByteArray(req.oprf_secretshare(), &r->oprf_secretshare));
+  CHECK(error::OK == util::StringIntoByteArray(req.encryption_secretshare(), &r->encryption_secretshare));
+  CHECK(error::OK == util::StringIntoByteArray(req.zero_secretshare(), &r->zero_secretshare));
+  // Reset any stored deltas.
+  memset(r->oprf_secretshare_delta.data(), 0, sizeof(r->oprf_secretshare_delta));
+  memset(r->encryption_secretshare_delta.data(), 0, sizeof(r->encryption_secretshare_delta));
+  r->has_delta = 0;
+
   r->merkle_leaf_.Update(merkle::HashFrom(HashRow(id, *r)));
   resp->set_status(client::Response4::Create::OK);
 }
@@ -274,6 +336,6 @@ void DB4::Query(
   resp->set_tries_remaining(row->tries);
 }
 
-DB4::Row::Row(merkle::Tree* t) : merkle_leaf_(t) {}
+DB4::Row::Row(merkle::Tree* t) : has_delta(0), tries(0), merkle_leaf_(t) {}
 
 }  // namespace svr2::db

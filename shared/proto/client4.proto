@@ -20,9 +20,10 @@ message Request4 {
 
   message Create {
     uint32 max_tries = 1;
-    bytes oprf_keyshare = 2;
-    bytes auth_commitment = 3;
-    bytes encryption_keyshare = 4;
+    bytes oprf_secretshare = 2;        // k_i^oprf
+    bytes auth_commitment = 3;         // clienteck^pk
+    bytes encryption_secretshare = 4;  // s_i
+    bytes zero_secretshare = 5;        // z_i
   }
   message Restore1 {
     bytes element = 1;

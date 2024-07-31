@@ -99,6 +99,18 @@ message DB3RowState {
   uint32 tries = 3;
 }
 
+message DB4RowState {
+  bytes backup_id = 1;
+  uint32 tries = 2;
+  bytes oprf_secretshare = 3;        // k_i^oprf
+  bytes auth_commitment = 4;         // clienteck^pk
+  bytes encryption_secretshare = 5;  // s_i
+  bytes zero_secretshare = 6;        // z_i
+  // These will be empty if there is no delta:
+  bytes oprf_secretshare_delta = 7;
+  bytes encryption_secretshare_delta = 8;
+}
+
 // --- Replication of State ---
 //
 // ReplicateStateRequest and ReplicateStatePush allow a new and not-yet-part-of-Raft
