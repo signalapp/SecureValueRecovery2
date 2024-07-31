@@ -48,7 +48,7 @@ generated: protos enclave/c/libsvr2.a
 
 validate: generated
 	go vet ./...
-	[ -z "$$(go fmt ./...)" ]
+	CHANGES="$$(go fmt ./...)" ; echo "Changes: $$CHANGES" && [ -z "$$CHANGES" ]
  
 clean:
 	rm -vfr enclave/c
