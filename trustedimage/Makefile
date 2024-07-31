@@ -8,18 +8,15 @@ build/dir:
 	mkdir -p build
 	touch build/dir
 
-build/%.json: %.json build/dir
-	sed 's/#.*//' $< > $@
-
-build/debian3.out: build/debian3.json build/debian2.out
+build/debian3.out: debian3.pkr.hcl build/debian1.out build/debian2.out
 	rm -rf $@
 	packer build $<
 
-build/debian2.out: build/debian2.json build/debian1.out debian2/* ../enclave/build/enclave.gcpsnp ../enclave/build/enclave.azuresnp ../host/main
+build/debian2.out: debian2.pkr.hcl build/debian1.out debian2/* ../enclave/build/enclave.gcpsnp ../enclave/build/enclave.azuresnp ../host/main
 	rm -rf $@
 	packer build $<
 
-build/debian1.out: build/debian1.json debian1/* build/dir
+build/debian1.out: debian1.pkr.hcl debian1/* build/dir
 	rm -rf $@
 	packer build $<
 
