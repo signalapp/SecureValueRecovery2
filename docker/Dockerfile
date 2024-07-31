@@ -114,10 +114,17 @@ RUN echo "export PS1='buildenv: \w$ '" >> /etc/bash.bashrc
 # Set this after `go install` so we don't use the same cache as root.
 ENV GOPATH="/src/.gopath"
 ENV GOCACHE="/src/.gocache"
+ENV CARGO_HOME="/src/.cargohome"
+ENV CARGO_TARGET_DIR="/src/.cargotarget"
 
 WORKDIR /src
 COPY --from=nsmbuild /build/target/release/libnsm.a /opt/nsm/libnsm.a
 COPY --from=nsmbuild /build/target/release/nsm.h    /opt/nsm/nsm.h
+
+ADD --checksum=sha256:ce552d6bf22a2544ea78647d98cb405d5089af58dbcaa4efea711bf8becd71c5 https://static.rust-lang.org/dist/rust-1.79.0-x86_64-unknown-linux-gnu.tar.xz /tmp/
+RUN apt-get install -y xz-utils && \
+    (cd /tmp && tar xJf /tmp/rust-1.79.0-x86_64-unknown-linux-gnu.tar.xz) && \
+    (cd /tmp/rust-1.79.0-x86_64-unknown-linux-gnu && ./install.sh)
 
 CMD ["/bin/bash"]
 

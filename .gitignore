@@ -1,6 +1,8 @@
 *.sw?
 .gocache
 .gopath
+.cargohome
+.cargotarget
 **/.devcontainer
 **/.vscode
 **/*.code-workspace

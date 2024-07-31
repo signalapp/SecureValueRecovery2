@@ -1,5 +1,7 @@
 .gopath
 .gocache
+.cargohome
+.cargotarget
 .git
 enclave/core.*
 docker/Dockerfile

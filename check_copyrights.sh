@@ -2,7 +2,7 @@
 
 OUT=0
 for pattern in '*.c' '*.cc' '*.h' '*.go' '*.proto' '*.sh' 'Makefile*'; do
-  for file in `find ./ -name $pattern -type f |
+  for file in `find ./ -name $pattern -type f | grep -v \\.cargo |
       grep -v -f <(cat .gitmodules |
       grep path |
       awk '{print $3}') |

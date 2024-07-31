@@ -15,8 +15,11 @@ enclave_binaries:
 
 # -count=1 forces this test to run un-cached, since enclave.test may have changed
 # even though Go code has not, and tests may depend on it.
-test: build enclave_binaries
+test: build enclave_binaries rustclient
 	go test $(GO_TEST_FLAGS) -count=1 ./...
+
+rustclient:
+	cd integration/rustclient && cargo build
 
 EDGER8R_FILES=enclave/c/svr2_u.c enclave/c/svr2_u.h enclave/c/svr2_args.h
 # This $(firstword) trick allows for grouped targets.

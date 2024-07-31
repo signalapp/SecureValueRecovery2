@@ -92,6 +92,18 @@ func TestIntegration(t *testing.T) {
 	restore(t, testClient(t, u, userName(9999)), pin)
 }
 
+func TestRustClient(t *testing.T) {
+	host := fmt.Sprintf("localhost:%v", port(clientType, 1))
+	u := url.URL{Scheme: "ws", Host: host, Path: "v1/enclave"}
+	cmd := exec.Command("./rustclient/target/debug/rustclient", u.String())
+	w := newPrefixWriter("RUSTCLIENT ", os.Stderr)
+	cmd.Stdout = w
+	cmd.Stderr = w
+	if err := cmd.Run(); err != nil {
+		t.Errorf("rustclient: %v", err)
+	}
+}
+
 func TestConcurrentClients(t *testing.T) {
 	host := fmt.Sprintf("localhost:%v", port(clientType, 1))
 	u := url.URL{Scheme: "ws", Host: host, Path: "v1/enclave"}
