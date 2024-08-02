@@ -34,6 +34,9 @@ message Log4 {
 // Effect4 is the effect of applying a Log4 on a SVR4 (db4) database.
 message Effect4 {
   client.Response4 resp = 1;
-  message Restore2State {}
+  message Restore2State {
+    bytes auth_commitment = 1;
+    bytes encryption_secretshare = 2;
+  }
   Restore2State restore2_client_state = 2;
 }

@@ -47,6 +47,13 @@ class DB4 : public DB {
     // in future Restore2 requests.
     virtual const Response* ResponseFromEffect(context::Context* ctx, const Effect& effect);
    private:
+    void Restore2(
+        context::Context* ctx,
+        const BackupID& id,
+        const client::Request4::Restore2& req,
+        const client::Effect4::Restore2State* state,
+        client::Response4::Restore2* resp) const;
+
     util::mutex mu_;
     std::unique_ptr<client::Effect4::Restore2State> restore2_ GUARDED_BY(mu_);
   };
@@ -133,7 +140,8 @@ class DB4 : public DB {
       context::Context* ctx,
       const BackupID& id,
       const client::Request4::Restore1& req,
-      client::Response4::Restore1* resp);
+      client::Response4::Restore1* resp,
+      client::Effect4::Restore2State* state);
   void Remove(
       context::Context* ctx,
       const BackupID& id,

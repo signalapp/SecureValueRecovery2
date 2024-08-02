@@ -26,10 +26,11 @@ message Request4 {
     bytes zero_secretshare = 5;        // z_i
   }
   message Restore1 {
-    bytes element = 1;
+    bytes blinded = 1;
   }
   message Restore2 {
-    bytes auth_proof = 1;
+    bytes auth_point = 1;   // R
+    bytes auth_scalar = 2;  // z
   }
   message Remove {
   }
@@ -75,10 +76,11 @@ message Response4 {
       OK = 1;
       MISSING = 2;
       INVALID_REQUEST = 3;
-      ERROR = 4;
+      RESTORE1_MISSING = 4;
+      ERROR = 5;
     }
     Status status = 1;
-    bytes oprf_keyshare = 2;
+    bytes encryption_secretshare = 2;
   }
 
   message Remove {

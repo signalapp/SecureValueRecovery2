@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <sodium/crypto_auth_hmacsha256.h>
+#include <sodium/crypto_hash_sha512.h>
 #include <sodium/crypto_core_ristretto255.h>
 
 #include "util/log.h"
@@ -18,6 +19,39 @@
 #include "sip/hasher.h"
 
 namespace svr2::db {
+
+namespace {
+
+template <class T>
+const uint8_t* U8(const T& p) {
+  return reinterpret_cast<const uint8_t*>(p.data());
+}
+
+template <class T>
+bool ValidRistrettoPoint(const T& p) {
+  if (p.size() != sizeof(DB4::RistrettoPoint)) {
+    return false;
+  }
+  return crypto_core_ristretto255_is_valid_point(U8(p));
+}
+
+template <class T>
+bool ValidRistrettoScalar(const T& s) {
+  if (s.size() != sizeof(DB4::RistrettoScalar)) {
+    return false;
+  }
+  // libsodium doesn't seem to have a "is this scalar already reduced"
+  // call, so we instead resort to reducing and checking equality.
+  auto data = U8(s);
+  uint8_t nonreduced[crypto_core_ristretto255_NONREDUCEDSCALARBYTES] = {0};
+  uint8_t reduced[sizeof(DB4::RistrettoScalar)] = {0};
+  // Bytes are stored little-endian, so copy into the front of nonreduced.
+  memcpy(nonreduced, data, sizeof(DB4::RistrettoScalar));
+  crypto_core_ristretto255_scalar_reduce(reduced, nonreduced);
+  return util::ConstantTimeEqualsBytes(data, reduced, sizeof(DB4::RistrettoScalar));
+}
+
+}  // namespace
 
 const DB4::Protocol db4_protocol;
 
@@ -69,16 +103,31 @@ std::pair<const DB::Response*, error::Error> DB4::ClientState::ResponseFromReque
     util::unique_lock lock(mu_);
     restore2_client_state = std::move(restore2_);
   }
-  if (r->inner_case() != client::Request4::kRestore2) {
-    // Only Restore2 is handled within this function; all other
-    // operations are handled by ResponseFromEffect.  Returning
-    // (null, OK) here signals that we should continue on to that.
-    return std::make_pair(nullptr, error::OK);
+  switch (r->inner_case()) {
+    case client::Request4::kRestore2: {
+      if (authenticated_id().size() != sizeof(BackupID)) {
+        return std::make_pair(nullptr, COUNTED_ERROR(DB4_BackupIDSize));
+      }
+      auto resp = ctx->Protobuf<client::Response4>();
+      auto r2 = resp->mutable_restore2();
+      if (!restore2_client_state) {
+        r2->set_status(client::Response4::Restore2::RESTORE1_MISSING);
+      } else if (!ValidRistrettoScalar(r->restore2().auth_scalar()) ||
+          !ValidRistrettoPoint(r->restore2().auth_point())) {
+        r2->set_status(client::Response4::Restore2::INVALID_REQUEST);
+      } else {
+        BackupID id;
+        CHECK(error::OK == util::StringIntoByteArray(authenticated_id(), &id));
+        Restore2(ctx, id, r->restore2(), restore2_client_state.get(), r2);
+      }
+      return std::make_pair(resp, error::OK);
+    }
+    default:
+      // Only Restore2 is handled within this function; all other
+      // operations are handled by ResponseFromEffect.  Returning
+      // (null, OK) here signals that we should continue on to that.
+      return std::make_pair(nullptr, error::OK);
   }
-  if (!restore2_client_state) {
-    return std::make_pair(nullptr, COUNTED_ERROR(DB4_Restore2StateMissing));
-  }
-  return std::make_pair(nullptr, error::General_Unimplemented);
 }
 
 const DB::Response* DB4::ClientState::ResponseFromEffect(
@@ -88,14 +137,15 @@ const DB::Response* DB4::ClientState::ResponseFromEffect(
   if (e == nullptr) {
     return nullptr;
   }
-  if (e->resp().inner_case() == client::Response4::kRestore1 &&
-      e->resp().restore1().status() == client::Response4::Restore1::OK) {
+  auto resp = &e->resp();
+  if (resp->inner_case() == client::Response4::kRestore1 &&
+      resp->restore1().status() == client::Response4::Restore1::OK) {
     auto restore2 = std::make_unique<client::Effect4::Restore2State>();
-    // TODO: fill in restore2 client state.
+    restore2->MergeFrom(dynamic_cast<const client::Effect4*>(&effect)->restore2_client_state());
     util::unique_lock lock(mu_);
     restore2_ = std::move(restore2);
   }
-  return &e->resp();
+  return resp;
 }
 
 const std::string& DB4::Protocol::LogKey(const DB::Log& req) const {
@@ -112,15 +162,19 @@ error::Error DB4::Protocol::ValidateClientLog(const DB::Log& log_pb) const {
     case client::Request4::kCreate: {
       const auto& req = log->req().create();
       if (req.max_tries() > MAX_ALLOWED_MAX_TRIES ||
-          req.oprf_secretshare().size() != sizeof(RistrettoScalar) ||
-          req.auth_commitment().size() != sizeof(RistrettoPoint) ||
-          req.encryption_secretshare().size() != sizeof(AESKey) ||
-          req.zero_secretshare().size() != sizeof(RistrettoScalar)) {
+          !ValidRistrettoPoint(req.auth_commitment()) ||
+          !ValidRistrettoScalar(req.oprf_secretshare()) ||
+          !ValidRistrettoScalar(req.zero_secretshare()) ||
+          req.encryption_secretshare().size() != sizeof(AESKey)) {
         return COUNTED_ERROR(DB4_RequestInvalid);
       }
     } break;
-    case client::Request4::kRestore1:
-      return COUNTED_ERROR(General_Unimplemented);
+    case client::Request4::kRestore1: {
+      const auto& req = log->req().restore1();
+      if (!ValidRistrettoPoint(req.blinded())) {
+        return COUNTED_ERROR(DB4_RequestInvalid);
+      }
+    } break;
     case client::Request4::kRemove:
       return COUNTED_ERROR(General_Unimplemented);
     case client::Request4::kQuery: 
@@ -169,7 +223,10 @@ DB::Effect* DB4::Run(context::Context* ctx, const DB::Log& log_pb) {
     } break;
     case client::Request4::kRestore1: {
       COUNTER(db4, ops_restore1)->Increment();
-      Restore1(ctx, id, log->req().restore1(), out->mutable_resp()->mutable_restore1());
+      Restore1(
+          ctx, id, log->req().restore1(),
+          out->mutable_resp()->mutable_restore1(),
+          out->mutable_restore2_client_state());
     } break;
     case client::Request4::kRemove: {
       COUNTER(db4, ops_remove)->Increment();
@@ -284,7 +341,8 @@ void DB4::Restore1(
     context::Context* ctx,
     const DB4::BackupID& id,
     const client::Request4::Restore1& req,
-    client::Response4::Restore1* resp) {
+    client::Response4::Restore1* resp,
+    client::Effect4::Restore2State* state) {
   auto find = rows_.find(id);
   if (find == rows_.end()) {
     resp->set_status(client::Response4::Restore1::MISSING);
@@ -298,6 +356,41 @@ void DB4::Restore1(
   }
   row->tries--;
   resp->set_tries_remaining(row->tries);
+  resp->set_status(client::Response4::Restore1::ERROR);
+
+  RistrettoPoint blinded_prime;
+  if (0 != crypto_scalarmult_ristretto255(
+      blinded_prime.data(),
+      row->oprf_secretshare.data(),
+      U8(req.blinded()))) {
+    goto restore1_error;
+  }
+
+  std::array<uint8_t, 64> sha512_hash;
+  crypto_hash_sha512_state sha512_state;
+  crypto_hash_sha512_init(&sha512_state);
+  crypto_hash_sha512_update(&sha512_state, id.data(), sizeof(id));
+  crypto_hash_sha512_update(&sha512_state, U8(req.blinded()), req.blinded().size());
+  crypto_hash_sha512_final(&sha512_state, sha512_hash.data());
+
+  RistrettoPoint ristretto_hash;
+  crypto_core_ristretto255_from_hash(ristretto_hash.data(), sha512_hash.data());
+
+  RistrettoPoint mask;
+  if (0 != crypto_scalarmult_ristretto255(mask.data(), row->zero_secretshare.data(), ristretto_hash.data())) {
+    goto restore1_error;
+  }
+
+  RistrettoPoint evaluated;
+  if (0 != crypto_core_ristretto255_add(evaluated.data(), blinded_prime.data(), mask.data())) {
+    goto restore1_error;
+  }
+  resp->set_element(util::ByteArrayToString(evaluated));
+  resp->set_status(client::Response4::Restore1::OK);
+  state->set_auth_commitment(util::ByteArrayToString(row->auth_commitment));
+  state->set_encryption_secretshare(util::ByteArrayToString(row->encryption_secretshare));
+
+restore1_error:
   if (row->tries == 0) {
     rows_.erase(find);
     row = nullptr;  // The `row` ptr is no longer valid due to the `erase` call.
@@ -305,7 +398,44 @@ void DB4::Restore1(
   } else {
     row->merkle_leaf_.Update(merkle::HashFrom(HashRow(id, *row)));
   }
-  resp->set_status(client::Response4::Restore1::OK);
+}
+
+void DB4::ClientState::Restore2(
+    context::Context* ctx,
+    const BackupID& id,
+    const client::Request4::Restore2& req,
+    const client::Effect4::Restore2State* state,
+    client::Response4::Restore2* resp) const {
+  RistrettoPoint lhs1;
+  resp->set_status(client::Response4::Restore2::ERROR);
+  if (0 != crypto_scalarmult_ristretto255_base(lhs1.data(), U8(req.auth_scalar()))) {
+    return;
+  }
+  std::array<uint8_t, 64> sha512_hash;
+  crypto_hash_sha512_state sha512_state;
+  crypto_hash_sha512_init(&sha512_state);
+  crypto_hash_sha512_update(&sha512_state, U8(req.auth_point()), req.auth_point().size());
+  crypto_hash_sha512_final(&sha512_state, sha512_hash.data());
+
+  RistrettoScalar scalar_hash;
+  crypto_core_ristretto255_scalar_reduce(scalar_hash.data(), sha512_hash.data());
+
+  RistrettoPoint rhs1;
+  if (0 != crypto_scalarmult_ristretto255(rhs1.data(), scalar_hash.data(), U8(state->auth_commitment()))) {
+    return;
+  }
+
+  RistrettoPoint rhs2;
+  if (0 != crypto_core_ristretto255_add(rhs2.data(), rhs1.data(), U8(req.auth_point()))) {
+    return;
+  }
+
+  if (!util::ConstantTimeEquals(lhs1, rhs2)) {
+    return;
+  }
+
+  resp->set_status(client::Response4::Restore2::OK);
+  resp->set_encryption_secretshare(state->encryption_secretshare());
 }
 
 void DB4::Remove(
