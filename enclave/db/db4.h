@@ -18,6 +18,7 @@
 #include <sodium/crypto_core_ristretto255.h>
 #include <sodium/crypto_scalarmult_ristretto255.h>
 #include "merkle/merkle.h"
+#include "ristretto/ristretto.h"
 
 namespace svr2::db {
 
@@ -29,8 +30,6 @@ class DB4 : public DB {
 
   static const uint16_t MAX_ALLOWED_MAX_TRIES = 255;
   typedef std::array<uint8_t, 16> BackupID;
-  typedef std::array<uint8_t, crypto_scalarmult_ristretto255_SCALARBYTES> RistrettoScalar;
-  typedef std::array<uint8_t, crypto_scalarmult_ristretto255_BYTES> RistrettoPoint;
   typedef std::array<uint8_t, 32> AESKey;
 
   class ClientState : public DB::ClientState {
@@ -114,13 +113,13 @@ class DB4 : public DB {
   merkle::Tree* merkle_tree_;
   struct Row {
     Row(merkle::Tree* t);
-    RistrettoPoint auth_commitment;
-    RistrettoScalar oprf_secretshare;
+    ristretto::Point auth_commitment;
+    ristretto::Scalar oprf_secretshare;
     AESKey encryption_secretshare;
-    RistrettoScalar zero_secretshare;
+    ristretto::Scalar zero_secretshare;
 
     // Delta
-    RistrettoScalar oprf_secretshare_delta;
+    ristretto::Scalar oprf_secretshare_delta;
     AESKey encryption_secretshare_delta;
     uint8_t has_delta;
 

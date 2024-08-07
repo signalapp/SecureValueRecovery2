@@ -55,6 +55,7 @@ message Response4 {
       ERROR = 3;
     }
     Status status = 1;
+    uint32 tries_remaining = 2;
   }
 
   message Restore1 {

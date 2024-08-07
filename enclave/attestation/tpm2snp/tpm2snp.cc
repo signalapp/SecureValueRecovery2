@@ -5,7 +5,7 @@
 #include "attestation/sev/sev.h"
 #include "util/macros.h"
 #include "util/log.h"
-#include "hmac/hmac.h"
+#include "sha/sha.h"
 #include "util/constant.h"
 #include "util/hex.h"
 #include "util/base64.h"
@@ -193,7 +193,7 @@ error::Error VerifyAKCert(context::Context* ctx, const TPM2SNPEvidence& evidence
   LOG(INFO) << snp_report;
 
   LOG(DEBUG) << "Verifying that runtime data is verified by SNP report";
-  auto runtimedata_sha256 = hmac::Sha256(evidence.runtime_data());
+  auto runtimedata_sha256 = sha::Sha256(evidence.runtime_data());
   LOG(DEBUG) << "Runtime data: " << evidence.runtime_data();
   if (!util::ConstantTimeEqualsBytes(runtimedata_sha256.data(), snp_report.report_data, runtimedata_sha256.size())) {
     return COUNTED_ERROR(AttestationTPM2SNP_ReportDataMismatch);
@@ -365,7 +365,7 @@ std::pair<attestation::AttestationData, error::Error> CompleteVerification(conte
   }
 
   LOG(DEBUG) << "Verifying that attestation data matches hash in TPM2 quote";
-  if (auto ad_sha256 = hmac::Sha256(evidence.attestation_data()); !util::ConstantTimeEquals(ad_sha256, nonce)) {
+  if (auto ad_sha256 = sha::Sha256(evidence.attestation_data()); !util::ConstantTimeEquals(ad_sha256, nonce)) {
     return std::make_pair(out, COUNTED_ERROR(AttestationTPM2SNP_AttestationDataHashMismatch));
   }
 

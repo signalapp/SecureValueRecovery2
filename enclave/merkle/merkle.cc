@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 #include "merkle/merkle.h"
-#include <sodium/crypto_auth_hmacsha256.h>
 #include <algorithm>
 #include <mutex>
 #include "util/macros.h"

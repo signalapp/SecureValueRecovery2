@@ -26,7 +26,7 @@
 #include "util/log.h"
 #include "util/base64.h"
 #include "attestation/tpm2snp/tpm2snp.h"
-#include "hmac/hmac.h"
+#include "sha/sha.h"
 #include "fs/fs.h"
 
 namespace svr2::env {
@@ -190,7 +190,7 @@ class Environment : public ::svr2::env::socket::Environment {
  private:
   error::Error CurrentEvidence(context::Context* ctx, const attestation::AttestationData& data, attestation::tpm2snp::TPM2SNPEvidence* evidence) const {
     std::string serialized = data.SerializeAsString();
-    auto attestation_data_sha256 = hmac::Sha256(serialized);
+    auto attestation_data_sha256 = sha::Sha256(serialized);
 
     fs::TmpDir tmpdir;
     RETURN_IF_ERROR(tmpdir.Init());

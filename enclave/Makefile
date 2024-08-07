@@ -4,6 +4,8 @@ all: test build sign
 
 MAKEFILTER=| (grep --line-buffered -v '^make\[' || true)
 
+test:
+
 include Makefile.base
 .testdepends: $(shell find ./ -wholename '*/tests/*.cc' -o -wholename '*/tests')
 	$(QUIET) echo -e "GEN\t.testdepends"
@@ -167,6 +169,8 @@ CORE_LIBRARIES_PRE_ENV = \
   util \
   context \
   hmac \
+  sha \
+  ristretto \
   noise \
   noise-c \
   noisewrap \

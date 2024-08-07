@@ -16,6 +16,7 @@
 //TESTDEP util
 //TESTDEP context
 //TESTDEP hmac
+//TESTDEP sha
 //TESTDEP minimums
 //TESTDEP noise
 //TESTDEP noise-c
@@ -27,6 +28,7 @@
 //TESTDEP proto
 //TESTDEP protobuf-lite
 //TESTDEP libsodium
+//TESTDEP ristretto
 
 #include <vector>
 #include <deque>

@@ -15,7 +15,7 @@
 //TESTDEP protobuf-lite
 //TESTDEP libsodium
 //TESTDEP boringssl
-//TESTDEP hmac
+//TESTDEP sha
 
 #include <gtest/gtest.h>
 #include "env/env.h"

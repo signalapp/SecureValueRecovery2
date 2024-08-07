@@ -4,10 +4,10 @@
 #include "db/db4.h"
 
 #include <algorithm>
-#include <sodium/crypto_auth_hmacsha256.h>
-#include <sodium/crypto_hash_sha512.h>
 #include <sodium/crypto_core_ristretto255.h>
+#include <sodium/crypto_hash_sha256.h>
 
+#include "sha/sha.h"
 #include "util/log.h"
 #include "util/bytes.h"
 #include "util/hex.h"
@@ -17,41 +17,9 @@
 #include "metrics/metrics.h"
 #include "proto/clientlog.pb.h"
 #include "sip/hasher.h"
+#include "ristretto/ristretto.h"
 
 namespace svr2::db {
-
-namespace {
-
-template <class T>
-const uint8_t* U8(const T& p) {
-  return reinterpret_cast<const uint8_t*>(p.data());
-}
-
-template <class T>
-bool ValidRistrettoPoint(const T& p) {
-  if (p.size() != sizeof(DB4::RistrettoPoint)) {
-    return false;
-  }
-  return crypto_core_ristretto255_is_valid_point(U8(p));
-}
-
-template <class T>
-bool ValidRistrettoScalar(const T& s) {
-  if (s.size() != sizeof(DB4::RistrettoScalar)) {
-    return false;
-  }
-  // libsodium doesn't seem to have a "is this scalar already reduced"
-  // call, so we instead resort to reducing and checking equality.
-  auto data = U8(s);
-  uint8_t nonreduced[crypto_core_ristretto255_NONREDUCEDSCALARBYTES] = {0};
-  uint8_t reduced[sizeof(DB4::RistrettoScalar)] = {0};
-  // Bytes are stored little-endian, so copy into the front of nonreduced.
-  memcpy(nonreduced, data, sizeof(DB4::RistrettoScalar));
-  crypto_core_ristretto255_scalar_reduce(reduced, nonreduced);
-  return util::ConstantTimeEqualsBytes(data, reduced, sizeof(DB4::RistrettoScalar));
-}
-
-}  // namespace
 
 const DB4::Protocol db4_protocol;
 
@@ -103,6 +71,8 @@ std::pair<const DB::Response*, error::Error> DB4::ClientState::ResponseFromReque
     util::unique_lock lock(mu_);
     restore2_client_state = std::move(restore2_);
   }
+  ristretto::Point check_p;
+  ristretto::Scalar check_s;
   switch (r->inner_case()) {
     case client::Request4::kRestore2: {
       if (authenticated_id().size() != sizeof(BackupID)) {
@@ -112,8 +82,9 @@ std::pair<const DB::Response*, error::Error> DB4::ClientState::ResponseFromReque
       auto r2 = resp->mutable_restore2();
       if (!restore2_client_state) {
         r2->set_status(client::Response4::Restore2::RESTORE1_MISSING);
-      } else if (!ValidRistrettoScalar(r->restore2().auth_scalar()) ||
-          !ValidRistrettoPoint(r->restore2().auth_point())) {
+      } else if (
+          !check_s.FromString(r->restore2().auth_scalar()) ||
+          !check_p.FromString(r->restore2().auth_point())) {
         r2->set_status(client::Response4::Restore2::INVALID_REQUEST);
       } else {
         BackupID id;
@@ -158,27 +129,29 @@ error::Error DB4::Protocol::ValidateClientLog(const DB::Log& log_pb) const {
   auto log = dynamic_cast<const client::Log4*>(&log_pb);
   if (log == nullptr) { return COUNTED_ERROR(DB4_RequestInvalid); }
   if (log->backup_id().size() != sizeof(BackupID)) { return COUNTED_ERROR(DB4_BackupIDSize); }
+  ristretto::Point check_p;
+  ristretto::Scalar check_s;
   switch (log->req().inner_case()) {
     case client::Request4::kCreate: {
       const auto& req = log->req().create();
       if (req.max_tries() > MAX_ALLOWED_MAX_TRIES ||
-          !ValidRistrettoPoint(req.auth_commitment()) ||
-          !ValidRistrettoScalar(req.oprf_secretshare()) ||
-          !ValidRistrettoScalar(req.zero_secretshare()) ||
+          !check_p.FromString(req.auth_commitment()) ||
+          !check_s.FromString(req.oprf_secretshare()) ||
+          !check_s.FromString(req.zero_secretshare()) ||
           req.encryption_secretshare().size() != sizeof(AESKey)) {
         return COUNTED_ERROR(DB4_RequestInvalid);
       }
     } break;
     case client::Request4::kRestore1: {
       const auto& req = log->req().restore1();
-      if (!ValidRistrettoPoint(req.blinded())) {
+      if (!check_p.FromString(req.blinded())) {
         return COUNTED_ERROR(DB4_RequestInvalid);
       }
     } break;
     case client::Request4::kRemove:
-      return COUNTED_ERROR(General_Unimplemented);
+      return error::OK;
     case client::Request4::kQuery: 
-      return COUNTED_ERROR(General_Unimplemented);
+      return error::OK;
     default:
       return COUNTED_ERROR(DB4_ToplevelRequestType);
   }
@@ -324,17 +297,18 @@ void DB4::Create(
   if (req.max_tries()) {
     r->tries = (uint8_t) req.max_tries();
   }
-  CHECK(error::OK == util::StringIntoByteArray(req.auth_commitment(), &r->auth_commitment));
-  CHECK(error::OK == util::StringIntoByteArray(req.oprf_secretshare(), &r->oprf_secretshare));
+  CHECK(r->auth_commitment.FromString(req.auth_commitment()));
+  CHECK(r->oprf_secretshare.FromString(req.oprf_secretshare()));
+  CHECK(r->zero_secretshare.FromString(req.zero_secretshare()));
   CHECK(error::OK == util::StringIntoByteArray(req.encryption_secretshare(), &r->encryption_secretshare));
-  CHECK(error::OK == util::StringIntoByteArray(req.zero_secretshare(), &r->zero_secretshare));
   // Reset any stored deltas.
-  memset(r->oprf_secretshare_delta.data(), 0, sizeof(r->oprf_secretshare_delta));
+  r->oprf_secretshare_delta.Clear();
   memset(r->encryption_secretshare_delta.data(), 0, sizeof(r->encryption_secretshare_delta));
   r->has_delta = 0;
 
   r->merkle_leaf_.Update(merkle::HashFrom(HashRow(id, *r)));
   resp->set_status(client::Response4::Create::OK);
+  resp->set_tries_remaining(r->tries);
 }
 
 void DB4::Restore1(
@@ -358,36 +332,32 @@ void DB4::Restore1(
   resp->set_tries_remaining(row->tries);
   resp->set_status(client::Response4::Restore1::ERROR);
 
-  RistrettoPoint blinded_prime;
-  if (0 != crypto_scalarmult_ristretto255(
-      blinded_prime.data(),
-      row->oprf_secretshare.data(),
-      U8(req.blinded()))) {
+  ristretto::Point ristretto_hash;
+  if (!ristretto_hash.FromHash(sha::Sha512(id, req.blinded()))) {
     goto restore1_error;
   }
 
-  std::array<uint8_t, 64> sha512_hash;
-  crypto_hash_sha512_state sha512_state;
-  crypto_hash_sha512_init(&sha512_state);
-  crypto_hash_sha512_update(&sha512_state, id.data(), sizeof(id));
-  crypto_hash_sha512_update(&sha512_state, U8(req.blinded()), req.blinded().size());
-  crypto_hash_sha512_final(&sha512_state, sha512_hash.data());
-
-  RistrettoPoint ristretto_hash;
-  crypto_core_ristretto255_from_hash(ristretto_hash.data(), sha512_hash.data());
-
-  RistrettoPoint mask;
-  if (0 != crypto_scalarmult_ristretto255(mask.data(), row->zero_secretshare.data(), ristretto_hash.data())) {
+  ristretto::Point blinded;
+  if (!blinded.FromString(req.blinded())) {
+    goto restore1_error;
+  }
+  ristretto::Point blinded_prime;
+  if (!blinded.ScalarMult(row->oprf_secretshare, &blinded_prime)) {
     goto restore1_error;
   }
 
-  RistrettoPoint evaluated;
-  if (0 != crypto_core_ristretto255_add(evaluated.data(), blinded_prime.data(), mask.data())) {
+  ristretto::Point mask;
+  if (!ristretto_hash.ScalarMult(row->zero_secretshare, &mask)) {
     goto restore1_error;
   }
-  resp->set_element(util::ByteArrayToString(evaluated));
+
+  ristretto::Point evaluated;
+  if (!blinded_prime.Add(mask, &evaluated)) {
+    goto restore1_error;
+  }
+  resp->set_element(evaluated.ToString());
   resp->set_status(client::Response4::Restore1::OK);
-  state->set_auth_commitment(util::ByteArrayToString(row->auth_commitment));
+  state->set_auth_commitment(row->auth_commitment.ToString());
   state->set_encryption_secretshare(util::ByteArrayToString(row->encryption_secretshare));
 
 restore1_error:
@@ -406,27 +376,33 @@ void DB4::ClientState::Restore2(
     const client::Request4::Restore2& req,
     const client::Effect4::Restore2State* state,
     client::Response4::Restore2* resp) const {
-  RistrettoPoint lhs1;
+  ristretto::Point lhs1;
   resp->set_status(client::Response4::Restore2::ERROR);
-  if (0 != crypto_scalarmult_ristretto255_base(lhs1.data(), U8(req.auth_scalar()))) {
+  ristretto::Scalar auth_scalar;
+  if (!auth_scalar.FromString(req.auth_scalar())) {
     return;
   }
-  std::array<uint8_t, 64> sha512_hash;
-  crypto_hash_sha512_state sha512_state;
-  crypto_hash_sha512_init(&sha512_state);
-  crypto_hash_sha512_update(&sha512_state, U8(req.auth_point()), req.auth_point().size());
-  crypto_hash_sha512_final(&sha512_state, sha512_hash.data());
-
-  RistrettoScalar scalar_hash;
-  crypto_core_ristretto255_scalar_reduce(scalar_hash.data(), sha512_hash.data());
-
-  RistrettoPoint rhs1;
-  if (0 != crypto_scalarmult_ristretto255(rhs1.data(), scalar_hash.data(), U8(state->auth_commitment()))) {
+  if (!lhs1.ScalarMultBase(auth_scalar)) {
     return;
   }
 
-  RistrettoPoint rhs2;
-  if (0 != crypto_core_ristretto255_add(rhs2.data(), rhs1.data(), U8(req.auth_point()))) {
+  ristretto::Scalar scalar_hash = ristretto::Scalar::Reduce(sha::Sha512(req.auth_point()));
+
+  ristretto::Point auth_commitment;
+  if (!auth_commitment.FromString(state->auth_commitment())) {
+    return;
+  }
+  ristretto::Point rhs1;
+  if (!auth_commitment.ScalarMult(scalar_hash, &rhs1)) {
+    return;
+  }
+
+  ristretto::Point auth_point;
+  if (!auth_point.FromString(req.auth_point())) {
+    return;
+  }
+  ristretto::Point rhs2;
+  if (!auth_point.Add(rhs1, &rhs2)) {
     return;
   }
 

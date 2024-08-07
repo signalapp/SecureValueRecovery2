@@ -31,7 +31,7 @@
 #include "util/endian.h"
 #include "util/base64.h"
 #include "util/log.h"
-#include "hmac/hmac.h"
+#include "sha/sha.h"
 #include "fs/fs.h"
 
 namespace svr2::env {
@@ -59,7 +59,7 @@ class Environment : public ::svr2::env::socket::Environment {
     if (!data.SerializeToString(&serialized)) {
       return std::make_pair(out, error::Env_SerializeAttestationData);
     }
-    auto hash = hmac::Sha256(serialized);
+    auto hash = sha::Sha256(serialized);
     auto current_evidence = ctx->Protobuf<attestation::tpm2snp::TPM2SNPEvidence>();
     if (auto err = GcpEvidenceAndEndorsements(hash, current_evidence, nullptr); err != error::OK) {
       return std::make_pair(out, err);
@@ -122,7 +122,7 @@ class Environment : public ::svr2::env::socket::Environment {
       LOG(FATAL) << "Unable to create Azure runtime data from AK cert: " << azrerr;
     }
     base_evidence_.set_runtime_data(azure_runtime_data);
-    auto runtime_hash = hmac::Sha256(azure_runtime_data);
+    auto runtime_hash = sha::Sha256(azure_runtime_data);
 
     attestation::sev::SevSnpEndorsements sev_endorsements;
 
