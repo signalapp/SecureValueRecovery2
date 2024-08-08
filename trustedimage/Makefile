@@ -8,10 +8,6 @@ build/dir:
 	mkdir -p build
 	touch build/dir
 
-build/debian3.out: debian3.pkr.hcl build/debian1.out build/debian2.out
-	rm -rf $@
-	packer build $<
-
 build/debian2.out: debian2.pkr.hcl build/debian1.out debian2/* ../enclave/build/enclave.gcpsnp ../enclave/build/enclave.azuresnp ../host/main
 	rm -rf $@
 	packer build $<
