@@ -23,13 +23,23 @@ const NoiseProtocolId client_protocol = {
     .hybrid_id = 0,
 };
 
+const NoiseProtocolId client_protocol_pq = {
+    .prefix_id = NOISE_PREFIX_STANDARD,
+    .pattern_id = NOISE_PATTERN_NK_HFS,
+    .dh_id = NOISE_DH_CURVE25519,
+    .cipher_id = NOISE_CIPHER_CHACHAPOLY,
+    .hash_id = NOISE_HASH_SHA256,
+    .hybrid_id = NOISE_DH_KYBER1024,
+};
+
 Client::Client(
-    std::unique_ptr<db::DB::ClientState> cs)
+    std::unique_ptr<db::DB::ClientState> cs, bool pq)
     : hs_(noise::WrapHandshakeState(nullptr)),
       tx_(noise::WrapCipherState(nullptr)),
       rx_(noise::WrapCipherState(nullptr)),
       id_(id_gen.fetch_add(1)),
-      cs_(std::move(cs)) {
+      cs_(std::move(cs)),
+      pq_(pq) {
 }
 
 Client::~Client() {
@@ -38,7 +48,8 @@ Client::~Client() {
 error::Error Client::Init(const noise::DHState& dhstate, const e2e::Attestation& attestation) {
   util::unique_lock lock(mu_);
   NoiseHandshakeState* hs;
-  if (NOISE_ERROR_NONE != noise_handshakestate_new_by_id(&hs, &client_protocol, NOISE_ROLE_RESPONDER)) {
+  const NoiseProtocolId* protocol = pq_ ? &client_protocol_pq : &client_protocol;
+  if (NOISE_ERROR_NONE != noise_handshakestate_new_by_id(&hs, protocol, NOISE_ROLE_RESPONDER)) {
     return COUNTED_ERROR(Client_HandshakeState);
   }
   auto hs_wrap = noise::WrapHandshakeState(hs);
@@ -131,7 +142,7 @@ std::pair<Client*, error::Error> ClientManager::NewClient(
     context::Context* ctx,
     std::unique_ptr<db::DB::ClientState> cs) {
   MEASURE_CPU(ctx, cpu_client_hs_start);
-  std::unique_ptr<Client> c(new Client(std::move(cs)));
+  std::unique_ptr<Client> c(new Client(std::move(cs), pq_));
   auto [dhstate, attestation] = ClientArgs(ctx);
   error::Error err = c->Init(dhstate, attestation);
   if (err != error::OK) {

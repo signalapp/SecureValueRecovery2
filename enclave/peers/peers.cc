@@ -55,7 +55,7 @@ static NoiseProtocolId peer_to_peer_protocol = {
     // have access to hardware-accelerated AES, so we use that.
     .cipher_id = NOISE_CIPHER_AESGCM,
     .hash_id = NOISE_HASH_SHA256,
-    .hybrid_id = NOISE_DH_NEWHOPE,
+    .hybrid_id = NOISE_DH_KYBER1024,
 };
 
 Peer::Peer(const peerid::PeerID& id, PeerManager* parent)

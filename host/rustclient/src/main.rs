@@ -1,3 +1,6 @@
+// Copyright 2024 Signal Messenger, LLC
+// SPDX-License-Identifier: AGPL-3.0-only
+
 use hmac::Mac;
 use websocket::header::{Authorization, Basic, Headers};
 use prost::Message;
@@ -25,7 +28,7 @@ pub mod svr2 {
 
 type HmacSha256 = hmac::Hmac<sha2::Sha256>;
 
-static PATTERN: &'static str = "Noise_NK_25519_ChaChaPoly_SHA256";
+static PATTERN: &'static str = "Noise_NKhfs_25519+Kyber1024_ChaChaPoly_SHA256";
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();
@@ -77,9 +80,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Send handshake start");
     client.send_message(&websocket::Message::binary(&buf[..len]))?;
 
-    println!("Recv handshake finish");
+    println!("Recv handshake start");
     let msg2 = client.recv_message()?;
     let bin2 = if let websocket::OwnedMessage::Binary(b) = msg2 {
+        println!("Received!");
         b
     } else {
         bail!("received message not binary");

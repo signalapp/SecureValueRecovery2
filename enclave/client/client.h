@@ -44,7 +44,7 @@ class Client {
 
  private:
   ~Client();
-  explicit Client(std::unique_ptr<db::DB::ClientState> cs);
+  Client(std::unique_ptr<db::DB::ClientState> cs, bool pq);
   error::Error Init(const noise::DHState& dhstate, const e2e::Attestation& attestation) EXCLUDES(mu_);
   friend class ClientManager;
   friend std::unique_ptr<Client>::deleter_type;
@@ -56,11 +56,12 @@ class Client {
   noise::CipherState rx_ GUARDED_BY(mu_);
   const size_t id_;
   std::unique_ptr<db::DB::ClientState> cs_;
+  const bool pq_;
 };
 
 class ClientManager {
  public:
-  ClientManager(noise::DHState dhstate) : dhstate_(std::move(dhstate)) {}
+  ClientManager(noise::DHState dhstate, bool pq) : dhstate_(std::move(dhstate)), pq_(pq) {}
   error::Error RefreshAttestation(context::Context* ctx, const enclaveconfig::RaftGroupConfig& config) EXCLUDES(mu_);
   error::Error RotateKeyAndRefreshAttestation(context::Context* ctx, const enclaveconfig::RaftGroupConfig& config) EXCLUDES(mu_);
   static noise::DHState NewDHState();
@@ -82,6 +83,7 @@ class ClientManager {
   noise::DHState dhstate_ GUARDED_BY(mu_);
   e2e::Attestation attestation_ GUARDED_BY(mu_);
   std::unordered_map<ClientID, std::unique_ptr<Client>> clients_ GUARDED_BY(mu_);
+  const bool pq_;
 };
 
 }  // namespace svr2::client

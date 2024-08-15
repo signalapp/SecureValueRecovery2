@@ -81,7 +81,8 @@ void Gauge::Clear() {
 }
 
 namespace internal {
-error::Error RecordError(error::Error e) {
+error::Error RecordError(error::Error e, const char* file, int line) {
+  LOG(VERBOSE) << e << " @ " << file << ":" << line;
   recorded_errors[e].fetch_add(1);
   return e;
 }

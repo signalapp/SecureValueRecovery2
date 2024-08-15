@@ -16,7 +16,8 @@ validate:
 
 git:
 	git submodule init || true
-	git submodule update || true
+	git submodule update --recursive --init || true
+	git submodule update --recursive || true
 
 ETARGET ?= all
 

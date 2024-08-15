@@ -6,6 +6,8 @@
 //TESTDEP metrics
 //TESTDEP proto
 //TESTDEP protobuf-lite
+//TESTDEP env
+//TESTDEP libsodium
 #include <gtest/gtest.h>
 #include "util/hex.h"
 #include <string>

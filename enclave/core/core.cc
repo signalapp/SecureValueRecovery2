@@ -149,7 +149,7 @@ error::Error Core::Init(context::Context* ctx, const enclaveconfig::EnclaveConfi
     enclave_config_ = config;
   }
   peer_manager_ = std::move(peer_manager);
-  client_manager_ = std::make_unique<client::ClientManager>(std::move(client_dh));
+  client_manager_ = std::make_unique<client::ClientManager>(std::move(client_dh), config.client_pq());
   clock_.SetLocalTime(initial_timestamp_unix_secs);
   peer_manager_->SetPeerAttestationTimestamp(ctx, initial_timestamp_unix_secs, raft_config_template_.attestation_timeout());
 

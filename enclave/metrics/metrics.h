@@ -75,7 +75,7 @@ enum Gauges {
 };
 
 namespace internal {
-error::Error RecordError(error::Error);
+error::Error RecordError(error::Error, const char* file, int line);
 extern Counter counters[COUNTERS_ARRAY_SIZE];
 extern Gauge gauges[GAUGES_ARRAY_SIZE];
 }  // namespace internal
@@ -93,6 +93,6 @@ extern Gauge gauges[GAUGES_ARRAY_SIZE];
 // COUNTED_ERROR counts an error within metrics, returning that same error.
 // It's generally used like:
 //    return COUNTED_ERROR(Foo_Bar);
-#define COUNTED_ERROR(x) ::svr2::metrics::internal::RecordError(error::x)
+#define COUNTED_ERROR(x) ::svr2::metrics::internal::RecordError(error::x, __FILE__, __LINE__)
 
 #endif  // __SVR2_METRICS_METRICS_H__

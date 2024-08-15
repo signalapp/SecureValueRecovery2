@@ -43,33 +43,36 @@ build/noise-c/TEST.a: build/libsodium/TEST.a
 	$(QUIET) echo -e "BUILD\t$@"
 	$(QUIET) mkdir -p $(@D)
 	$(QUIET) (cd noise-c && \
+	 (git clean -fx ; git submodule foreach --recursive git clean -xf ; true) && \
 	 ./autogen.sh && \
    libsodium_CFLAGS=-I$$PWD/../build/libsodium/TEST.a.dir/include/ libsodium_LIBS=$$PWD/../build/libsodium/TEST.a \
 	 CC=$(CC) CFLAGS="$(TEST_CFLAGS) -I$(shell ./find_header.sh $(CC) immintrin.h)" ./configure --with-libsodium && \
    $(MAKE) clean && \
-	 $(MAKE)) $(QUIET_OUT)
+	 $(MAKE) -C src/protocol) $(QUIET_OUT)
 	$(QUIET) cp noise-c/src/protocol/libnoiseprotocol.a $@
 	$(QUIET) echo -e "BUILT\t$@"
 build/noise-c/SGX.a: build/libsodium/SGX.a | build/noise-c/TEST.a
 	$(QUIET) echo -e "BUILD\t$@"
 	$(QUIET) mkdir -p $(@D)
 	$(QUIET) (cd noise-c && \
+	 (git clean -fx ; git submodule foreach --recursive git clean -xf ; true) && \
 	 ./autogen.sh && \
    libsodium_CFLAGS=-I$$PWD/../build/libsodium/SGX.a.dir/include/ libsodium_LIBS=$$PWD/../build/libsodium/SGX.a \
 	 CC=$(CC) CFLAGS="$(SGX_CFLAGS) -I$(shell ./find_header.sh $(CC) immintrin.h)" ./configure --with-libsodium && \
    $(MAKE) clean && \
-	 $(MAKE)) $(QUIET_OUT)
+	 $(MAKE) -C src/protocol) $(QUIET_OUT)
 	$(QUIET) cp noise-c/src/protocol/libnoiseprotocol.a $@
 	$(QUIET) echo -e "BUILT\t$@"
 build/noise-c/X86.a: build/libsodium/X86.a | build/noise-c/SGX.a
 	$(QUIET) echo -e "BUILD\t$@"
 	$(QUIET) mkdir -p $(@D)
 	$(QUIET) (cd noise-c && \
+	 (git clean -fx ; git submodule foreach --recursive git clean -xf ; true) && \
 	 ./autogen.sh && \
    libsodium_CFLAGS=-I$$PWD/../build/libsodium/X86.a.dir/include/ libsodium_LIBS=$$PWD/../build/libsodium/X86.a \
 	 CC=$(CC) CFLAGS="$(X86_CFLAGS) -I$(shell ./find_header.sh $(CC) immintrin.h)" ./configure --with-libsodium && \
    $(MAKE) clean && \
-	 $(MAKE)) $(QUIET_OUT)
+	 $(MAKE) -C src/protocol) $(QUIET_OUT)
 	$(QUIET) cp noise-c/src/protocol/libnoiseprotocol.a $@
 	$(QUIET) echo -e "BUILT\t$@"
 
@@ -271,10 +274,11 @@ build/attest.azuresnp: build/initmain/X86.a $(patsubst %,build/%/X86.a,$(AZURESN
 
 clean:
 	$(QUIET) echo CLEAN
-	$(QUIET) (cd protobuf ; make clean ; git clean -fx ; true) $(QUIET_OUT)
-	$(QUIET) (cd noise-c ; make clean ; git clean -fx ; true) $(QUIET_OUT)
-	$(QUIET) (cd SipHash ; make clean ; git clean -fx ; true) $(QUIET_OUT)
-	$(QUIET) (cd boringssl ; make clean ; git clean -fx ; true) $(QUIET_OUT)
+	$(QUIET) (cd protobuf ; make clean ; true) $(QUIET_OUT)
+	$(QUIET) (cd noise-c ; make clean ; true) $(QUIET_OUT)
+	$(QUIET) (cd SipHash ; make clean ; true) $(QUIET_OUT)
+	$(QUIET) (cd boringssl ; make clean ; true) $(QUIET_OUT)
+	$(QUIET) (git submodule foreach --recursive git clean -xf ; true) $(QUIET_OUT)
 	$(QUIET) rm -vfr build $(QUIET_OUT)
 	$(QUIET) rm -vf .testdepends $(QUIET_OUT)
 

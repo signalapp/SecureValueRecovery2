@@ -48,6 +48,8 @@ message EnclaveConfig {
   uint32 e2e_txn_timeout_ticks = 2;
   // Every N ticks, send our local timestamp to our peers.
   uint32 send_timestamp_ticks = 5;
+  // If true, use HFS for client/server PQ protection.
+  bool client_pq = 6;
 }
 
 // RaftGroupConfig is a configuration shared by members of a Raft group.

@@ -3,7 +3,7 @@
 	url = https://github.com/protocolbuffers/protobuf.git
 [submodule "enclave/noise-c"]
 	path = enclave/noise-c
-	url = https://github.com/rweather/noise-c.git
+	url = https://github.com/signalapp/noise-c.git
 [submodule "enclave/SipHash"]
 	path = enclave/SipHash
 	url = https://github.com/veorq/SipHash

@@ -79,3 +79,34 @@ func WaitFor200(timeout time.Duration, url string) error {
 	})
 	return err
 }
+
+type PrefixWriter struct {
+	written bool
+	prefix  []byte
+	to      io.Writer
+}
+
+func (p *PrefixWriter) Write(bs []byte) (int, error) {
+	lastStart := 0
+	for i, b := range bs {
+		if !p.written {
+			if n, err := p.to.Write(bs[lastStart:i]); err != nil {
+				return lastStart + n, err
+			}
+			lastStart = i
+			if _, err := p.to.Write(p.prefix); err != nil {
+				return i, err
+			}
+			p.written = true
+		} else if b == '\n' {
+			p.written = false
+		}
+	}
+	if n, err := p.to.Write(bs[lastStart:]); err != nil {
+		return lastStart + n, err
+	}
+	return len(bs), nil
+}
+func NewPrefixWriter(s string, to io.Writer) io.Writer {
+	return &PrefixWriter{to: to, prefix: []byte(s)}
+}
