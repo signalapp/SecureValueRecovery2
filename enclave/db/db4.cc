@@ -215,12 +215,90 @@ DB::Effect* DB4::Run(context::Context* ctx, const DB::Log& log_pb) {
 }
 
 std::pair<std::string, error::Error> DB4::RowsAsProtos(context::Context* ctx, const std::string& exclusive_start, size_t size, google::protobuf::RepeatedPtrField<std::string>* out) const {
-  // TODO: this
-  return std::make_pair("", error::General_Unimplemented);
+  MEASURE_CPU(ctx, cpu_db_repl_send);
+  auto iter = rows_.begin();
+  BackupID id;
+  if (!exclusive_start.empty()) {
+    if (auto err = util::StringIntoByteArray(exclusive_start, &id); err != error::OK) {
+      return std::make_pair("", err);
+    }
+    iter = rows_.upper_bound(id);
+  }
+  auto row = ctx->Protobuf<e2e::DB4RowState>();
+  for (size_t i = 0; i < size && iter != rows_.end(); i++, ++iter) {
+    row->Clear();
+    row->set_backup_id(util::ByteArrayToString(iter->first));
+    row->set_tries(iter->second.tries);
+    row->set_oprf_secretshare(iter->second.oprf_secretshare.ToString());
+    row->set_auth_commitment(iter->second.auth_commitment.ToString());
+    row->set_encryption_secretshare(util::ByteArrayToString(iter->second.encryption_secretshare));
+    row->set_zero_secretshare(iter->second.zero_secretshare.ToString());
+    if (iter->second.has_delta) {
+      row->set_oprf_secretshare_delta(iter->second.oprf_secretshare_delta.ToString());
+      row->set_encryption_secretshare_delta(util::ByteArrayToString(iter->second.encryption_secretshare_delta));
+    }
+    if (!row->SerializeToString(out->Add())) {
+      return std::make_pair("", COUNTED_ERROR(DB4_ReplicationInvalidRow));
+    }
+  }
+  LOG(DEBUG) << "DB sending rows in (" << util::PrefixToHex(exclusive_start, 8) << ", " << util::PrefixToHex(row->backup_id(), 8) << "]";
+  return std::make_pair(row->backup_id(), error::OK);
 }
 
 std::pair<std::string, error::Error> DB4::LoadRowsFromProtos(context::Context* ctx, const google::protobuf::RepeatedPtrField<std::string>& rows) {
-  return std::make_pair("", error::General_Unimplemented);
+  MEASURE_CPU(ctx, cpu_db_repl_recv);
+  size_t initial_rows = rows_.size();
+  auto row = ctx->Protobuf<e2e::DB4RowState>();
+  for (int i = 0; i < rows.size(); i++) {
+    row->Clear();
+    if (!row->ParseFromString(rows.Get(i))) {
+      return std::make_pair("", COUNTED_ERROR(DB4_ReplicationInvalidRow));
+    }
+    if (row->tries() > MAX_ALLOWED_MAX_TRIES ||
+        row->tries() < 1) {
+      return std::make_pair("", COUNTED_ERROR(DB4_ReplicationInvalidRow));
+    }
+    BackupID key;
+    if (auto err = util::StringIntoByteArray(row->backup_id(), &key); err != error::OK) {
+      return std::make_pair("", err);
+    }
+    if (rows_.size() && key <= rows_.rbegin()->first) {
+      return std::make_pair("", COUNTED_ERROR(DB4_ReplicationOutOfOrder));
+    }
+
+    Row r(merkle_tree_);
+    r.tries = row->tries();
+    if (!r.auth_commitment.FromString(row->auth_commitment()) ||
+        !r.oprf_secretshare.FromString(row->oprf_secretshare()) ||
+        !r.zero_secretshare.FromString(row->zero_secretshare()) ||
+        error::OK != util::StringIntoByteArray(row->encryption_secretshare(), &r.encryption_secretshare)) {
+      return std::make_pair("", COUNTED_ERROR(DB4_ReplicationInvalidRow));
+    }
+    if (row->oprf_secretshare_delta().size() || row->encryption_secretshare_delta().size()) {
+      if (!r.oprf_secretshare_delta.FromString(row->oprf_secretshare_delta()) ||
+          error::OK != util::StringIntoByteArray(row->encryption_secretshare_delta(), &r.encryption_secretshare_delta)) {
+        return std::make_pair("", COUNTED_ERROR(DB4_ReplicationInvalidRow));
+      }
+      r.has_delta = 1;
+    }
+    merkle::Hash h;
+    {
+      MEASURE_CPU(ctx, cpu_db_repl_merkle_hash);
+      h = merkle::HashFrom(HashRow(key, r));
+    }
+    {
+      MEASURE_CPU(ctx, cpu_db_repl_merkle_update);
+      r.merkle_leaf_.Update(h);
+    }
+    rows_.emplace_hint(rows_.end(), key, std::move(r));
+    GAUGE(db, rows)->Set(rows_.size());
+  }
+  if (rows_.size() != initial_rows + rows.size()) {
+    // This ensures that we didn't accidentally attempt to load rows that
+    // already exist within the DB.
+    return std::make_pair("", COUNTED_ERROR(DB4_LoadedRowsAlreadyInDB));
+  }
+  return std::make_pair(row->backup_id(), error::OK);
 }
 
 

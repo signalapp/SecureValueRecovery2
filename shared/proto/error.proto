@@ -330,4 +330,7 @@ enum Error {
   DB4_RequestInvalid = 2403;
   DB4_LogRequestType = 2404;
   DB4_Restore2StateMissing = 2405;
+  DB4_ReplicationInvalidRow = 2406;
+  DB4_LoadedRowsAlreadyInDB = 2407;
+  DB4_ReplicationOutOfOrder = 2408;
 };
