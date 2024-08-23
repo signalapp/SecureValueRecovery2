@@ -46,6 +46,9 @@ std::pair<const DB::Log*, error::Error> DB4::ClientState::LogFromRequest(
     case client::Request4::kRestore1:
     case client::Request4::kRemove:
     case client::Request4::kQuery:
+    case client::Request4::kRotateStart:
+    case client::Request4::kRotateCommit:
+    case client::Request4::kRotateRollback:
       // error checked in ValidateClientLog.
       break;
     default:
@@ -81,11 +84,11 @@ std::pair<const DB::Response*, error::Error> DB4::ClientState::ResponseFromReque
       auto resp = ctx->Protobuf<client::Response4>();
       auto r2 = resp->mutable_restore2();
       if (!restore2_client_state) {
-        r2->set_status(client::Response4::Restore2::RESTORE1_MISSING);
+        r2->set_status(client::Response4::RESTORE1_MISSING);
       } else if (
           !check_s.FromString(r->restore2().auth_scalar()) ||
           !check_p.FromString(r->restore2().auth_point())) {
-        r2->set_status(client::Response4::Restore2::INVALID_REQUEST);
+        r2->set_status(client::Response4::INVALID_REQUEST);
       } else {
         BackupID id;
         CHECK(error::OK == util::StringIntoByteArray(authenticated_id(), &id));
@@ -110,7 +113,7 @@ const DB::Response* DB4::ClientState::ResponseFromEffect(
   }
   auto resp = &e->resp();
   if (resp->inner_case() == client::Response4::kRestore1 &&
-      resp->restore1().status() == client::Response4::Restore1::OK) {
+      resp->restore1().status() == client::Response4::OK) {
     auto restore2 = std::make_unique<client::Effect4::Restore2State>();
     restore2->MergeFrom(dynamic_cast<const client::Effect4*>(&effect)->restore2_client_state());
     util::unique_lock lock(mu_);
@@ -150,9 +153,29 @@ error::Error DB4::Protocol::ValidateClientLog(const DB::Log& log_pb) const {
       }
     } break;
     case client::Request4::kRemove:
-      return error::OK;
+      break;
     case client::Request4::kQuery: 
-      return error::OK;
+      break;
+    case client::Request4::kRotateStart: {
+      const auto& req = log->req().rotate_start();
+      if (req.version() == 0 ||
+          !check_s.FromString(req.oprf_secretshare_delta()) ||
+          req.encryption_secretshare_delta().size() != sizeof(AESKey)) {
+        return COUNTED_ERROR(DB4_RequestInvalid);
+      }
+    } break;
+    case client::Request4::kRotateCommit: {
+      const auto& req = log->req().rotate_commit();
+      if (req.version() == 0) {
+        return COUNTED_ERROR(DB4_RequestInvalid);
+      }
+    } break;
+    case client::Request4::kRotateRollback: {
+      const auto& req = log->req().rotate_rollback();
+      if (req.version() == 0) {
+        return COUNTED_ERROR(DB4_RequestInvalid);
+      }
+    } break;
     default:
       return COUNTED_ERROR(DB4_ToplevelRequestType);
   }
@@ -204,6 +227,9 @@ DB::Effect* DB4::Run(context::Context* ctx, const DB::Log& log_pb) {
           ctx, id, log->req().restore1(),
           out->mutable_resp()->mutable_restore1(),
           out->mutable_restore2_client_state());
+      if (out->resp().restore1().status() != client::Response4::OK) {
+        out->clear_restore2_client_state();
+      }
     } break;
     case client::Request4::kRemove: {
       COUNTER(db4, ops_remove)->Increment();
@@ -212,6 +238,18 @@ DB::Effect* DB4::Run(context::Context* ctx, const DB::Log& log_pb) {
     case client::Request4::kQuery: {
       COUNTER(db4, ops_query)->Increment();
       Query(ctx, id, log->req().query(), out->mutable_resp()->mutable_query());
+    } break;
+    case client::Request4::kRotateStart: {
+      COUNTER(db4, ops_rotate_start)->Increment();
+      RotateStart(ctx, id, log->req().rotate_start(), out->mutable_resp()->mutable_rotate_start());
+    } break;
+    case client::Request4::kRotateCommit: {
+      COUNTER(db4, ops_rotate_commit)->Increment();
+      RotateCommit(ctx, id, log->req().rotate_commit(), out->mutable_resp()->mutable_rotate_commit());
+    } break;
+    case client::Request4::kRotateRollback: {
+      COUNTER(db4, ops_rotate_rollback)->Increment();
+      RotateRollback(ctx, id, log->req().rotate_rollback(), out->mutable_resp()->mutable_rotate_rollback());
     } break;
     default: CHECK(nullptr == "should never reach here, client log already validated");
   }
@@ -372,7 +410,7 @@ void DB4::Create(
   auto find = rows_.find(id);
   if (find == rows_.end()) {
     if (req.max_tries() == 0) {
-      resp->set_status(client::Response4::Create::INVALID_REQUEST);
+      resp->set_status(client::Response4::INVALID_REQUEST);
       return;
     }
     auto e = rows_.emplace(id, merkle_tree_);
@@ -396,7 +434,7 @@ void DB4::Create(
   r->new_version = 0;
 
   r->merkle_leaf_.Update(merkle::HashFrom(HashRow(id, *r)));
-  resp->set_status(client::Response4::Create::OK);
+  resp->set_status(client::Response4::OK);
   resp->set_tries_remaining(r->tries);
 }
 
@@ -408,18 +446,18 @@ void DB4::Restore1(
     client::Effect4::Restore2State* state) {
   auto find = rows_.find(id);
   if (find == rows_.end()) {
-    resp->set_status(client::Response4::Restore1::MISSING);
+    resp->set_status(client::Response4::MISSING);
     return;
   }
   Row* row = &find->second;
   if (error::Error err = row->merkle_leaf_.Verify(merkle::HashFrom(HashRow(id, *row))); err != error::OK) {
-    resp->set_status(client::Response4::Restore1::ERROR);
+    resp->set_status(client::Response4::ERROR);
     LOG(ERROR) << "Error in verifying Merkle root during Evaluate: " << err;
     return;
   }
   row->tries--;
   resp->set_tries_remaining(row->tries);
-  resp->set_status(client::Response4::Restore1::ERROR);
+  resp->set_status(client::Response4::ERROR);
 
   ristretto::Point ristretto_hash;
   if (!ristretto_hash.FromHash(sha::Sha512(id, req.blinded()))) {
@@ -465,7 +503,7 @@ void DB4::Restore1(
     state->set_new_version(row->new_version);
   }
 
-  resp->set_status(client::Response4::Restore1::OK);
+  resp->set_status(client::Response4::OK);
   state->set_version(row->version);
   state->set_auth_commitment(row->auth_commitment.ToString());
   state->set_encryption_secretshare(util::ByteArrayToString(row->encryption_secretshare));
@@ -482,9 +520,6 @@ void DB4::Restore1(
     auth2->set_version(row->new_version);
   }
 restore1_error:
-  if (resp->status() != client::Response4::Restore1::OK) {
-    state->Clear();
-  }
   if (row->tries == 0) {
     rows_.erase(find);
     row = nullptr;  // The `row` ptr is no longer valid due to the `erase` call.
@@ -501,7 +536,7 @@ void DB4::ClientState::Restore2(
     const client::Effect4::Restore2State* state,
     client::Response4::Restore2* resp) const {
   ristretto::Point lhs1;
-  resp->set_status(client::Response4::Restore2::ERROR);
+  resp->set_status(client::Response4::ERROR);
   ristretto::Scalar auth_scalar;
   if (!auth_scalar.FromString(req.auth_scalar())) {
     return;
@@ -535,10 +570,10 @@ void DB4::ClientState::Restore2(
   }
 
   if (req.version() == state->version()) {
-    resp->set_status(client::Response4::Restore2::OK);
+    resp->set_status(client::Response4::OK);
     resp->set_encryption_secretshare(state->encryption_secretshare());
   } else if (req.version() == state->new_version()) {
-    resp->set_status(client::Response4::Restore2::OK);
+    resp->set_status(client::Response4::OK);
     resp->set_encryption_secretshare(state->new_encryption_secretshare());
   }
 }
@@ -563,12 +598,112 @@ void DB4::Query(
     client::Response4::Query* resp) const {
   auto find = rows_.find(id);
   if (find == rows_.end()) {
-    resp->set_status(client::Response4::Query::MISSING);
+    resp->set_status(client::Response4::MISSING);
     return;
   }
   const Row* row = &find->second;
-  resp->set_status(client::Response4::Query::OK);
+  resp->set_status(client::Response4::OK);
   resp->set_tries_remaining(row->tries);
+  resp->set_version(row->version);
+  if (row->new_version) resp->set_new_version(row->new_version);
+}
+
+void DB4::RotateStart(
+    context::Context* ctx,
+    const BackupID& id,
+    const client::Request4::RotateStart& req,
+    client::Response4::RotateStart* resp) {
+  auto find = rows_.find(id);
+  if (find == rows_.end()) {
+    resp->set_status(client::Response4::MISSING);
+    return;
+  }
+  Row* row = &find->second;
+  if (row->new_version) {
+    resp->set_status(client::Response4::ALREADY_ROTATING);
+    return;
+  }
+  ristretto::Scalar oprf;
+  // Checked in ValidateClientLog.
+  CHECK(oprf.FromString(req.oprf_secretshare_delta()));
+  AESKey enc;
+  // Checked in ValidateClientLog.
+  CHECK(error::OK == util::StringIntoByteArray(req.encryption_secretshare_delta(), &enc));
+  if (error::Error err = row->merkle_leaf_.Verify(merkle::HashFrom(HashRow(id, *row))); err != error::OK) {
+    resp->set_status(client::Response4::ERROR);
+    LOG(ERROR) << "Error in verifying Merkle root during Evaluate: " << err;
+    return;
+  }
+  row->oprf_secretshare_delta = oprf;
+  row->encryption_secretshare_delta = enc;
+  row->new_version = req.version();
+  row->merkle_leaf_.Update(merkle::HashFrom(HashRow(id, *row)));
+  resp->set_status(client::Response4::OK);
+}
+
+void DB4::RotateCommit(
+    context::Context* ctx,
+    const BackupID& id,
+    const client::Request4::RotateCommit& req,
+    client::Response4::RotateCommit* resp) {
+  auto find = rows_.find(id);
+  if (find == rows_.end()) {
+    resp->set_status(client::Response4::MISSING);
+    return;
+  }
+  Row* row = &find->second;
+  if (!row->new_version) {
+    resp->set_status(client::Response4::NOT_ROTATING);
+    return;
+  } else if (row->new_version != req.version()) {
+    resp->set_status(client::Response4::VERSION_MISMATCH);
+    return;
+  }
+  if (error::Error err = row->merkle_leaf_.Verify(merkle::HashFrom(HashRow(id, *row))); err != error::OK) {
+    resp->set_status(client::Response4::ERROR);
+    LOG(ERROR) << "Error in verifying Merkle root during Evaluate: " << err;
+    return;
+  }
+  row->oprf_secretshare = row->oprf_secretshare.Add(row->oprf_secretshare_delta);
+  for (size_t i = 0; i < sizeof(row->encryption_secretshare); i++) {
+    row->encryption_secretshare[i] ^= row->encryption_secretshare_delta[i];
+  }
+  row->oprf_secretshare_delta.Clear();
+  row->encryption_secretshare_delta = {0};
+  row->version = row->new_version;
+  row->new_version = 0;
+  row->merkle_leaf_.Update(merkle::HashFrom(HashRow(id, *row)));
+  resp->set_status(client::Response4::OK);
+}
+
+void DB4::RotateRollback(
+    context::Context* ctx,
+    const BackupID& id,
+    const client::Request4::RotateRollback& req,
+    client::Response4::RotateRollback* resp) {
+  auto find = rows_.find(id);
+  if (find == rows_.end()) {
+    resp->set_status(client::Response4::MISSING);
+    return;
+  }
+  Row* row = &find->second;
+  if (!row->new_version) {
+    resp->set_status(client::Response4::NOT_ROTATING);
+    return;
+  } else if (row->new_version != req.version()) {
+    resp->set_status(client::Response4::VERSION_MISMATCH);
+    return;
+  }
+  if (error::Error err = row->merkle_leaf_.Verify(merkle::HashFrom(HashRow(id, *row))); err != error::OK) {
+    resp->set_status(client::Response4::ERROR);
+    LOG(ERROR) << "Error in verifying Merkle root during Evaluate: " << err;
+    return;
+  }
+  row->oprf_secretshare_delta.Clear();
+  row->encryption_secretshare_delta = {0};
+  row->new_version = 0;
+  row->merkle_leaf_.Update(merkle::HashFrom(HashRow(id, *row)));
+  resp->set_status(client::Response4::OK);
 }
 
 DB4::Row::Row(merkle::Tree* t) : version(0), new_version(0), tries(0), merkle_leaf_(t) {}

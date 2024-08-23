@@ -17,6 +17,7 @@
 //TESTDEP ristretto
 
 #include <gtest/gtest.h>
+#include <map>
 #include "db/db4.h"
 #include "env/env.h"
 #include "sha/sha.h"
@@ -33,18 +34,6 @@
 #include <sodium/crypto_auth_hmacsha512.h>
 
 namespace svr2::db {
-
-class DB4Test : public ::testing::Test {
- public:
-  DB4Test() {}
- protected:
-  static void SetUpTestCase() {
-    env::Init(env::SIMULATED);
-  }
-
-  context::Context ctx;
-  merkle::Tree merk;
-};
 
 template <class T1, class T2>
 ristretto::Scalar TestKDF(const T1& t1, const T2& t2) {
@@ -90,12 +79,11 @@ class DB4Client {
     k_[0] = k_[0].Negate();
 
     // Choose random aes_enc_, and choose aes_[i] such that they xor to aes_enc_.
-    CHECK(error::OK == env::environment->RandomBytes(aes_enc_.data(), aes_enc_.size()));
-    memcpy(aes_[0].data(), aes_enc_.data(), aes_enc_.size());
-    for (int i = 1; i < N; i++) {
+    aes_enc_ = {0};
+    for (int i = 0; i < N; i++) {
       CHECK(error::OK == env::environment->RandomBytes(aes_[i].data(), aes_[i].size()));
-      for (int j = 0; j < aes_[0].size(); j++) {
-        aes_[0][j] ^= aes_[i][j];
+      for (int j = 0; j < sizeof(DB4::AESKey); j++) {
+        aes_enc_[j] ^= aes_[i][j];
       }
     }
     k_enc_ = TestKDF(aes_enc_, k_auth_);
@@ -121,9 +109,9 @@ class DB4Client {
     version_ = util::BigEndian64FromBytes(version);
   }
 
-  client::Request4 Create(int i) {
+  client::Request4 Create(int i, int tries) {
     client::Request4 r;
-    r.mutable_create()->set_max_tries(10);
+    r.mutable_create()->set_max_tries(tries);
     r.mutable_create()->set_oprf_secretshare(k_[i].ToString());
     r.mutable_create()->set_zero_secretshare(z_[i].ToString());
     r.mutable_create()->set_auth_commitment(pk_[i].ToString());
@@ -143,18 +131,76 @@ class DB4Client {
     return r;
   }
 
+  std::array<client::Request4, N> RotateStart(uint64_t* version) {
+    // Create N scalars that sum to zero
+    std::array<ristretto::Scalar, N> scalars;
+    for (int i = 1; i < N; i++) {
+      scalars[i] = ristretto::Scalar::Random();
+      if (i == 1) {
+        scalars[0] = scalars[i];
+      } else {
+        scalars[0] = scalars[0].Add(scalars[i]);
+      }
+    }
+    scalars[0] = scalars[0].Negate();
+    // Create N keys that XOR to zero
+    std::array<DB4::AESKey, N> encs;
+    encs[0] = {0};
+    for (int i = 1; i < N; i++) {
+      CHECK(error::OK == env::environment->RandomBytes(encs[i].data(), encs[i].size()));
+      for (int j = 0; j < sizeof(DB4::AESKey); j++) {
+        encs[0][j] ^= encs[i][j];
+      }
+    }
+    uint8_t v[8];
+    CHECK(error::OK == env::environment->RandomBytes(v, sizeof(v)));
+    *version = util::BigEndian64FromBytes(v);
+
+    std::array<client::Request4, N> out;
+    for (int i = 0; i < N; i++) {
+      auto r = out[i].mutable_rotate_start();
+      r->set_version(*version);
+      r->set_oprf_secretshare_delta(scalars[i].ToString());
+      r->set_encryption_secretshare_delta(util::ByteArrayToString(encs[i]));
+    }
+    return out;
+  }
+
   client::Request4 Restore2(
       int i,
       const ristretto::Scalar& b,
       const std::array<client::Response4::Restore1, N>& resps) {
+    // Find which version to use by figuring out which version appears
+    // in all of the responses.
+    std::map<uint64_t, std::set<int>> versions;
+    for (int i = 0; i < N; i++) {
+      for (int j = 0; j < resps[i].auth_size(); j++) {
+        versions[resps[i].auth(j).version()].insert(i);
+        LOG(INFO) << "Version " << resps[i].auth(j).version() << " in " << i;
+      }
+    }
+    uint64_t v = 0;
+    for (auto iter : versions) {
+      if (iter.second.size() == N) {
+        v = iter.first;
+        break;
+      }
+    }
+    CHECK(v != 0);
+
     ristretto::Point evaluated_sum;
     for (int i = 0; i < N; i++) {
       ristretto::Point p;
-      CHECK(p.FromString(resps[i].auth(0).element()));
-      if (i == 0) {
-        evaluated_sum = p;
-      } else {
-        CHECK(evaluated_sum.Add(p, &evaluated_sum));
+      for (int j = 0; j < resps[i].auth_size(); j++) {
+        const auto& a = resps[i].auth(j);
+        if (a.version() != v) continue;
+        CHECK(p.FromString(a.element()));
+        if (i == 0) {
+          evaluated_sum = p;
+        } else {
+          CHECK(evaluated_sum.Add(p, &evaluated_sum));
+        }
+        break;
       }
     }
 
@@ -176,16 +222,24 @@ class DB4Client {
     client::Request4 r;
     r.mutable_restore2()->set_auth_point(proof_point.ToString());
     r.mutable_restore2()->set_auth_scalar(proof_scalar.ToString());
-    r.mutable_restore2()->set_version(version_);
+    r.mutable_restore2()->set_version(v);
     return r;
-  }
-
-  bool EncryptionKeyMatches(int i, const client::Response4::Restore2& r) {
-    return util::ConstantTimeEquals(r.encryption_secretshare(), aes_[i]);
   }
 
   const DB4::BackupID& id() const { return id_; }
   std::string authenticated_id() const { return util::ByteArrayToString(id_); }
+
+  bool EncryptionKeyMatches(const std::array<client::Response4::Restore2, N>& restores) {
+    DB4::AESKey a = {0};
+    DB4::AESKey b;
+    for (int i = 0; i < N; i++) {
+      CHECK(error::OK == util::StringIntoByteArray(restores[i].encryption_secretshare(), &b));
+      for (int j = 0; j < sizeof(DB4::AESKey); j++) {
+        a[j] ^= b[j];
+      }
+    }
+    return util::ConstantTimeEquals(a, aes_enc_);
+  }
 
  private:
   std::array<uint8_t, 64> input_;
@@ -203,73 +257,82 @@ class DB4Client {
   uint64_t version_;
 };
 
-TEST_F(DB4Test, SingleBackupLifecycle) {
-  const size_t N = 3;
+const size_t N = 3;
+
+class DB4Test : public ::testing::Test {
+ public:
+  DB4Test() {}
+ protected:
+
+  static void SetUpTestCase() {
+    env::Init(env::SIMULATED);
+  }
+
+  void SetUp() {
+    for (int i = 0; i < N; i++) {
+      dbs[i] = std::make_unique<DB4>(&merk);
+      states[i] = dbs[i]->P()->NewClientState(client.authenticated_id());
+    }
+  }
+
+  context::Context ctx;
+  merkle::Tree merk;
   DB4Client<N> client;
   std::array<std::unique_ptr<DB4>, N> dbs;
   std::array<std::unique_ptr<DB::ClientState>, N> states;
-  for (int i = 0; i < N; i++) {
-    dbs[i] = std::make_unique<DB4>(&merk);
-    states[i] = dbs[i]->P()->NewClientState(client.authenticated_id());
-  }
-  for (int i = 0; i < N; i++) {
-    LOG(INFO) << "Create." << i;
-    auto req = client.Create(i);
-    auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), req);
-    ASSERT_EQ(error::OK, err);
-    ASSERT_EQ(resp->create().status(), client::Response4::Create::OK);
-    ASSERT_EQ(client::Response4::kCreate, resp->inner_case());
+
+  void VerifyRestore() {
+    ristretto::Scalar b = ristretto::Scalar::Random();
+    std::array<client::Response4::Restore1, N> restore1resp;
+    for (int i = 0; i < N; i++) {
+      LOG(INFO) << "Restore1." << i;
+      auto req = client.Restore1(i, b);
+      auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), req);
+      ASSERT_EQ(error::OK, err);
+      ASSERT_EQ(client::Response4::kRestore1, resp->inner_case());
+      ASSERT_EQ(resp->restore1().status(), client::Response4::OK);
+      restore1resp[i].MergeFrom(resp->restore1());
+    }
+
+    std::array<client::Response4::Restore2, N> restore2resp;
+    for (int i = 0; i < N; i++) {
+      LOG(INFO) << "Restore2." << i;
+      auto req = client.Restore2(i, b, restore1resp);
+      auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), req);
+      ASSERT_EQ(error::OK, err);
+      ASSERT_EQ(client::Response4::kRestore2, resp->inner_case());
+      ASSERT_EQ(resp->restore2().status(), client::Response4::OK);
+      restore2resp[i].MergeFrom(resp->restore2());
+    }
+    ASSERT_TRUE(client.EncryptionKeyMatches(restore2resp));
   }
 
-  ristretto::Scalar b = ristretto::Scalar::Random();
-  std::array<client::Response4::Restore1, N> restore1resp;
-  for (int i = 0; i < N; i++) {
-    LOG(INFO) << "Restore1." << i;
-    auto req = client.Restore1(i, b);
-    auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), req);
-    ASSERT_EQ(error::OK, err);
-    ASSERT_EQ(client::Response4::kRestore1, resp->inner_case());
-    ASSERT_EQ(resp->restore1().status(), client::Response4::Restore1::OK);
-    ASSERT_EQ(resp->restore1().tries_remaining(), 9);
-    restore1resp[i].MergeFrom(resp->restore1());
+  void Create(int tries) {
+    for (int i = 0; i < N; i++) {
+      LOG(INFO) << "Create." << i;
+      auto req = client.Create(i, tries);
+      auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), req);
+      ASSERT_EQ(error::OK, err);
+      ASSERT_EQ(resp->create().status(), client::Response4::OK);
+      ASSERT_EQ(client::Response4::kCreate, resp->inner_case());
+    }
   }
+};
 
-  for (int i = 0; i < N; i++) {
-    LOG(INFO) << "Restore2." << i;
-    auto req = client.Restore2(i, b, restore1resp);
-    auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), req);
-    ASSERT_EQ(error::OK, err);
-    ASSERT_EQ(client::Response4::kRestore2, resp->inner_case());
-    ASSERT_EQ(resp->restore2().status(), client::Response4::Restore2::OK);
-    ASSERT_TRUE(client.EncryptionKeyMatches(i, resp->restore2()));
-  }
+TEST_F(DB4Test, SingleBackupLifecycle) {
+  Create(10);
+  VerifyRestore();
 }
 
 TEST_F(DB4Test, Restore1RemovesKey) {
-  const size_t N = 3;
-  DB4Client<N> client;
-  std::array<std::unique_ptr<DB4>, N> dbs;
-  std::array<std::unique_ptr<DB::ClientState>, N> states;
-  for (int i = 0; i < N; i++) {
-    dbs[i] = std::make_unique<DB4>(&merk);
-    states[i] = dbs[i]->P()->NewClientState(client.authenticated_id());
-  }
-  for (int i = 0; i < N; i++) {
-    LOG(INFO) << "Create." << i;
-    auto req = client.Create(i);
-    auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), req);
-    ASSERT_EQ(error::OK, err);
-    ASSERT_EQ(resp->create().status(), client::Response4::Create::OK);
-    ASSERT_EQ(client::Response4::kCreate, resp->inner_case());
-  }
-
+  Create(10);
   for (int i = 0; i < 10; i++) {
     ristretto::Scalar b = ristretto::Scalar::Random();
     auto req = client.Restore1(0, b);
     auto [resp, err] = RunRequest(&ctx, dbs[0].get(), states[0].get(), req);
     ASSERT_EQ(error::OK, err);
     ASSERT_EQ(client::Response4::kRestore1, resp->inner_case());
-    ASSERT_EQ(resp->restore1().status(), client::Response4::Restore1::OK);
+    ASSERT_EQ(resp->restore1().status(), client::Response4::OK);
     ASSERT_EQ(resp->restore1().tries_remaining(), 10-i-1);
   }
   // Verify that after the last try, we get a MISSING error.
@@ -279,27 +342,12 @@ TEST_F(DB4Test, Restore1RemovesKey) {
     auto [resp, err] = RunRequest(&ctx, dbs[0].get(), states[0].get(), req);
     ASSERT_EQ(error::OK, err);
     ASSERT_EQ(client::Response4::kRestore1, resp->inner_case());
-    ASSERT_EQ(resp->restore1().status(), client::Response4::Restore1::MISSING);
+    ASSERT_EQ(resp->restore1().status(), client::Response4::MISSING);
   }
 }
 
 TEST_F(DB4Test, QueryClearsRestoreState) {
-  const size_t N = 3;
-  DB4Client<N> client;
-  std::array<std::unique_ptr<DB4>, N> dbs;
-  std::array<std::unique_ptr<DB::ClientState>, N> states;
-  for (int i = 0; i < N; i++) {
-    dbs[i] = std::make_unique<DB4>(&merk);
-    states[i] = dbs[i]->P()->NewClientState(client.authenticated_id());
-  }
-  for (int i = 0; i < N; i++) {
-    LOG(INFO) << "Create." << i;
-    auto req = client.Create(i);
-    auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), req);
-    ASSERT_EQ(error::OK, err);
-    ASSERT_EQ(resp->create().status(), client::Response4::Create::OK);
-    ASSERT_EQ(client::Response4::kCreate, resp->inner_case());
-  }
+  Create(10);
 
   ristretto::Scalar b = ristretto::Scalar::Random();
   std::array<client::Response4::Restore1, N> restore1resp;
@@ -309,7 +357,7 @@ TEST_F(DB4Test, QueryClearsRestoreState) {
     auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), req);
     ASSERT_EQ(error::OK, err);
     ASSERT_EQ(client::Response4::kRestore1, resp->inner_case());
-    ASSERT_EQ(resp->restore1().status(), client::Response4::Restore1::OK);
+    ASSERT_EQ(resp->restore1().status(), client::Response4::OK);
     ASSERT_EQ(resp->restore1().tries_remaining(), 9);
     restore1resp[i].MergeFrom(resp->restore1());
   }
@@ -321,7 +369,7 @@ TEST_F(DB4Test, QueryClearsRestoreState) {
     auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), req);
     ASSERT_EQ(error::OK, err);
     ASSERT_EQ(client::Response4::kQuery, resp->inner_case());
-    ASSERT_EQ(resp->query().status(), client::Response4::Query::OK);
+    ASSERT_EQ(resp->query().status(), client::Response4::OK);
     ASSERT_EQ(resp->query().tries_remaining(), 9);
   }
 
@@ -331,27 +379,12 @@ TEST_F(DB4Test, QueryClearsRestoreState) {
     auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), req);
     ASSERT_EQ(error::OK, err);
     ASSERT_EQ(client::Response4::kRestore2, resp->inner_case());
-    ASSERT_EQ(resp->restore2().status(), client::Response4::Restore2::RESTORE1_MISSING);
+    ASSERT_EQ(resp->restore2().status(), client::Response4::RESTORE1_MISSING);
   }
 }
 
 TEST_F(DB4Test, RemoveRemovesRow) {
-  const size_t N = 3;
-  DB4Client<N> client;
-  std::array<std::unique_ptr<DB4>, N> dbs;
-  std::array<std::unique_ptr<DB::ClientState>, N> states;
-  for (int i = 0; i < N; i++) {
-    dbs[i] = std::make_unique<DB4>(&merk);
-    states[i] = dbs[i]->P()->NewClientState(client.authenticated_id());
-  }
-  { int i = 0;
-    LOG(INFO) << "Create." << i;
-    auto req = client.Create(i);
-    auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), req);
-    ASSERT_EQ(error::OK, err);
-    ASSERT_EQ(resp->create().status(), client::Response4::Create::OK);
-    ASSERT_EQ(client::Response4::kCreate, resp->inner_case());
-  }
+  Create(10);
 
   { int i = 0;
     LOG(INFO) << "Remove." << i;
@@ -369,28 +402,12 @@ TEST_F(DB4Test, RemoveRemovesRow) {
     auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), req);
     ASSERT_EQ(error::OK, err);
     ASSERT_EQ(client::Response4::kRestore1, resp->inner_case());
-    ASSERT_EQ(resp->restore1().status(), client::Response4::Restore1::MISSING);
+    ASSERT_EQ(resp->restore1().status(), client::Response4::MISSING);
   }
 }
 
 TEST_F(DB4Test, MaxTriesZeroKeepsTriesTheSame) {
-  const size_t N = 3;
-  DB4Client<N> client;
-  std::array<std::unique_ptr<DB4>, N> dbs;
-  std::array<std::unique_ptr<DB::ClientState>, N> states;
-  for (int i = 0; i < N; i++) {
-    dbs[i] = std::make_unique<DB4>(&merk);
-    states[i] = dbs[i]->P()->NewClientState(client.authenticated_id());
-  }
-  { int i = 0;
-    LOG(INFO) << "Create." << i;
-    auto req = client.Create(i);
-    auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), req);
-    ASSERT_EQ(error::OK, err);
-    ASSERT_EQ(resp->create().status(), client::Response4::Create::OK);
-    ASSERT_EQ(client::Response4::kCreate, resp->inner_case());
-    ASSERT_EQ(resp->create().tries_remaining(), 10);
-  }
+  Create(10);
 
   ristretto::Scalar b = ristretto::Scalar::Random();
   { int i = 0;
@@ -399,20 +416,45 @@ TEST_F(DB4Test, MaxTriesZeroKeepsTriesTheSame) {
     auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), req);
     ASSERT_EQ(error::OK, err);
     ASSERT_EQ(client::Response4::kRestore1, resp->inner_case());
-    ASSERT_EQ(resp->restore1().status(), client::Response4::Restore1::OK);
+    ASSERT_EQ(resp->restore1().status(), client::Response4::OK);
     ASSERT_EQ(resp->restore1().tries_remaining(), 9);
   }
 
   { int i = 0;
     LOG(INFO) << "Create." << i;
-    auto req = client.Create(i);
-    req.mutable_create()->set_max_tries(0);
+    auto req = client.Create(i, 0);
     auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), req);
     ASSERT_EQ(error::OK, err);
-    ASSERT_EQ(resp->create().status(), client::Response4::Create::OK);
+    ASSERT_EQ(resp->create().status(), client::Response4::OK);
     ASSERT_EQ(client::Response4::kCreate, resp->inner_case());
     ASSERT_EQ(resp->create().tries_remaining(), 9);
   }
+}
+
+TEST_F(DB4Test, RotateLifecycle) {
+  Create(255);
+
+  uint64_t v;
+  auto rotate_start = client.RotateStart(&v);
+  for (int i = 0; i < N; i++) {
+    VerifyRestore();
+    LOG(INFO) << "RotateStart." << i;
+    auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), rotate_start[i]);
+    ASSERT_EQ(error::OK, err);
+    ASSERT_EQ(client::Response4::kRotateStart, resp->inner_case());
+    ASSERT_EQ(resp->rotate_start().status(), client::Response4::OK);
+  }
+  client::Request4 commit;
+  commit.mutable_rotate_commit()->set_version(v);
+  for (int i = 0; i < N; i++) {
+    VerifyRestore();
+    LOG(INFO) << "RotateCommit." << i;
+    auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), commit);
+    ASSERT_EQ(error::OK, err);
+    ASSERT_EQ(client::Response4::kRotateCommit, resp->inner_case());
+    ASSERT_EQ(resp->rotate_commit().status(), client::Response4::OK);
+  }
+    VerifyRestore();
 }
 
 }  // namespace svr2::db

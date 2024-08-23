@@ -16,6 +16,9 @@ message Request4 {
     Restore2 restore2 = 3;
     Remove remove = 4;
     Query query = 5;
+    RotateStart rotate_start = 6;
+    RotateCommit rotate_commit = 7;
+    RotateRollback rotate_rollback = 8;
   }
 
   message Create {
@@ -38,6 +41,17 @@ message Request4 {
   }
   message Query {
   }
+  message RotateStart {
+    fixed64 version = 1;                     // new cross-backend version #
+    bytes oprf_secretshare_delta = 2;        // k_i^oprf scalar delta
+    bytes encryption_secretshare_delta = 3;  // s_i XOR delta
+  }
+  message RotateCommit {
+    fixed64 version = 1;  // new version #
+  }
+  message RotateRollback {
+    fixed64 version = 1;  // new version #
+  }
 }
 
 message Response4 {
@@ -47,27 +61,29 @@ message Response4 {
     Restore2 restore2 = 3;
     Remove remove = 4;
     Query query = 5;
+    RotateStart rotate_start = 6;
+    RotateCommit rotate_commit = 7;
+    RotateRollback rotate_rollback = 8;
+  }
+
+  enum Status {
+    UNSET = 0;
+    OK = 1;
+    INVALID_REQUEST = 2;
+    MISSING = 3;
+    ERROR = 4;
+    RESTORE1_MISSING = 5;
+    VERSION_MISMATCH = 6;
+    NOT_ROTATING = 7;
+    ALREADY_ROTATING = 8;
   }
 
   message Create {
-    enum Status {
-      UNSET = 0;
-      OK = 1;
-      INVALID_REQUEST = 2;
-      ERROR = 3;
-    }
     Status status = 1;
     uint32 tries_remaining = 2;
   }
 
   message Restore1 {
-    enum Status {
-      UNSET = 0;
-      OK = 1;
-      MISSING = 2;
-      INVALID_REQUEST = 3;
-      ERROR = 4;
-    }
     Status status = 1;
     message Auth {
       bytes element = 1;
@@ -80,14 +96,6 @@ message Response4 {
   }
 
   message Restore2 {
-    enum Status {
-      UNSET = 0;
-      OK = 1;
-      MISSING = 2;
-      INVALID_REQUEST = 3;
-      RESTORE1_MISSING = 4;
-      ERROR = 5;
-    }
     Status status = 1;
     bytes encryption_secretshare = 2;
   }
@@ -96,12 +104,19 @@ message Response4 {
   }
 
   message Query {
-    enum Status {
-      UNSET = 0;
-      OK = 1;
-      MISSING = 2;
-    }
     Status status = 1;
     uint32 tries_remaining = 2;
+    fixed64 version = 3;
+    fixed64 new_version = 4;
+  }
+
+  message RotateStart {
+    Status status = 1;
+  }
+  message RotateCommit {
+    Status status = 1;
+  }
+  message RotateRollback {
+    Status status = 1;
   }
 }

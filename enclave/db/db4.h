@@ -153,6 +153,21 @@ class DB4 : public DB {
       const BackupID& id,
       const client::Request4::Query& req,
       client::Response4::Query* resp) const;
+  void RotateStart(
+      context::Context* ctx,
+      const BackupID& id,
+      const client::Request4::RotateStart& req,
+      client::Response4::RotateStart* resp);
+  void RotateCommit(
+      context::Context* ctx,
+      const BackupID& id,
+      const client::Request4::RotateCommit& req,
+      client::Response4::RotateCommit* resp);
+  void RotateRollback(
+      context::Context* ctx,
+      const BackupID& id,
+      const client::Request4::RotateRollback& req,
+      client::Response4::RotateRollback* resp);
 };
 
 extern const DB4::Protocol db4_protocol;
