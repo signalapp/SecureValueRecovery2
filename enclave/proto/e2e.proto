@@ -109,6 +109,9 @@ message DB4RowState {
   // These will be empty if there is no delta:
   bytes oprf_secretshare_delta = 7;
   bytes encryption_secretshare_delta = 8;
+  // Version #s
+  fixed64 version = 9;
+  fixed64 new_version = 10;
 }
 
 // --- Replication of State ---

@@ -113,15 +113,17 @@ class DB4 : public DB {
   merkle::Tree* merkle_tree_;
   struct Row {
     Row(merkle::Tree* t);
+
+    uint64_t version;
+    uint64_t new_version;  // Post-rotation version, zero if not rotating
     ristretto::Point auth_commitment;
     ristretto::Scalar oprf_secretshare;
     AESKey encryption_secretshare;
     ristretto::Scalar zero_secretshare;
 
-    // Delta
+    // Rotation deltas
     ristretto::Scalar oprf_secretshare_delta;
     AESKey encryption_secretshare_delta;
-    uint8_t has_delta;
 
     uint8_t tries;
     merkle::Leaf merkle_leaf_;

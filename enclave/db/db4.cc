@@ -138,7 +138,8 @@ error::Error DB4::Protocol::ValidateClientLog(const DB::Log& log_pb) const {
           !check_p.FromString(req.auth_commitment()) ||
           !check_s.FromString(req.oprf_secretshare()) ||
           !check_s.FromString(req.zero_secretshare()) ||
-          req.encryption_secretshare().size() != sizeof(AESKey)) {
+          req.encryption_secretshare().size() != sizeof(AESKey) ||
+          req.version() == 0) {
         return COUNTED_ERROR(DB4_RequestInvalid);
       }
     } break;
@@ -169,6 +170,7 @@ const DB::Protocol* DB4::P() const {
 size_t DB4::Protocol::MaxRowSerializedSize() const {
   const size_t PROTOBUF_SMALL_STRING_EXTRA = 2;  // additional bytes for serializing string
   const size_t PROTOBUF_SMALL_INT = 2;           // bytes for serializing a small integer
+  const size_t PROTOBUF_FIXED64 = 9;
   static const DB4::Row* row = nullptr;
   return sizeof(BackupID) + PROTOBUF_SMALL_STRING_EXTRA +
          PROTOBUF_SMALL_INT +  // tries
@@ -178,6 +180,8 @@ size_t DB4::Protocol::MaxRowSerializedSize() const {
          sizeof(row->zero_secretshare) + PROTOBUF_SMALL_STRING_EXTRA +
          sizeof(row->oprf_secretshare_delta) + PROTOBUF_SMALL_STRING_EXTRA +
          sizeof(row->encryption_secretshare_delta) + PROTOBUF_SMALL_STRING_EXTRA +
+         PROTOBUF_FIXED64 +  // version
+         PROTOBUF_FIXED64 +  // new_version
          0;
 }
 
@@ -233,9 +237,10 @@ std::pair<std::string, error::Error> DB4::RowsAsProtos(context::Context* ctx, co
     row->set_auth_commitment(iter->second.auth_commitment.ToString());
     row->set_encryption_secretshare(util::ByteArrayToString(iter->second.encryption_secretshare));
     row->set_zero_secretshare(iter->second.zero_secretshare.ToString());
-    if (iter->second.has_delta) {
+    if (iter->second.new_version) {
       row->set_oprf_secretshare_delta(iter->second.oprf_secretshare_delta.ToString());
       row->set_encryption_secretshare_delta(util::ByteArrayToString(iter->second.encryption_secretshare_delta));
+      row->set_new_version(iter->second.new_version);
     }
     if (!row->SerializeToString(out->Add())) {
       return std::make_pair("", COUNTED_ERROR(DB4_ReplicationInvalidRow));
@@ -274,12 +279,12 @@ std::pair<std::string, error::Error> DB4::LoadRowsFromProtos(context::Context* c
         error::OK != util::StringIntoByteArray(row->encryption_secretshare(), &r.encryption_secretshare)) {
       return std::make_pair("", COUNTED_ERROR(DB4_ReplicationInvalidRow));
     }
-    if (row->oprf_secretshare_delta().size() || row->encryption_secretshare_delta().size()) {
+    if (row->new_version()) {
       if (!r.oprf_secretshare_delta.FromString(row->oprf_secretshare_delta()) ||
           error::OK != util::StringIntoByteArray(row->encryption_secretshare_delta(), &r.encryption_secretshare_delta)) {
         return std::make_pair("", COUNTED_ERROR(DB4_ReplicationInvalidRow));
       }
-      r.has_delta = 1;
+      r.new_version = row->new_version();
     }
     merkle::Hash h;
     {
@@ -301,7 +306,6 @@ std::pair<std::string, error::Error> DB4::LoadRowsFromProtos(context::Context* c
   return std::make_pair(row->backup_id(), error::OK);
 }
 
-
 std::array<uint8_t, 16> DB4::HashRow(const BackupID& id, const Row& row) {
   std::array<uint8_t,
       sizeof(BackupID) +
@@ -309,10 +313,11 @@ std::array<uint8_t, 16> DB4::HashRow(const BackupID& id, const Row& row) {
       sizeof(row.oprf_secretshare) +
       sizeof(row.encryption_secretshare) +
       sizeof(row.zero_secretshare) +
-      1 +  // has_delta
       sizeof(row.oprf_secretshare_delta) +
       sizeof(row.encryption_secretshare_delta) +
       1 +  // tries
+      sizeof(row.version) +
+      sizeof(row.new_version) +
       0> scratch = {0};
   size_t offset = 0;
 
@@ -326,11 +331,16 @@ std::array<uint8_t, 16> DB4::HashRow(const BackupID& id, const Row& row) {
   FILL_SCRATCH(row.oprf_secretshare);
   FILL_SCRATCH(row.encryption_secretshare);
   FILL_SCRATCH(row.zero_secretshare);
-  FILL_SCRATCH(row.has_delta);
   FILL_SCRATCH(row.oprf_secretshare_delta);
   FILL_SCRATCH(row.encryption_secretshare_delta);
   FILL_SCRATCH(row.tries);
 #undef FILL_SCRATCH
+  CHECK(offset + 8 <= scratch.size());
+  util::BigEndian64Bytes(row.version, scratch.data() + offset);
+  offset += 8;
+  CHECK(offset + 8 <= scratch.size());
+  util::BigEndian64Bytes(row.new_version, scratch.data() + offset);
+  offset += 8;
 
   CHECK(offset == scratch.size());
 
@@ -375,6 +385,7 @@ void DB4::Create(
   if (req.max_tries()) {
     r->tries = (uint8_t) req.max_tries();
   }
+  r->version = req.version();
   CHECK(r->auth_commitment.FromString(req.auth_commitment()));
   CHECK(r->oprf_secretshare.FromString(req.oprf_secretshare()));
   CHECK(r->zero_secretshare.FromString(req.zero_secretshare()));
@@ -382,7 +393,7 @@ void DB4::Create(
   // Reset any stored deltas.
   r->oprf_secretshare_delta.Clear();
   memset(r->encryption_secretshare_delta.data(), 0, sizeof(r->encryption_secretshare_delta));
-  r->has_delta = 0;
+  r->new_version = 0;
 
   r->merkle_leaf_.Update(merkle::HashFrom(HashRow(id, *r)));
   resp->set_status(client::Response4::Create::OK);
@@ -414,31 +425,66 @@ void DB4::Restore1(
   if (!ristretto_hash.FromHash(sha::Sha512(id, req.blinded()))) {
     goto restore1_error;
   }
-
   ristretto::Point blinded;
   if (!blinded.FromString(req.blinded())) {
     goto restore1_error;
   }
+
   ristretto::Point blinded_prime;
   if (!blinded.ScalarMult(row->oprf_secretshare, &blinded_prime)) {
     goto restore1_error;
   }
-
   ristretto::Point mask;
   if (!ristretto_hash.ScalarMult(row->zero_secretshare, &mask)) {
     goto restore1_error;
   }
-
-  ristretto::Point evaluated;
-  if (!blinded_prime.Add(mask, &evaluated)) {
+  ristretto::Point evaluated1;
+  if (!blinded_prime.Add(mask, &evaluated1)) {
     goto restore1_error;
   }
-  resp->set_element(evaluated.ToString());
+
+  ristretto::Point evaluated2;
+  if (row->new_version != 0) {
+    auto sum = row->oprf_secretshare.Add(row->oprf_secretshare_delta);
+    ristretto::Point blinded_prime;
+    if (!blinded.ScalarMult(sum, &blinded_prime)) {
+      goto restore1_error;
+    }
+    ristretto::Point mask;
+    if (!ristretto_hash.ScalarMult(row->zero_secretshare, &mask)) {
+      goto restore1_error;
+    }
+    if (!blinded_prime.Add(mask, &evaluated2)) {
+      goto restore1_error;
+    }
+    auto new_secretshare = row->encryption_secretshare;
+    for (size_t i = 0; i < sizeof(row->encryption_secretshare); i++) {
+      new_secretshare[i] ^= row->encryption_secretshare_delta[i];
+    }
+    state->set_new_encryption_secretshare(util::ByteArrayToString(new_secretshare));
+    state->set_new_version(row->new_version);
+  }
+
   resp->set_status(client::Response4::Restore1::OK);
+  state->set_version(row->version);
   state->set_auth_commitment(row->auth_commitment.ToString());
   state->set_encryption_secretshare(util::ByteArrayToString(row->encryption_secretshare));
 
+  // Set the response auth element(s):
+  {
+    auto auth1 = resp->add_auth();
+    auth1->set_element(evaluated1.ToString());
+    auth1->set_version(row->version);
+  }
+  if (row->new_version) {
+    auto auth2 = resp->add_auth();
+    auth2->set_element(evaluated2.ToString());
+    auth2->set_version(row->new_version);
+  }
 restore1_error:
+  if (resp->status() != client::Response4::Restore1::OK) {
+    state->Clear();
+  }
   if (row->tries == 0) {
     rows_.erase(find);
     row = nullptr;  // The `row` ptr is no longer valid due to the `erase` call.
@@ -488,8 +534,13 @@ void DB4::ClientState::Restore2(
     return;
   }
 
-  resp->set_status(client::Response4::Restore2::OK);
-  resp->set_encryption_secretshare(state->encryption_secretshare());
+  if (req.version() == state->version()) {
+    resp->set_status(client::Response4::Restore2::OK);
+    resp->set_encryption_secretshare(state->encryption_secretshare());
+  } else if (req.version() == state->new_version()) {
+    resp->set_status(client::Response4::Restore2::OK);
+    resp->set_encryption_secretshare(state->new_encryption_secretshare());
+  }
 }
 
 void DB4::Remove(
@@ -520,6 +571,6 @@ void DB4::Query(
   resp->set_tries_remaining(row->tries);
 }
 
-DB4::Row::Row(merkle::Tree* t) : has_delta(0), tries(0), merkle_leaf_(t) {}
+DB4::Row::Row(merkle::Tree* t) : version(0), new_version(0), tries(0), merkle_leaf_(t) {}
 
 }  // namespace svr2::db

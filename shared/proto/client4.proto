@@ -24,6 +24,7 @@ message Request4 {
     bytes auth_commitment = 3;         // clienteck^pk
     bytes encryption_secretshare = 4;  // s_i
     bytes zero_secretshare = 5;        // z_i
+    fixed64 version = 6;  // cross-backend version # for joins
   }
   message Restore1 {
     bytes blinded = 1;
@@ -31,6 +32,7 @@ message Request4 {
   message Restore2 {
     bytes auth_point = 1;   // R
     bytes auth_scalar = 2;  // z
+    fixed64 version = 3;
   }
   message Remove {
   }
@@ -67,7 +69,13 @@ message Response4 {
       ERROR = 4;
     }
     Status status = 1;
-    bytes element = 2;
+    message Auth {
+      bytes element = 1;
+      fixed64 version = 2;
+    }
+    // There will be either 1 or 2 of these, depending on
+    // whether we're currently rotating.
+    repeated Auth auth = 2;
     uint32 tries_remaining = 3;
   }
 

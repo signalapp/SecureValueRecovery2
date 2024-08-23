@@ -114,6 +114,11 @@ class DB4Client {
       sk_[i] = TestKDF(k_auth_, index);
       CHECK(pk_[i].ScalarMultBase(sk_[i]));
     }
+
+    // Choose random version #
+    uint8_t version[8];
+    CHECK(error::OK == env::environment->RandomBytes(version, sizeof(version)));
+    version_ = util::BigEndian64FromBytes(version);
   }
 
   client::Request4 Create(int i) {
@@ -123,6 +128,7 @@ class DB4Client {
     r.mutable_create()->set_zero_secretshare(z_[i].ToString());
     r.mutable_create()->set_auth_commitment(pk_[i].ToString());
     r.mutable_create()->set_encryption_secretshare(util::ByteArrayToString(aes_[i]));
+    r.mutable_create()->set_version(version_);
     return r;
   }
 
@@ -144,7 +150,7 @@ class DB4Client {
     ristretto::Point evaluated_sum;
     for (int i = 0; i < N; i++) {
       ristretto::Point p;
-      CHECK(p.FromString(resps[i].element()));
+      CHECK(p.FromString(resps[i].auth(0).element()));
       if (i == 0) {
         evaluated_sum = p;
       } else {
@@ -170,6 +176,7 @@ class DB4Client {
     client::Request4 r;
     r.mutable_restore2()->set_auth_point(proof_point.ToString());
     r.mutable_restore2()->set_auth_scalar(proof_scalar.ToString());
+    r.mutable_restore2()->set_version(version_);
     return r;
   }
 
@@ -193,6 +200,7 @@ class DB4Client {
   std::array<ristretto::Scalar, N> sk_;
   std::array<ristretto::Point, N> pk_;
   ristretto::Scalar k_enc_;
+  uint64_t version_;
 };
 
 TEST_F(DB4Test, SingleBackupLifecycle) {
