@@ -21,6 +21,48 @@
 
 namespace svr2::db {
 
+namespace {
+
+void UpdateErrorCounters(client::Response4::Status s) {
+  switch (s) {
+    case client::Response4::UNSET:
+      COUNTER(db4, client_err_UNSET)->Increment();
+      break;
+    case client::Response4::OK:
+      COUNTER(db4, client_err_OK)->Increment();
+      break;
+    case client::Response4::INVALID_REQUEST:
+      COUNTER(db4, client_err_INVALID_REQUEST)->Increment();
+      break;
+    case client::Response4::MISSING:
+      COUNTER(db4, client_err_MISSING)->Increment();
+      break;
+    case client::Response4::ERROR:
+      COUNTER(db4, client_err_ERROR)->Increment();
+      break;
+    case client::Response4::RESTORE1_MISSING:
+      COUNTER(db4, client_err_RESTORE1_MISSING)->Increment();
+      break;
+    case client::Response4::VERSION_MISMATCH:
+      COUNTER(db4, client_err_VERSION_MISMATCH)->Increment();
+      break;
+    case client::Response4::NOT_ROTATING:
+      COUNTER(db4, client_err_NOT_ROTATING)->Increment();
+      break;
+    case client::Response4::ALREADY_ROTATING:
+      COUNTER(db4, client_err_ALREADY_ROTATING)->Increment();
+      break;
+    case client::Response4::MERKLE_FAILURE:
+      COUNTER(db4, client_err_MERKLE_FAILURE)->Increment();
+      break;
+    default:
+      COUNTER(db4, client_err_UNKNOWN)->Increment();
+      break;
+  }
+}
+
+}  // namespace
+
 const DB4::Protocol db4_protocol;
 
 DB::Request* DB4::Protocol::RequestPB(context::Context* ctx) const {
@@ -94,6 +136,7 @@ std::pair<const DB::Response*, error::Error> DB4::ClientState::ResponseFromReque
         CHECK(error::OK == util::StringIntoByteArray(authenticated_id(), &id));
         Restore2(ctx, id, r->restore2(), restore2_client_state.get(), r2);
       }
+      UpdateErrorCounters(resp->restore2().status());
       return std::make_pair(resp, error::OK);
     }
     default:
@@ -220,6 +263,7 @@ DB::Effect* DB4::Run(context::Context* ctx, const DB::Log& log_pb) {
     case client::Request4::kCreate: {
       COUNTER(db4, ops_create)->Increment();
       Create(ctx, id, log->req().create(), out->mutable_resp()->mutable_create());
+      UpdateErrorCounters(out->resp().create().status());
     } break;
     case client::Request4::kRestore1: {
       COUNTER(db4, ops_restore1)->Increment();
@@ -227,6 +271,7 @@ DB::Effect* DB4::Run(context::Context* ctx, const DB::Log& log_pb) {
           ctx, id, log->req().restore1(),
           out->mutable_resp()->mutable_restore1(),
           out->mutable_restore2_client_state());
+      UpdateErrorCounters(out->resp().restore1().status());
       if (out->resp().restore1().status() != client::Response4::OK) {
         out->clear_restore2_client_state();
       }
@@ -234,22 +279,30 @@ DB::Effect* DB4::Run(context::Context* ctx, const DB::Log& log_pb) {
     case client::Request4::kRemove: {
       COUNTER(db4, ops_remove)->Increment();
       Remove(ctx, id, log->req().remove(), out->mutable_resp()->mutable_remove());
+      // Remove doesn't actually return a status, but it'd make our counters
+      // weird if we didn't have the same number of requests and error
+      // codes, so just count an "OK".
+      UpdateErrorCounters(client::Response4::OK);
     } break;
     case client::Request4::kQuery: {
       COUNTER(db4, ops_query)->Increment();
       Query(ctx, id, log->req().query(), out->mutable_resp()->mutable_query());
+      UpdateErrorCounters(out->resp().query().status());
     } break;
     case client::Request4::kRotateStart: {
       COUNTER(db4, ops_rotate_start)->Increment();
       RotateStart(ctx, id, log->req().rotate_start(), out->mutable_resp()->mutable_rotate_start());
+      UpdateErrorCounters(out->resp().rotate_start().status());
     } break;
     case client::Request4::kRotateCommit: {
       COUNTER(db4, ops_rotate_commit)->Increment();
       RotateCommit(ctx, id, log->req().rotate_commit(), out->mutable_resp()->mutable_rotate_commit());
+      UpdateErrorCounters(out->resp().rotate_commit().status());
     } break;
     case client::Request4::kRotateRollback: {
       COUNTER(db4, ops_rotate_rollback)->Increment();
       RotateRollback(ctx, id, log->req().rotate_rollback(), out->mutable_resp()->mutable_rotate_rollback());
+      UpdateErrorCounters(out->resp().rotate_rollback().status());
     } break;
     default: CHECK(nullptr == "should never reach here, client log already validated");
   }
