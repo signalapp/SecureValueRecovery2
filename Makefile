@@ -40,6 +40,7 @@ clean:
 	$(MAKE) $(MAKE_ARGS) -C enclave clean
 	$(MAKE) $(MAKE_ARGS) -C host clean
 	rm -rf docker/build
+	rm -rf .cargohome/* .cargohome/.*cache* .cargotarget/*
 
 dockerbase: | git
 	[ "" != "$(SKIP_DOCKER_BUILD)" ] || \
