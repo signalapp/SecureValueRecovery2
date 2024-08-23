@@ -76,6 +76,7 @@ message Response4 {
     VERSION_MISMATCH = 6;
     NOT_ROTATING = 7;
     ALREADY_ROTATING = 8;
+    MERKLE_FAILURE = 9;
   }
 
   message Create {

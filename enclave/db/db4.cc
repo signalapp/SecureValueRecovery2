@@ -451,8 +451,8 @@ void DB4::Restore1(
   }
   Row* row = &find->second;
   if (error::Error err = row->merkle_leaf_.Verify(merkle::HashFrom(HashRow(id, *row))); err != error::OK) {
-    resp->set_status(client::Response4::ERROR);
-    LOG(ERROR) << "Error in verifying Merkle root during Evaluate: " << err;
+    resp->set_status(client::Response4::MERKLE_FAILURE);
+    LOG(ERROR) << "Error in verifying Merkle root during Restore1: " << err;
     return;
   }
   row->tries--;
@@ -630,8 +630,8 @@ void DB4::RotateStart(
   // Checked in ValidateClientLog.
   CHECK(error::OK == util::StringIntoByteArray(req.encryption_secretshare_delta(), &enc));
   if (error::Error err = row->merkle_leaf_.Verify(merkle::HashFrom(HashRow(id, *row))); err != error::OK) {
-    resp->set_status(client::Response4::ERROR);
-    LOG(ERROR) << "Error in verifying Merkle root during Evaluate: " << err;
+    resp->set_status(client::Response4::MERKLE_FAILURE);
+    LOG(ERROR) << "Error in verifying Merkle root during RotateStart: " << err;
     return;
   }
   row->oprf_secretshare_delta = oprf;
@@ -660,8 +660,8 @@ void DB4::RotateCommit(
     return;
   }
   if (error::Error err = row->merkle_leaf_.Verify(merkle::HashFrom(HashRow(id, *row))); err != error::OK) {
-    resp->set_status(client::Response4::ERROR);
-    LOG(ERROR) << "Error in verifying Merkle root during Evaluate: " << err;
+    resp->set_status(client::Response4::MERKLE_FAILURE);
+    LOG(ERROR) << "Error in verifying Merkle root during RotateCommit: " << err;
     return;
   }
   row->oprf_secretshare = row->oprf_secretshare.Add(row->oprf_secretshare_delta);
@@ -695,8 +695,8 @@ void DB4::RotateRollback(
     return;
   }
   if (error::Error err = row->merkle_leaf_.Verify(merkle::HashFrom(HashRow(id, *row))); err != error::OK) {
-    resp->set_status(client::Response4::ERROR);
-    LOG(ERROR) << "Error in verifying Merkle root during Evaluate: " << err;
+    resp->set_status(client::Response4::MERKLE_FAILURE);
+    LOG(ERROR) << "Error in verifying Merkle root during RotateRollback: " << err;
     return;
   }
   row->oprf_secretshare_delta.Clear();
