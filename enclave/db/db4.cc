@@ -373,12 +373,12 @@ std::array<uint8_t, 16> DB4::HashRow(const BackupID& id, const Row& row) {
   FILL_SCRATCH(row.encryption_secretshare_delta);
   FILL_SCRATCH(row.tries);
 #undef FILL_SCRATCH
-  CHECK(offset + 8 <= scratch.size());
-  util::BigEndian64Bytes(row.version, scratch.data() + offset);
-  offset += 8;
-  CHECK(offset + 8 <= scratch.size());
-  util::BigEndian64Bytes(row.new_version, scratch.data() + offset);
-  offset += 8;
+  CHECK(offset + 4 <= scratch.size());
+  util::BigEndian32Bytes(row.version, scratch.data() + offset);
+  offset += 4;
+  CHECK(offset + 4 <= scratch.size());
+  util::BigEndian32Bytes(row.new_version, scratch.data() + offset);
+  offset += 4;
 
   CHECK(offset == scratch.size());
 
@@ -621,6 +621,9 @@ void DB4::RotateStart(
   Row* row = &find->second;
   if (row->new_version) {
     resp->set_status(client::Response4::ALREADY_ROTATING);
+    return;
+  } else if (req.version() == row->version) {
+    resp->set_status(client::Response4::DUPLICATE_VERSION);
     return;
   }
   ristretto::Scalar oprf;

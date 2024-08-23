@@ -114,8 +114,8 @@ class DB4 : public DB {
   struct Row {
     Row(merkle::Tree* t);
 
-    uint64_t version;
-    uint64_t new_version;  // Post-rotation version, zero if not rotating
+    uint32_t version;
+    uint32_t new_version;  // Post-rotation version, zero if not rotating
     ristretto::Point auth_commitment;
     ristretto::Scalar oprf_secretshare;
     AESKey encryption_secretshare;
