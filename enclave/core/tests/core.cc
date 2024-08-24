@@ -45,14 +45,17 @@
 #include "proto/enclaveconfig.pb.h"
 #include "proto/e2e.pb.h"
 #include "proto/client3.pb.h"
+#include "proto/client4.pb.h"
 #include "noise/noise.h"
 #include "env/test/test.h"
 #include "util/bytes.h"
+#include "util/hex.h"
 #include "db/db3.h"
 #include "metrics/metrics.h"
 #include "core/coretest/testingcore.h"
 #include "core/coretest/replicagroup.h"
 #include "core/coretest/testingclient.h"
+#include "ristretto/ristretto.h"
 
 // This test is pretty large and contains a lot of code which should maybe be
 // moved into some coretest library at a later date.  There's a few very
@@ -81,6 +84,13 @@ namespace svr2::core {
 using svr2::core::test::TestingCore;
 using svr2::core::test::ReplicaGroup;
 using svr2::core::test::TestingClient;
+
+// Valid scalar and point to create valid create requests:
+const std::string valid_ristretto_scalar(
+    "\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f", 32);
+// point = base * valid_ristretto_scalar
+const std::string valid_ristretto_point(
+    "\x44\xc2\x09\x97\xf9\x50\xa4\x18\x23\xb3\xf5\xf4\x61\x89\xa6\x0d\x39\x42\xff\x8c\x1a\xe3\x8d\x64\xb6\x67\x99\x3a\xe4\x95\x4b\x07", 32);
 
 namespace {
 struct ReplicaGroupConfig {
@@ -149,6 +159,7 @@ class CoreTest : public ::testing::Test {
     valid_init_config.mutable_group_config()->set_max_voting_replicas(5);
     valid_init_config.mutable_group_config()->set_attestation_timeout(3600);
     valid_init_config.mutable_group_config()->set_simulated(true);
+    env::test::ResetRandomNumberGenerator();
   }
 
   typedef std::map<peerid::PeerID, Core*> CoreMap;
@@ -1256,6 +1267,8 @@ TEST_F(CoreTest, RejectsUnsetHostTransactionID) {
 
 TEST_F(CoreTest, MultiJoinCausesDisconnectedPeersWhichThenConnect) {
   ReplicaGroup replica_group;
+  auto enclave_config = valid_enclave_config;
+  enclave_config.mutable_raft()->set_election_ticks(20);
   ReplicaGroupConfig cfg = {
     .ecfg = valid_enclave_config,
     .min_voting = 2,
@@ -1290,7 +1303,7 @@ TEST_F(CoreTest, MultiJoinCausesDisconnectedPeersWhichThenConnect) {
   // other and establish a connection.  In doing so, they make it possible
   // for themselves to run a leader election, and one of them should
   // be elected leader.
-  for (int i = 0; i < valid_enclave_config.raft().election_ticks() * 4; i++) {
+  for (int i = 0; i < valid_enclave_config.raft().election_ticks() * 10; i++) {
     LOG(INFO) << "Tick " << i;
     replica_group.TickTock(2, false);
   }
@@ -2372,10 +2385,10 @@ TEST_F(CoreTest, Hashes3) {
     ASSERT_EQ(resp.inner_case(), HostToEnclaveResponse::kHashes);
     ASSERT_EQ(resp.status(), error::OK);
     EXPECT_EQ(util::BigEndian64FromBytes(reinterpret_cast<const uint8_t*>(resp.hashes().db_hash().data())),
-              3322583038679501158ULL);
+              7514716392381643839ULL);
     EXPECT_EQ(resp.hashes().commit_idx(), 2);
     EXPECT_EQ(util::BigEndian64FromBytes(reinterpret_cast<const uint8_t*>(resp.hashes().commit_hash_chain().data())),
-              2153902264364497466ULL);
+              9155683825560991977ULL);
   }
 }
 
@@ -2768,6 +2781,202 @@ TEST_F(CoreTest, OldLeaderRelinquishesLeadershipWhenItCannotTalkToNewLeader) {
   ASSERT_EQ(h2e_msgs.size(), 1);
   auto& h2e_response = h2e_msgs[0];
   ASSERT_EQ(h2e_msgs[0].status(), error::Core_LogTransactionCancelled);
+}
+
+TEST_F(CoreTest, Hashes4) {
+  enclaveconfig::InitConfig config = valid_init_config;
+  config.mutable_group_config()->set_db_version(enclaveconfig::DATABASE_VERSION_SVR4);
+  auto [core, err] = Core::Create(ctx, config);
+  ASSERT_TRUE(core->ID().Valid());
+  CoreMap cores;
+  cores[core->ID()] = core.get();
+
+  std::string blinded;
+  blinded.resize(db::DB3::ELEMENT_SIZE);
+  crypto_core_ristretto255_random(
+      reinterpret_cast<uint8_t*>(blinded.data()));
+
+  {  // Set up as one-replica Raft
+    UntrustedMessage msg;
+
+    auto host = msg.mutable_h2e_request();
+    host->set_request_id(999);
+    host->set_create_new_raft_group(true);
+
+    context::Context ctx;
+    ASSERT_EQ(error::OK, core->Receive(&ctx, msg));
+    auto resp = Response(env::test::SentMessages());
+    ASSERT_EQ(resp.request_id(), 999);
+    ASSERT_EQ(resp.inner_case(), HostToEnclaveResponse::kStatus);
+    ASSERT_EQ(resp.status(), error::OK);
+  }
+
+  LOG(INFO) << "sending backup request";
+
+  client::Request4 req;
+  auto b = req.mutable_create();
+  uint8_t enc[32] = {1};
+  b->set_max_tries(10);
+  b->set_oprf_secretshare(valid_ristretto_scalar);
+  b->set_auth_commitment(valid_ristretto_point);
+  b->set_encryption_secretshare(enc, 32);
+  b->set_zero_secretshare(valid_ristretto_scalar);
+  b->set_version(1);
+
+  client::Response4 resp;
+  ClientRequest(cores, core.get(), req, &resp, "backup7890123456");
+  ASSERT_EQ(client::Response4::kCreate, resp.inner_case());
+  ASSERT_EQ(client::Response4::OK, resp.create().status());
+
+  {
+    UntrustedMessage msg;
+
+    auto host = msg.mutable_h2e_request();
+    host->set_request_id(10101);
+    host->set_hashes(true);
+
+    context::Context ctx;
+    ASSERT_EQ(error::OK, core->Receive(&ctx, msg));
+    auto resp = Response(env::test::SentMessages());
+    ASSERT_EQ(resp.request_id(), 10101);
+    ASSERT_EQ(resp.inner_case(), HostToEnclaveResponse::kHashes);
+    ASSERT_EQ(resp.status(), error::OK);
+    EXPECT_EQ(util::BigEndian64FromBytes(reinterpret_cast<const uint8_t*>(resp.hashes().db_hash().data())),
+              14611402901957026671ULL);
+    EXPECT_EQ(resp.hashes().commit_idx(), 2);
+    EXPECT_EQ(util::BigEndian64FromBytes(reinterpret_cast<const uint8_t*>(resp.hashes().commit_hash_chain().data())),
+              11091854017836649273ULL);
+  }
+}
+
+TEST_F(CoreTest, DB4NewNodeReplication) {
+  auto config = valid_init_config;
+  config.mutable_group_config()->set_db_version(enclaveconfig::DATABASE_VERSION_SVR4);
+  config.mutable_group_config()->set_min_voting_replicas(1);
+  config.mutable_group_config()->set_max_voting_replicas(3);
+  config.mutable_enclave_config()->mutable_raft()->set_replication_chunk_bytes(10000);
+  auto [core1, err1] = Core::Create(ctx, config);
+  ASSERT_EQ(err1, error::OK);
+  auto [core2, err2] = Core::Create(ctx, config);
+  ASSERT_EQ(err2, error::OK);
+  LOG(INFO) << "core1=" << core1->ID() << ", core2=" << core2->ID();
+
+  // Create cores map for PassMessages
+  CoreMap cores;
+  cores[core1->ID()] = core1.get();
+  cores[core2->ID()] = core2.get();
+
+  {
+    LOG(INFO) << "\n\nSet up as one-replica Raft on core 1";
+    UntrustedMessage msg;
+    auto host = msg.mutable_h2e_request();
+    host->set_request_id(1000);
+    host->set_create_new_raft_group(true);
+
+    context::Context ctx;
+    ASSERT_EQ(error::OK, core1->Receive(&ctx, msg));
+    auto out = env::test::SentMessages();
+    ASSERT_EQ(1, out.size());
+    auto resp = out[0].h2e_response();
+    ASSERT_EQ(resp.request_id(), 1000);
+    ASSERT_EQ(resp.inner_case(), HostToEnclaveResponse::kStatus);
+    ASSERT_EQ(resp.status(), error::OK);
+  }
+
+  for (uint64_t i = 0; i < 100; i++) {
+    LOG(INFO) << "\n\nRequest to leader core1";
+
+    client::Request4 req;
+    auto b = req.mutable_create();
+    uint8_t enc[32] = {1};
+    b->set_max_tries(10);
+    b->set_oprf_secretshare(valid_ristretto_scalar);
+    b->set_auth_commitment(valid_ristretto_point);
+    b->set_encryption_secretshare(enc, 32);
+    b->set_zero_secretshare(valid_ristretto_scalar);
+    b->set_version(1);
+
+    std::string auth_id = "XXXXXXXXbackup78";
+    util::BigEndian64Bytes(i, reinterpret_cast<uint8_t*>(auth_id.data()));
+
+    client::Response4 resp;
+    ClientRequest(cores, core1.get(), req, &resp, auth_id);
+    ASSERT_EQ(client::Response4::kCreate, resp.inner_case());
+    ASSERT_EQ(client::Response4::OK, resp.create().status());
+  }
+  // Have one row be in an intermediate state.
+  { uint64_t i = 0;
+    LOG(INFO) << "\n\nRequest to leader core1";
+
+    client::Request4 req;
+    auto b = req.mutable_rotate_start();
+    uint8_t enc[32] = {2};
+    b->set_version(2);
+    b->set_oprf_secretshare_delta(valid_ristretto_scalar);
+    b->set_encryption_secretshare_delta(enc, 32);
+
+    std::string auth_id = "XXXXXXXXbackup78";
+    util::BigEndian64Bytes(i, reinterpret_cast<uint8_t*>(auth_id.data()));
+
+    client::Response4 resp;
+    ClientRequest(cores, core1.get(), req, &resp, auth_id);
+    ASSERT_EQ(client::Response4::kRotateStart, resp.inner_case());
+    ASSERT_EQ(client::Response4::OK, resp.rotate_start().status());
+  }
+
+  {
+    LOG(INFO) << "\n\nRequest join on core 2";
+    UntrustedMessage msg;
+    auto host = msg.mutable_h2e_request();
+    host->set_request_id(1001);
+    auto req = host->mutable_join_raft();
+    core1->ID().ToString(req->mutable_peer_id());
+
+    context::Context ctx;
+    ASSERT_EQ(error::OK, core2->Receive(&ctx, msg));
+    auto out = PassMessages(cores, core2.get());
+    ASSERT_EQ(1, out[core2->ID()].size());
+    auto resp = out[core2->ID()][0].h2e_response();
+    ASSERT_EQ(resp.request_id(), 1001);
+    ASSERT_EQ(resp.inner_case(), HostToEnclaveResponse::kStatus);
+    ASSERT_EQ(resp.status(), error::OK);
+  }
+
+  HashResponse h1;
+  HashResponse h2;
+  {
+    UntrustedMessage msg;
+
+    auto host = msg.mutable_h2e_request();
+    host->set_request_id(10101);
+    host->set_hashes(true);
+
+    context::Context ctx;
+    ASSERT_EQ(error::OK, core1->Receive(&ctx, msg));
+    auto resp = Response(env::test::SentMessages());
+    ASSERT_EQ(resp.request_id(), 10101);
+    ASSERT_EQ(resp.inner_case(), HostToEnclaveResponse::kHashes);
+    ASSERT_EQ(resp.status(), error::OK);
+    h1 = resp.hashes();
+  }
+  {
+    UntrustedMessage msg;
+
+    auto host = msg.mutable_h2e_request();
+    host->set_request_id(10101);
+    host->set_hashes(true);
+
+    context::Context ctx;
+    ASSERT_EQ(error::OK, core2->Receive(&ctx, msg));
+    auto resp = Response(env::test::SentMessages());
+    ASSERT_EQ(resp.request_id(), 10101);
+    ASSERT_EQ(resp.inner_case(), HostToEnclaveResponse::kHashes);
+    ASSERT_EQ(resp.status(), error::OK);
+    h2 = resp.hashes();
+  }
+  EXPECT_EQ(h1.db_hash(), h2.db_hash());
+  EXPECT_EQ(h1.commit_hash_chain(), h2.commit_hash_chain());
+  EXPECT_EQ(h1.commit_idx(), h2.commit_idx());
 }
 
 }  // namespace svr2::core

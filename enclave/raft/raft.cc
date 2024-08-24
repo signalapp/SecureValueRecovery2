@@ -233,9 +233,9 @@ std::pair<LogLocation, error::Error> Raft::LogAppend(const LogEntry& entry) {
 // \* Server i times out and starts a new election.
 void Raft::ElectionTimeout(context::Context* ctx) {
   if (!voting()) {
-    LOG(WARNING) << "not a voting member, skipping election request";
     // If we're a non-voting follower, reset our election ticks.
     follower_.election = RandomElectionTimeout();
+    MELOG(WARNING) << "not a voting member, skipping election request and trying again in " << follower_.election;
     return;
   }
   COUNTER(raft, election_timeouts)->Increment();
@@ -260,8 +260,7 @@ void Raft::ElectionTimeout(context::Context* ctx) {
         .votes_granted = std::move(votes_granted),
         .election = RandomElectionTimeout(),
       };
-
-      MELOG(INFO) << "became candidate at term " << current_term_;
+      MELOG(INFO) << "became candidate at term " << current_term_ << ", will retry candidate election in " << candidate_.election;
       AddSendableMessage(SendableRaftMessage::Broadcast(RequestVoteMessage(ctx)));
       break;
     }

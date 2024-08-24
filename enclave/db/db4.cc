@@ -323,6 +323,7 @@ std::pair<std::string, error::Error> DB4::RowsAsProtos(context::Context* ctx, co
   for (size_t i = 0; i < size && iter != rows_.end(); i++, ++iter) {
     row->Clear();
     row->set_backup_id(util::ByteArrayToString(iter->first));
+    row->set_version(iter->second.version);
     row->set_tries(iter->second.tries);
     row->set_oprf_secretshare(iter->second.oprf_secretshare.ToString());
     row->set_auth_commitment(iter->second.auth_commitment.ToString());
@@ -364,6 +365,7 @@ std::pair<std::string, error::Error> DB4::LoadRowsFromProtos(context::Context* c
 
     Row r(merkle_tree_);
     r.tries = row->tries();
+    r.version = row->version();
     if (!r.auth_commitment.FromString(row->auth_commitment()) ||
         !r.oprf_secretshare.FromString(row->oprf_secretshare()) ||
         !r.zero_secretshare.FromString(row->zero_secretshare()) ||
@@ -513,35 +515,35 @@ void DB4::Restore1(
   resp->set_status(client::Response4::ERROR);
 
   ristretto::Point ristretto_hash;
+  ristretto::Point blinded;
+  ristretto::Point blinded_prime;
+  ristretto::Point mask;
+  ristretto::Point evaluated1;
+  ristretto::Point evaluated2;
   if (!ristretto_hash.FromHash(sha::Sha512(id, req.blinded()))) {
     goto restore1_error;
   }
-  ristretto::Point blinded;
   if (!blinded.FromString(req.blinded())) {
     goto restore1_error;
   }
 
-  ristretto::Point blinded_prime;
   if (!blinded.ScalarMult(row->oprf_secretshare, &blinded_prime)) {
     goto restore1_error;
   }
-  ristretto::Point mask;
   if (!ristretto_hash.ScalarMult(row->zero_secretshare, &mask)) {
     goto restore1_error;
   }
-  ristretto::Point evaluated1;
   if (!blinded_prime.Add(mask, &evaluated1)) {
     goto restore1_error;
   }
 
-  ristretto::Point evaluated2;
   if (row->new_version != 0) {
     auto sum = row->oprf_secretshare.Add(row->oprf_secretshare_delta);
     ristretto::Point blinded_prime;
+    ristretto::Point mask;
     if (!blinded.ScalarMult(sum, &blinded_prime)) {
       goto restore1_error;
     }
-    ristretto::Point mask;
     if (!ristretto_hash.ScalarMult(row->zero_secretshare, &mask)) {
       goto restore1_error;
     }
@@ -762,6 +764,6 @@ void DB4::RotateRollback(
   resp->set_status(client::Response4::OK);
 }
 
-DB4::Row::Row(merkle::Tree* t) : version(0), new_version(0), tries(0), merkle_leaf_(t) {}
+DB4::Row::Row(merkle::Tree* t) : version(0), new_version(0), encryption_secretshare{0}, encryption_secretshare_delta{0}, tries(0), merkle_leaf_(t) {}
 
 }  // namespace svr2::db

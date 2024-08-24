@@ -631,8 +631,8 @@ void Core::RequestRaftReplication(context::Context* ctx) {
           ReplyWithError(ctx, tx, err);
           return;
         }
-        IDLOG(INFO) << "finished replicating database, fully loaded";
         ACQUIRE_LOCK(raft_.mu, ctx, lock_core_raft);
+        IDLOG(INFO) << "finished replicating database, fully loaded " << raft_.loading.db->row_count() << " rows";
         PromoteRaftToLoaded(ctx);
       });
 }
@@ -1258,7 +1258,7 @@ void Core::SendNextReplicationState(context::Context* ctx, std::shared_ptr<Core:
   *out->mutable_committed_membership() = raft_.loaded.raft->committed_membership().AsProto();
   IDLOG(INFO) << "Replication: sending " << out->entries_size() << " entries (from "
               << push_state->logs_from_idx_inclusive << ") and " << out->rows_size() << " rows to "
-              << push_state->target;
+              << push_state->target << ", total size " << out->ByteSizeLong();
 
   // Update push state based on our output.
   push_state->logs_from_idx_inclusive += out->entries_size();

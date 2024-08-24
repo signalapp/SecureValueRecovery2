@@ -11,6 +11,7 @@
 namespace svr2::env::test {
 
 std::vector<EnclaveMessage> SentMessages();
+void ResetRandomNumberGenerator();
 
 extern uint64_t minimums_test_version;
 

@@ -18,6 +18,10 @@ uint64_t minimums_test_version = 100;
 static const char* evidence_prefix = "EVIDENCE:";
 static volatile std::atomic<uint32_t> random_gen;
 
+void ResetRandomNumberGenerator() {
+  random_gen = 0;
+}
+
 class Environment : public ::svr2::env::Environment {
  public:
   DELETE_COPY_AND_ASSIGN(Environment);

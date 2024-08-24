@@ -16,7 +16,7 @@ namespace svr2::ristretto {
 
 class Scalar {
  public:
-  Scalar() = default;
+  Scalar() : s_{0} {};
   Scalar(const Scalar& other) = default;
   Scalar(Scalar&& other) = default;
   Scalar& operator=(const Scalar&) = default;
@@ -42,14 +42,12 @@ class Scalar {
  private:
   std::array<uint8_t, crypto_scalarmult_ristretto255_SCALARBYTES> s_;
 };
-static_assert(std::is_pod_v<Scalar> == true);
 static_assert(std::is_standard_layout_v<Scalar> == true);
-static_assert(std::is_trivial_v<Scalar> == true);
 static_assert(sizeof(Scalar) == crypto_scalarmult_ristretto255_SCALARBYTES);
 
 class Point {
  public:
-  Point() = default;
+  Point() : p_{0} {};
   Point(const Point& other) = default;
   Point(Point&& other) = default;
   Point& operator=(const Point&) = default;
@@ -75,9 +73,7 @@ class Point {
  private:
   std::array<uint8_t, crypto_scalarmult_ristretto255_BYTES> p_;
 };
-static_assert(std::is_pod_v<Point> == true);
 static_assert(std::is_standard_layout_v<Point> == true);
-static_assert(std::is_trivial_v<Point> == true);
 static_assert(sizeof(Point) == crypto_scalarmult_ristretto255_BYTES);
 
 }  // namespace svr2::ristretto
