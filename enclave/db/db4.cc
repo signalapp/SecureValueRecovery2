@@ -120,6 +120,7 @@ std::pair<const DB::Response*, error::Error> DB4::ClientState::ResponseFromReque
   ristretto::Scalar check_s;
   switch (r->inner_case()) {
     case client::Request4::kRestore2: {
+      COUNTER(db4, ops_restore2)->Increment();
       if (authenticated_id().size() != sizeof(BackupID)) {
         return std::make_pair(nullptr, COUNTED_ERROR(DB4_BackupIDSize));
       }
