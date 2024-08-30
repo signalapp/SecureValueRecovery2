@@ -33,8 +33,12 @@ RUN wget -qO - https://download.01.org/intel-sgx/sgx_repo/ubuntu/intel-sgx-deb.k
     libsgx-pce-logic=1.21.100.3-focal1 \
     libsgx-qe3-logic=1.21.100.3-focal1 \
     libsgx-urts=2.24.100.3-focal1 \
-    open-enclave=0.19.4 \
     && break; done
+ARG OPENENCLAVE_VERSION=0.19.7
+ARG OPENENCLAVE_HASH=1ee27053e9442619111b5252e02e381895ab79782450bd446faf85fa0cc510cd
+ADD --checksum=sha256:${OPENENCLAVE_HASH} \
+    https://github.com/openenclave/openenclave/releases/download/v${OPENENCLAVE_VERSION}/Ubuntu_2004_open-enclave_${OPENENCLAVE_VERSION}_amd64.deb ./
+RUN dpkg -i Ubuntu_2004_open-enclave_${OPENENCLAVE_VERSION}_amd64.deb
 
 FROM --platform=linux/amd64 public.ecr.aws/amazonlinux/amazonlinux:2023.4.20240611.0@sha256:e96baa46e2effb0f69d488007bde35a7d01d7fc2ec9f4e1cd65c59846c01775e AS nsmbuild
 ENV HOST_MACHINE=x86_64
