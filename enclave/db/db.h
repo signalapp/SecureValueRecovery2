@@ -48,6 +48,7 @@ class DB {
   DELETE_COPY_AND_ASSIGN(DB);
   DB() {}
   virtual ~DB() {}
+  typedef std::array<uint8_t, 32> HandshakeHash;
 
   // A Request is a protobuf received from a client.
   typedef google::protobuf::MessageLite Request;
@@ -74,7 +75,7 @@ class DB {
   // parallel.
   class ClientState {
    public:
-    ClientState(const std::string& authenticated_id) : authenticated_id_(authenticated_id) {}
+    explicit ClientState(const std::string& authenticated_id) : authenticated_id_(authenticated_id), handshake_hash_{0} {}
     virtual ~ClientState() {}
     // ResponseFromRequest is called prior to a Request being translated into
     // a Log and applied to the Raft database.  If a non-null response
@@ -98,8 +99,12 @@ class DB {
     // with this client.
     const std::string& authenticated_id() const { return authenticated_id_; }
 
+    void set_handshake_hash(const HandshakeHash& h) { handshake_hash_ = h; }
+    const HandshakeHash& handshake_hash() const { return handshake_hash_; }
+
    private:
     const std::string authenticated_id_;
+    HandshakeHash handshake_hash_;
   };
 
   // The GLOBAL_KEY is used for logs that have a global effect on the

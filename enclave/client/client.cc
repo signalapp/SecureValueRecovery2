@@ -103,6 +103,12 @@ std::pair<std::string, error::Error> Client::FinishHandshake(context::Context* c
   if (NOISE_ERROR_NONE != noise_handshakestate_split(hs_.get(), &tx, &rx)) {
     return std::make_pair("", COUNTED_ERROR(Client_FinishSplit));
   }
+  db::DB::HandshakeHash hh;
+  if (NOISE_ERROR_NONE != noise_handshakestate_get_handshake_hash(hs_.get(), hh.data(), hh.size())) {
+    return std::make_pair("", COUNTED_ERROR(Client_FinishHandshakeHash));
+  }
+  cs_->set_handshake_hash(hh);
+
   tx_.reset(tx);
   rx_.reset(rx);
   hs_.reset(nullptr);

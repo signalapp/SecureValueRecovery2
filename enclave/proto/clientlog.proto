@@ -40,6 +40,7 @@ message Effect4 {
     bytes new_encryption_secretshare = 3;
     fixed64 version = 4;
     fixed64 new_version = 5;
+    bytes blinded_point = 6;
   }
   Restore2State restore2_client_state = 2;
 }

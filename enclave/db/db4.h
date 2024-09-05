@@ -51,7 +51,8 @@ class DB4 : public DB {
         const BackupID& id,
         const client::Request4::Restore2& req,
         const client::Effect4::Restore2State* state,
-        client::Response4::Restore2* resp) const;
+        client::Response4::Restore2* resp,
+        std::array<uint8_t,32> handshake_hash) const;
 
     util::mutex mu_;
     std::unique_ptr<client::Effect4::Restore2State> restore2_ GUARDED_BY(mu_);

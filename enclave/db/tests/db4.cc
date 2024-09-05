@@ -44,7 +44,9 @@ std::pair<const client::Response4*, error::Error> RunRequest(
     context::Context* ctx,
     DB4* db,
     DB::ClientState* state,
-    const client::Request4& req) {
+    const client::Request4& req,
+    DB::HandshakeHash handshake_hash) {
+  state->set_handshake_hash(handshake_hash);
   auto [resp, resp_err] = state->ResponseFromRequest(ctx, req);
   if (resp_err != error::OK) { return std::make_pair(nullptr, resp_err); }
   if (resp) { return std::make_pair(dynamic_cast<const client::Response4*>(resp), error::OK); }
@@ -169,7 +171,9 @@ class DB4Client {
   client::Request4 Restore2(
       int i,
       const ristretto::Scalar& b,
-      const std::array<client::Response4::Restore1, N>& resps) {
+      const std::string& blinded,
+      const std::array<client::Response4::Restore1, N>& resps,
+      std::array<uint8_t, 32> handshake_hash) {
     // Find which version to use by figuring out which version appears
     // in all of the responses.
     std::map<uint64_t, std::set<int>> versions;
@@ -216,7 +220,7 @@ class DB4Client {
     auto rand = ristretto::Scalar::Random();
     ristretto::Point proof_point;
     CHECK(proof_point.ScalarMultBase(rand));
-    auto c = ristretto::Scalar::Reduce(sha::Sha512(proof_point));
+    auto c = ristretto::Scalar::Reduce(sha::Sha512(proof_point, blinded, handshake_hash));
     auto proof_scalar = rand.Add(c.Mult(sk_[i]));
 
     client::Request4 r;
@@ -284,10 +288,14 @@ class DB4Test : public ::testing::Test {
   void VerifyRestore() {
     ristretto::Scalar b = ristretto::Scalar::Random();
     std::array<client::Response4::Restore1, N> restore1resp;
+    std::array<std::string, N> blinded_points;
+    std::array<DB::HandshakeHash, N> handshake_hashes{ {0} };
     for (int i = 0; i < N; i++) {
       LOG(INFO) << "Restore1." << i;
+      CHECK(error::OK == env::environment->RandomBytes(handshake_hashes[i].data(), handshake_hashes[i].size()));
       auto req = client.Restore1(i, b);
-      auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), req);
+      blinded_points[i] = req.restore1().blinded();
+      auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), req, handshake_hashes[i]);
       ASSERT_EQ(error::OK, err);
       ASSERT_EQ(client::Response4::kRestore1, resp->inner_case());
       ASSERT_EQ(resp->restore1().status(), client::Response4::OK);
@@ -297,8 +305,8 @@ class DB4Test : public ::testing::Test {
     std::array<client::Response4::Restore2, N> restore2resp;
     for (int i = 0; i < N; i++) {
       LOG(INFO) << "Restore2." << i;
-      auto req = client.Restore2(i, b, restore1resp);
-      auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), req);
+      auto req = client.Restore2(i, b, blinded_points[i], restore1resp, handshake_hashes[i]);
+      auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), req, handshake_hashes[i]);
       ASSERT_EQ(error::OK, err);
       ASSERT_EQ(client::Response4::kRestore2, resp->inner_case());
       ASSERT_EQ(resp->restore2().status(), client::Response4::OK);
@@ -311,7 +319,7 @@ class DB4Test : public ::testing::Test {
     for (int i = 0; i < N; i++) {
       LOG(INFO) << "Create." << i;
       auto req = client.Create(i, tries);
-      auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), req);
+      auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), req, std::array<uint8_t, 32>{0});
       ASSERT_EQ(error::OK, err);
       ASSERT_EQ(resp->create().status(), client::Response4::OK);
       ASSERT_EQ(client::Response4::kCreate, resp->inner_case());
@@ -326,10 +334,11 @@ TEST_F(DB4Test, SingleBackupLifecycle) {
 
 TEST_F(DB4Test, Restore1RemovesKey) {
   Create(10);
+  std::array<uint8_t, 32> handshake_hash{0};
   for (int i = 0; i < 10; i++) {
     ristretto::Scalar b = ristretto::Scalar::Random();
     auto req = client.Restore1(0, b);
-    auto [resp, err] = RunRequest(&ctx, dbs[0].get(), states[0].get(), req);
+    auto [resp, err] = RunRequest(&ctx, dbs[0].get(), states[0].get(), req, handshake_hash);
     ASSERT_EQ(error::OK, err);
     ASSERT_EQ(client::Response4::kRestore1, resp->inner_case());
     ASSERT_EQ(resp->restore1().status(), client::Response4::OK);
@@ -339,7 +348,7 @@ TEST_F(DB4Test, Restore1RemovesKey) {
   {
     ristretto::Scalar b = ristretto::Scalar::Random();
     auto req = client.Restore1(0, b);
-    auto [resp, err] = RunRequest(&ctx, dbs[0].get(), states[0].get(), req);
+    auto [resp, err] = RunRequest(&ctx, dbs[0].get(), states[0].get(), req, handshake_hash);
     ASSERT_EQ(error::OK, err);
     ASSERT_EQ(client::Response4::kRestore1, resp->inner_case());
     ASSERT_EQ(resp->restore1().status(), client::Response4::MISSING);
@@ -351,10 +360,14 @@ TEST_F(DB4Test, QueryClearsRestoreState) {
 
   ristretto::Scalar b = ristretto::Scalar::Random();
   std::array<client::Response4::Restore1, N> restore1resp;
+  std::array<std::string, N> blinded_points;
+  std::array<std::array<uint8_t, 32>,N> handshake_hashes{ {0} };
   for (int i = 0; i < N; i++) {
     LOG(INFO) << "Restore1." << i;
     auto req = client.Restore1(i, b);
-    auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), req);
+    CHECK(error::OK == env::environment->RandomBytes(handshake_hashes[i].data(), handshake_hashes[i].size()));
+    blinded_points[i] = req.restore1().blinded();
+    auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), req, handshake_hashes[i]);
     ASSERT_EQ(error::OK, err);
     ASSERT_EQ(client::Response4::kRestore1, resp->inner_case());
     ASSERT_EQ(resp->restore1().status(), client::Response4::OK);
@@ -366,7 +379,7 @@ TEST_F(DB4Test, QueryClearsRestoreState) {
     LOG(INFO) << "Query." << i;
     client::Request4 req;
     req.mutable_query();
-    auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), req);
+    auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), req, handshake_hashes[i]);
     ASSERT_EQ(error::OK, err);
     ASSERT_EQ(client::Response4::kQuery, resp->inner_case());
     ASSERT_EQ(resp->query().status(), client::Response4::OK);
@@ -375,8 +388,8 @@ TEST_F(DB4Test, QueryClearsRestoreState) {
 
   { int i = 0;
     LOG(INFO) << "Restore2." << i;
-    auto req = client.Restore2(i, b, restore1resp);
-    auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), req);
+    auto req = client.Restore2(i, b, blinded_points[i], restore1resp, handshake_hashes[i]);
+    auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), req, handshake_hashes[i]);
     ASSERT_EQ(error::OK, err);
     ASSERT_EQ(client::Response4::kRestore2, resp->inner_case());
     ASSERT_EQ(resp->restore2().status(), client::Response4::RESTORE1_MISSING);
@@ -385,12 +398,12 @@ TEST_F(DB4Test, QueryClearsRestoreState) {
 
 TEST_F(DB4Test, RemoveRemovesRow) {
   Create(10);
-
+  std::array<uint8_t, 32> handshake_hash{42};
   { int i = 0;
     LOG(INFO) << "Remove." << i;
     client::Request4 req;
     req.mutable_remove();
-    auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), req);
+    auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), req, handshake_hash);
     ASSERT_EQ(error::OK, err);
     ASSERT_EQ(client::Response4::kRemove, resp->inner_case());
   }
@@ -399,7 +412,7 @@ TEST_F(DB4Test, RemoveRemovesRow) {
   { int i = 0;
     LOG(INFO) << "Restore1." << i;
     auto req = client.Restore1(i, b);
-    auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), req);
+    auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), req, handshake_hash);
     ASSERT_EQ(error::OK, err);
     ASSERT_EQ(client::Response4::kRestore1, resp->inner_case());
     ASSERT_EQ(resp->restore1().status(), client::Response4::MISSING);
@@ -408,12 +421,13 @@ TEST_F(DB4Test, RemoveRemovesRow) {
 
 TEST_F(DB4Test, MaxTriesZeroKeepsTriesTheSame) {
   Create(10);
+  std::array<uint8_t, 32> handshake_hash{42};
 
   ristretto::Scalar b = ristretto::Scalar::Random();
   { int i = 0;
     LOG(INFO) << "Restore1." << i;
     auto req = client.Restore1(i, b);
-    auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), req);
+    auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), req, handshake_hash);
     ASSERT_EQ(error::OK, err);
     ASSERT_EQ(client::Response4::kRestore1, resp->inner_case());
     ASSERT_EQ(resp->restore1().status(), client::Response4::OK);
@@ -423,7 +437,7 @@ TEST_F(DB4Test, MaxTriesZeroKeepsTriesTheSame) {
   { int i = 0;
     LOG(INFO) << "Create." << i;
     auto req = client.Create(i, 0);
-    auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), req);
+    auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), req, handshake_hash);
     ASSERT_EQ(error::OK, err);
     ASSERT_EQ(resp->create().status(), client::Response4::OK);
     ASSERT_EQ(client::Response4::kCreate, resp->inner_case());
@@ -433,13 +447,14 @@ TEST_F(DB4Test, MaxTriesZeroKeepsTriesTheSame) {
 
 TEST_F(DB4Test, RotateLifecycle) {
   Create(255);
+  std::array<uint8_t, 32> handshake_hash{42};
 
   uint64_t v;
   auto rotate_start = client.RotateStart(&v);
   for (int i = 0; i < N; i++) {
     VerifyRestore();
     LOG(INFO) << "RotateStart." << i;
-    auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), rotate_start[i]);
+    auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), rotate_start[i], handshake_hash);
     ASSERT_EQ(error::OK, err);
     ASSERT_EQ(client::Response4::kRotateStart, resp->inner_case());
     ASSERT_EQ(resp->rotate_start().status(), client::Response4::OK);
@@ -449,7 +464,7 @@ TEST_F(DB4Test, RotateLifecycle) {
   for (int i = 0; i < N; i++) {
     VerifyRestore();
     LOG(INFO) << "RotateCommit." << i;
-    auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), commit);
+    auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), commit, handshake_hash);
     ASSERT_EQ(error::OK, err);
     ASSERT_EQ(client::Response4::kRotateCommit, resp->inner_case());
     ASSERT_EQ(resp->rotate_commit().status(), client::Response4::OK);

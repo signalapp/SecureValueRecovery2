@@ -168,6 +168,7 @@ enum Error {
   Client_TransactionInvalid = 713;
   Client_AlreadyClosed = 714;
   Client_ResponseFromEffect = 715;
+  Client_FinishHandshakeHash = 716;
 
   Config_NS = 800;
   Config_ElectionTicks = 801;

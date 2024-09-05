@@ -7,6 +7,7 @@
 #include <sodium/crypto_core_ristretto255.h>
 #include <sodium/crypto_hash_sha256.h>
 
+#include "env/env.h"
 #include "sha/sha.h"
 #include "util/log.h"
 #include "util/bytes.h"
@@ -135,7 +136,7 @@ std::pair<const DB::Response*, error::Error> DB4::ClientState::ResponseFromReque
       } else {
         BackupID id;
         CHECK(error::OK == util::StringIntoByteArray(authenticated_id(), &id));
-        Restore2(ctx, id, r->restore2(), restore2_client_state.get(), r2);
+        Restore2(ctx, id, r->restore2(), restore2_client_state.get(), r2, handshake_hash());
       }
       UpdateErrorCounters(resp->restore2().status());
       return std::make_pair(resp, error::OK);
@@ -559,10 +560,13 @@ void DB4::Restore1(
     state->set_new_version(row->new_version);
   }
 
+
+
   resp->set_status(client::Response4::OK);
   state->set_version(row->version);
   state->set_auth_commitment(row->auth_commitment.ToString());
   state->set_encryption_secretshare(util::ByteArrayToString(row->encryption_secretshare));
+  state->set_blinded_point(req.blinded());
 
   // Set the response auth element(s):
   {
@@ -590,7 +594,8 @@ void DB4::ClientState::Restore2(
     const BackupID& id,
     const client::Request4::Restore2& req,
     const client::Effect4::Restore2State* state,
-    client::Response4::Restore2* resp) const {
+    client::Response4::Restore2* resp,
+    std::array<uint8_t,32> handshake_hash) const {
   ristretto::Point lhs1;
   resp->set_status(client::Response4::ERROR);
   ristretto::Scalar auth_scalar;
@@ -601,7 +606,8 @@ void DB4::ClientState::Restore2(
     return;
   }
 
-  ristretto::Scalar scalar_hash = ristretto::Scalar::Reduce(sha::Sha512(req.auth_point()));
+
+  ristretto::Scalar scalar_hash = ristretto::Scalar::Reduce(sha::Sha512(req.auth_point(), state->blinded_point(), handshake_hash));
 
   ristretto::Point auth_commitment;
   if (!auth_commitment.FromString(state->auth_commitment())) {
