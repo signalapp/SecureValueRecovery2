@@ -43,7 +43,7 @@ build/noise-c/TEST.a: build/libsodium/TEST.a
 	$(QUIET) echo -e "BUILD\t$@"
 	$(QUIET) mkdir -p $(@D)
 	$(QUIET) (cd noise-c && \
-	 (git clean -fx ; git submodule foreach --recursive git clean -xf ; true) && \
+	 (git clean -fxd ; git submodule foreach --recursive git clean -xfd ; true) && \
 	 ./autogen.sh && \
    libsodium_CFLAGS=-I$$PWD/../build/libsodium/TEST.a.dir/include/ libsodium_LIBS=$$PWD/../build/libsodium/TEST.a \
 	 CC=$(CC) CFLAGS="$(TEST_CFLAGS) -I$(shell ./find_header.sh $(CC) immintrin.h)" ./configure --with-libsodium && \
@@ -55,7 +55,7 @@ build/noise-c/SGX.a: build/libsodium/SGX.a | build/noise-c/TEST.a
 	$(QUIET) echo -e "BUILD\t$@"
 	$(QUIET) mkdir -p $(@D)
 	$(QUIET) (cd noise-c && \
-	 (git clean -fx ; git submodule foreach --recursive git clean -xf ; true) && \
+	 (git clean -fxd ; git submodule foreach --recursive git clean -xfd ; true) && \
 	 ./autogen.sh && \
    libsodium_CFLAGS=-I$$PWD/../build/libsodium/SGX.a.dir/include/ libsodium_LIBS=$$PWD/../build/libsodium/SGX.a \
 	 CC=$(CC) CFLAGS="$(SGX_CFLAGS) -I$(shell ./find_header.sh $(CC) immintrin.h)" ./configure --with-libsodium && \
@@ -67,7 +67,7 @@ build/noise-c/X86.a: build/libsodium/X86.a | build/noise-c/SGX.a
 	$(QUIET) echo -e "BUILD\t$@"
 	$(QUIET) mkdir -p $(@D)
 	$(QUIET) (cd noise-c && \
-	 (git clean -fx ; git submodule foreach --recursive git clean -xf ; true) && \
+	 (git clean -fxd ; git submodule foreach --recursive git clean -xfd ; true) && \
 	 ./autogen.sh && \
    libsodium_CFLAGS=-I$$PWD/../build/libsodium/X86.a.dir/include/ libsodium_LIBS=$$PWD/../build/libsodium/X86.a \
 	 CC=$(CC) CFLAGS="$(X86_CFLAGS) -I$(shell ./find_header.sh $(CC) immintrin.h)" ./configure --with-libsodium && \
@@ -110,7 +110,7 @@ LIBSODIUM_UNDEFS=-UHAVE_MMAP -UHAVE_MLOCK -UHAVE_MADVISE -UHAVE_MPROTECT -UHAVE_
 build/libsodium/TEST.a:
 	$(QUIET) echo -e "BUILD\t$@"
 	$(QUIET) mkdir -p $@.dir $(@D)
-	$(QUIET) (cd libsodium && (git clean -fx || true) && ./configure \
+	$(QUIET) (cd libsodium && (git clean -fxd || true) && ./configure \
   CFLAGS="$(TEST_CFLAGS)" \
   CXXFLAGS="$(TEST_CXXFLAGS)" \
   CC=$(CC) CXX=$(CXX) --prefix=$$PWD/../$@.dir && $(MAKE) clean && $(MAKE) install) $(QUIET_OUT)
@@ -119,7 +119,7 @@ build/libsodium/TEST.a:
 build/libsodium/SGX.a: | build/libsodium/TEST.a
 	$(QUIET) echo -e "BUILD\t$@"
 	$(QUIET) mkdir -p $@.dir $(@D)
-	$(QUIET) (cd libsodium && (git clean -fx || true) && ./configure \
+	$(QUIET) (cd libsodium && (git clean -fxd || true) && ./configure \
   CFLAGS="$(SGX_CFLAGS) $(LIBSODIUM_UNDEFS)" \
   CXXFLAGS="$(SGX_CXXFLAGS) $(LIBSODIUM_UNDEFS)" \
   CC=$(CC) CXX=$(CXX) --prefix=$$PWD/../$@.dir && $(MAKE) clean && $(MAKE) install) $(QUIET_OUT)
@@ -128,7 +128,7 @@ build/libsodium/SGX.a: | build/libsodium/TEST.a
 build/libsodium/X86.a: | build/libsodium/SGX.a
 	$(QUIET) echo -e "BUILD\t$@"
 	$(QUIET) mkdir -p $@.dir $(@D)
-	$(QUIET) (cd libsodium && (git clean -fx || true) && ./configure \
+	$(QUIET) (cd libsodium && (git clean -fxd || true) && ./configure \
   CFLAGS="$(X86_CFLAGS) $(LIBSODIUM_UNDEFS)" \
   CXXFLAGS="$(X86_CXXFLAGS) $(LIBSODIUM_UNDEFS)" \
   CC=$(CC) CXX=$(CXX) --prefix=$$PWD/../$@.dir && $(MAKE) clean && $(MAKE) install) $(QUIET_OUT)
@@ -278,7 +278,7 @@ clean:
 	$(QUIET) (cd noise-c ; make clean ; true) $(QUIET_OUT)
 	$(QUIET) (cd SipHash ; make clean ; true) $(QUIET_OUT)
 	$(QUIET) (cd boringssl ; make clean ; true) $(QUIET_OUT)
-	$(QUIET) (git submodule foreach --recursive git clean -xf ; true) $(QUIET_OUT)
+	$(QUIET) (git submodule foreach --recursive git clean -xfd ; true) $(QUIET_OUT)
 	$(QUIET) rm -vfr build $(QUIET_OUT)
 	$(QUIET) rm -vf .testdepends $(QUIET_OUT)
 
