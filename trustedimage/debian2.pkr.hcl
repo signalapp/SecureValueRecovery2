@@ -17,7 +17,7 @@ packer {
 
 source "qemu" "debian2" {
   format               = "raw"
-  headless             = "false"
+  headless             = "true"
   communicator         = "ssh"
   disk_size            = "5G"
   disk_additional_size = ["3G"]

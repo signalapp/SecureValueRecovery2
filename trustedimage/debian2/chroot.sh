@@ -56,7 +56,9 @@ systemctl enable svr3.service
 
 # Copy binaries.
 chmod a+x /dev/shm/debian2/svr3{,test,gcp} /dev/shm/debian2/enclave.*
+sha256sum /dev/shm/debian2/svr3* /dev/shm/debian2/enclave.*
 cp -v /dev/shm/debian2/svr3{,test,gcp} /dev/shm/debian2/enclave.* /usr/bin
+sha256sum /usr/bin/svr3* /usr/bin/enclave.*
 
 # Turn down anything that could give realtime access to the image.
 passwd --lock svr3
