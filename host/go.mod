@@ -14,9 +14,9 @@ require (
 	github.com/gtank/ristretto255 v0.1.2
 	github.com/hashicorp/go-metrics v0.5.3
 	github.com/mdlayher/vsock v1.2.1
-	github.com/redis/go-redis/v9 v9.5.1
-	golang.org/x/exp v0.0.0-20240416160154-fe59bbe5cc7f
-	golang.org/x/sync v0.7.0
+	github.com/redis/go-redis/v9 v9.6.1
+	golang.org/x/exp v0.0.0-20240823005443-9b4947da3948
+	golang.org/x/sync v0.8.0
 )
 
 require (
@@ -35,17 +35,17 @@ require (
 	github.com/pborman/uuid v1.2.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/yuin/gopher-lua v1.1.0 // indirect
-	golang.org/x/crypto v0.22.0 // indirect
-	golang.org/x/net v0.24.0 // indirect
-	golang.org/x/sys v0.19.0 // indirect
+	golang.org/x/crypto v0.26.0 // indirect
+	golang.org/x/net v0.28.0 // indirect
+	golang.org/x/sys v0.24.0 // indirect
 )
 
 require (
 	github.com/flynn/noise v1.0.0
 	github.com/google/go-cmp v0.6.0
-	github.com/gorilla/websocket v1.5.1
+	github.com/gorilla/websocket v1.5.3
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0
-	google.golang.org/protobuf v1.33.0
+	google.golang.org/protobuf v1.34.2
 	gopkg.in/yaml.v2 v2.4.0
 )
