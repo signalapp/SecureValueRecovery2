@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # To build use:
 # docker build -t oebuild .
-FROM amd64/debian:buster@sha256:108052254277ea53cd807d2782ed3cbe4b9242256af5c7519c6e5692ae2b5d97 AS base
+FROM amd64/debian:buster@sha256:2a0c1b9175adf759420fe0fbd7f5b449038319171eb76554bb76cbe172b62b42 AS base
 
 LABEL description="linux build environment for sgx."
 
