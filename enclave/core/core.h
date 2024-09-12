@@ -148,6 +148,10 @@ class Core {
   void HandleTimerTick(context::Context* ctx, const TimerTick& tick);
     // Update our group-based concept of time.
     void MaybeUpdateGroupTime(context::Context* ctx) EXCLUDES(raft_.mu);
+ public_for_test:
+      // Return the set of peers that should participate in a group time calculation
+      std::set<peerid::PeerID> GroupTimeParticipants(context::Context* ctx) EXCLUDES(raft_.mu);
+ private:
     // If we're in Raft with some other replicas but don't yet have peer connections
     // to them, try to establish them.
     void ConnectToRaftMembers(context::Context* ctx) REQUIRES(raft_.mu);

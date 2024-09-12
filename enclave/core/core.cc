@@ -930,25 +930,50 @@ void Core::HandleTimerTick(context::Context* ctx, const TimerTick& tick) {
 
 void Core::MaybeUpdateGroupTime(context::Context* ctx) {
   MEASURE_CPU(ctx, cpu_core_updating_group_time);
-  std::set<peerid::PeerID> peers = peer_manager_->ConnectedPeers(ctx);
+  std::set<peerid::PeerID> peers = GroupTimeParticipants(ctx);
+  auto ts = clock_.GetTime(ctx, peers);
+  GAUGE(core, current_groupclock_time)->Set(ts);
+  peer_manager_->SetPeerAttestationTimestamp(ctx, ts, raft_config_template_.attestation_timeout());
+}
+
+std::set<peerid::PeerID> Core::GroupTimeParticipants(context::Context* ctx) {
+  std::set<peerid::PeerID> connected_peers = peer_manager_->ConnectedPeers(ctx);
+  std::set<peerid::PeerID> voting_peers;
   {
     ACQUIRE_LOCK(raft_.mu, ctx, lock_core_raft);
     switch (raft_.state) {
       case RAFTSTATE_LOADED_PART_OF_GROUP:
       case RAFTSTATE_LOADED_REQUESTING_MEMBERSHIP:
-        peers = raft_.loaded.raft->membership().voting_replicas();
+        voting_peers = raft_.loaded.raft->membership().voting_replicas();
         break;
       case RAFTSTATE_LOADING:
-        peers = raft_.loading.mem->voting_replicas();
+        voting_peers = raft_.loading.mem->voting_replicas();
         break;
       default:
         break;
     }
   }
-  auto ts = clock_.GetTime(ctx, peers);
-  GAUGE(core, current_groupclock_time)->Set(ts);
-  peer_manager_->SetPeerAttestationTimestamp(ctx, ts, raft_config_template_.attestation_timeout());
+
+  // We can't just use voting replicas, because due to network issues we
+  // may be in a state where they're all (or mostly) disconnected, causing
+  // our timestamp to be stuck.  For this reason, we try to use the set
+  // of voting peers that are connected, falling back to the set of all
+  // connected peers if we must.
+  std::set<peerid::PeerID> peers;
+  if (voting_peers.size() == 0) {
+    peers = std::move(connected_peers);
+  } else {
+    std::set_intersection(
+        connected_peers.begin(), connected_peers.end(),
+        voting_peers.begin(), voting_peers.end(),
+        std::inserter(peers, peers.begin()));
+    if (peers.empty()) {
+      peers = std::move(connected_peers);
+    }
+  }
+  return peers;
 }
+
 
 void Core::ConnectToRaftMembers(context::Context* ctx) {
   MEASURE_CPU(ctx, cpu_core_connecting_to_raft_members);

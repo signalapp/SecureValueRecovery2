@@ -2979,4 +2979,213 @@ TEST_F(CoreTest, DB4NewNodeReplication) {
   EXPECT_EQ(h1.commit_idx(), h2.commit_idx());
 }
 
+TEST_F(CoreTest, GroupTimeParticipants) {
+  auto [core1, err1] = Core::Create(ctx, valid_init_config);
+  ASSERT_EQ(err1, error::OK);
+  auto [core2, err2] = Core::Create(ctx, valid_init_config);
+  ASSERT_EQ(err2, error::OK);
+  auto [core3, err3] = Core::Create(ctx, valid_init_config);
+  ASSERT_EQ(err3, error::OK);
+  LOG(INFO) << "core1=" << core1->ID() << ", core2=" << core2->ID() << ", core3=" << core3->ID();
+
+  // Create cores map for PassMessages
+  CoreMap cores;
+  cores[core1->ID()] = core1.get();
+  cores[core2->ID()] = core2.get();
+  cores[core3->ID()] = core3.get();
+
+  {
+    LOG(INFO) << "\n\nSet up as one-replica Raft on core 1";
+    UntrustedMessage msg;
+    auto host = msg.mutable_h2e_request();
+    host->set_request_id(1000);
+    host->set_create_new_raft_group(true);
+
+    context::Context ctx;
+    ASSERT_EQ(error::OK, core1->Receive(&ctx, msg));
+    auto out = env::test::SentMessages();
+    ASSERT_EQ(1, out.size());
+    auto resp = out[0].h2e_response();
+    ASSERT_EQ(resp.request_id(), 1000);
+    ASSERT_EQ(resp.inner_case(), HostToEnclaveResponse::kStatus);
+    ASSERT_EQ(resp.status(), error::OK);
+
+    std::set<peerid::PeerID> want{};
+    ASSERT_EQ(want, core1->GroupTimeParticipants(&ctx));
+  }
+
+  {
+    LOG(INFO) << "\n\nRequest join on core 2";
+    UntrustedMessage msg;
+    auto host = msg.mutable_h2e_request();
+    host->set_request_id(1001);
+    auto req = host->mutable_join_raft();
+    core1->ID().ToString(req->mutable_peer_id());
+
+    context::Context ctx;
+    ASSERT_EQ(error::OK, core2->Receive(&ctx, msg));
+    auto out = PassMessages(cores, core2.get());
+    ASSERT_EQ(1, out[core2->ID()].size());
+    auto resp = out[core2->ID()][0].h2e_response();
+    ASSERT_EQ(resp.request_id(), 1001);
+    ASSERT_EQ(resp.inner_case(), HostToEnclaveResponse::kStatus);
+    ASSERT_EQ(resp.status(), error::OK);
+
+    std::set<peerid::PeerID> want{ core2->ID() };
+    ASSERT_EQ(want, core1->GroupTimeParticipants(&ctx));
+  }
+
+  {
+    LOG(INFO) << "\n\nRequest core2 vote";
+    UntrustedMessage msg;
+    auto host = msg.mutable_h2e_request();
+    host->set_request_id(1002);
+    host->set_request_voting(true);
+
+    context::Context ctx;
+    ASSERT_EQ(error::OK, core2->Receive(&ctx, msg));
+    auto out = PassMessages(cores, core2.get());
+    ASSERT_EQ(1, out[core2->ID()].size());
+    auto resp = out[core2->ID()][0].h2e_response();
+    ASSERT_EQ(resp.request_id(), 1002);
+    ASSERT_EQ(resp.inner_case(), HostToEnclaveResponse::kStatus);
+    ASSERT_EQ(resp.status(), error::OK);
+
+    std::set<peerid::PeerID> want{ core2->ID() };
+    ASSERT_EQ(want, core1->GroupTimeParticipants(&ctx));
+  }
+
+  {
+    LOG(INFO) << "\n\nRequest join on core 3";
+    UntrustedMessage msg;
+    auto host = msg.mutable_h2e_request();
+    host->set_request_id(1003);
+    auto req = host->mutable_join_raft();
+    core1->ID().ToString(req->mutable_peer_id());
+
+    context::Context ctx;
+    ASSERT_EQ(error::OK, core3->Receive(&ctx, msg));
+    auto out = PassMessages(cores, core3.get());
+    ASSERT_EQ(1, out[core3->ID()].size());
+    auto resp = out[core3->ID()][0].h2e_response();
+    ASSERT_EQ(resp.request_id(), 1003);
+    ASSERT_EQ(resp.inner_case(), HostToEnclaveResponse::kStatus);
+    ASSERT_EQ(resp.status(), error::OK);
+
+    // core3 has joined but is not voting, use only core2.
+    std::set<peerid::PeerID> want{ core2->ID() };
+    ASSERT_EQ(want, core1->GroupTimeParticipants(&ctx));
+  }
+
+  {
+    LOG(INFO) << "\n\nDisconnect core2";
+    UntrustedMessage msg;
+    auto host = msg.mutable_h2e_request();
+    host->set_request_id(1004);
+    host->set_reset_peer_id(core2->ID().AsString());
+
+    context::Context ctx;
+    ASSERT_EQ(error::OK, core1->Receive(&ctx, msg));
+    auto out = PassMessages(cores, core1.get());
+    ASSERT_EQ(1, out[core1->ID()].size());
+    auto resp = out[core1->ID()][0].h2e_response();
+    ASSERT_EQ(resp.request_id(), 1004);
+    ASSERT_EQ(resp.inner_case(), HostToEnclaveResponse::kStatus);
+    ASSERT_EQ(resp.status(), error::OK);
+
+    // core1 has disconnected from core2, the only other voting member.
+    // It should fall back to using all connected peers, which in this
+    // case is core3.
+    std::set<peerid::PeerID> want{ core3->ID() };
+    ASSERT_EQ(want, core1->GroupTimeParticipants(&ctx));
+  }
+
+  {
+    LOG(INFO) << "\n\nDisconnect core3";
+    UntrustedMessage msg;
+    auto host = msg.mutable_h2e_request();
+    host->set_request_id(1005);
+    host->set_reset_peer_id(core3->ID().AsString());
+
+    context::Context ctx;
+    ASSERT_EQ(error::OK, core1->Receive(&ctx, msg));
+    auto out = PassMessages(cores, core1.get());
+    ASSERT_EQ(1, out[core1->ID()].size());
+    auto resp = out[core1->ID()][0].h2e_response();
+    ASSERT_EQ(resp.request_id(), 1005);
+    ASSERT_EQ(resp.inner_case(), HostToEnclaveResponse::kStatus);
+    ASSERT_EQ(resp.status(), error::OK);
+
+    // core1 has disconnected from all cores, it should just use
+    // its own local time.
+    std::set<peerid::PeerID> want{};
+    ASSERT_EQ(want, core1->GroupTimeParticipants(&ctx));
+  }
+
+  {
+    LOG(INFO) << "\n\nReconnect core3";
+    UntrustedMessage msg;
+    auto host = msg.mutable_h2e_request();
+    host->set_request_id(1006);
+    host->set_connect_peer_id(core3->ID().AsString());
+
+    context::Context ctx;
+    ASSERT_EQ(error::OK, core1->Receive(&ctx, msg));
+    auto out = PassMessages(cores, core1.get());
+    ASSERT_EQ(1, out[core1->ID()].size());
+    auto resp = out[core1->ID()][0].h2e_response();
+    ASSERT_EQ(resp.request_id(), 1006);
+    ASSERT_EQ(resp.inner_case(), HostToEnclaveResponse::kStatus);
+    ASSERT_EQ(resp.status(), error::OK);
+
+    // core1 has disconnected from all cores, it should just use
+    // its own local time.
+    std::set<peerid::PeerID> want{ core3->ID() };
+    ASSERT_EQ(want, core1->GroupTimeParticipants(&ctx));
+  }
+
+  {
+    LOG(INFO) << "\n\nReconnect core2 (voting)";
+    UntrustedMessage msg;
+    auto host = msg.mutable_h2e_request();
+    host->set_request_id(1007);
+    host->set_connect_peer_id(core2->ID().AsString());
+
+    context::Context ctx;
+    ASSERT_EQ(error::OK, core1->Receive(&ctx, msg));
+    auto out = PassMessages(cores, core1.get());
+    ASSERT_EQ(1, out[core1->ID()].size());
+    auto resp = out[core1->ID()][0].h2e_response();
+    ASSERT_EQ(resp.request_id(), 1007);
+    ASSERT_EQ(resp.inner_case(), HostToEnclaveResponse::kStatus);
+    ASSERT_EQ(resp.status(), error::OK);
+
+    // core1 has disconnected from all cores, it should just use
+    // its own local time.
+    std::set<peerid::PeerID> want{ core2->ID() };
+    ASSERT_EQ(want, core1->GroupTimeParticipants(&ctx));
+  }
+
+  {
+    LOG(INFO) << "\n\nRequest core3 vote";
+    UntrustedMessage msg;
+    auto host = msg.mutable_h2e_request();
+    host->set_request_id(1008);
+    host->set_request_voting(true);
+
+    context::Context ctx;
+    ASSERT_EQ(error::OK, core3->Receive(&ctx, msg));
+    auto out = PassMessages(cores, core3.get());
+    ASSERT_EQ(1, out[core3->ID()].size());
+    auto resp = out[core3->ID()][0].h2e_response();
+    ASSERT_EQ(resp.request_id(), 1008);
+    ASSERT_EQ(resp.inner_case(), HostToEnclaveResponse::kStatus);
+    ASSERT_EQ(resp.status(), error::OK);
+
+    std::set<peerid::PeerID> want{ core2->ID(), core3->ID() };
+    ASSERT_EQ(want, core1->GroupTimeParticipants(&ctx));
+  }
+
+}
+
 }  // namespace svr2::core
