@@ -165,7 +165,7 @@ class Environment : public ::svr2::env::Environment {
         endorsements_data, attestation.endorsements().size(),
         &policy, 1, &claims, &claims_length);
     if (OE_OK != verify_err) {
-      LOG(ERROR) << "oe_verify_evidence failed with code " << verify_err;
+      LOG(ERROR) << "oe_verify_evidence failed with code " << verify_err << " (" << oe_result_str(verify_err) << ")";
       return std::make_pair(out, error::Env_AttestationFailure);
     }
 
