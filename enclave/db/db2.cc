@@ -205,6 +205,7 @@ void DB2::Restore(const BackupID& id, const client::RestoreRequest& req, client:
     rows_.erase(find);
     resp->set_status(client::RestoreResponse::MISSING);
     GAUGE(db, rows)->Set(rows_.size());
+    COUNTER(db, guess_limit_reached)->Increment();
     return;
   }
   // Update the Merkle tree with our new tries.

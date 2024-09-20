@@ -560,8 +560,6 @@ void DB4::Restore1(
     state->set_new_version(row->new_version);
   }
 
-
-
   resp->set_status(client::Response4::OK);
   state->set_version(row->version);
   state->set_auth_commitment(row->auth_commitment.ToString());
@@ -581,6 +579,7 @@ void DB4::Restore1(
   }
 restore1_error:
   if (row->tries == 0) {
+    COUNTER(db, guess_limit_reached)->Increment();
     rows_.erase(find);
     row = nullptr;  // The `row` ptr is no longer valid due to the `erase` call.
     GAUGE(db, rows)->Set(rows_.size());

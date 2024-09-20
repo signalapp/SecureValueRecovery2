@@ -82,6 +82,8 @@ CREATE_COUNTER(timeout, timeouts_created, timeouts_created, ({}))
 CREATE_COUNTER(timeout, timeouts_run, timeouts_completed, ({{"outcome", "run"}}))
 CREATE_COUNTER(timeout, timeouts_cancelled, timeouts_completed, ({{"outcome", "cancelled"}}))
 
+CREATE_COUNTER(db, guess_limit_reached, guess_limit_reached, ({}))
+
 CREATE_COUNTER(db2, ops_backup, ops, ({{"type", "backup"}}))
 CREATE_COUNTER(db2, ops_restore, ops, ({{"type", "restore"}}))
 CREATE_COUNTER(db2, ops_delete, ops, ({{"type", "delete"}}))

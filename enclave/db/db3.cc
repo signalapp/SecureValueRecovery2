@@ -321,6 +321,7 @@ void DB3::Evaluate(
   row->tries--;
   resp->set_tries_remaining(row->tries);
   if (row->tries == 0) {
+    COUNTER(db, guess_limit_reached)->Increment();
     rows_.erase(find);
     row = nullptr;  // The `row` ptr is no longer valid due to the `erase` call.
     GAUGE(db, rows)->Set(rows_.size());
