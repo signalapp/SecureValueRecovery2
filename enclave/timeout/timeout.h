@@ -32,7 +32,10 @@ class Timeout {
    Timeout();
   // SetTimeout provides a function that will be called [ticks_from_now] ticks in the future (min 1).
   // This function will be called at that time, once, unless CancelTimeout is called on the returned
-  // value before that time.
+  // value before that time.  `fn` will NOT be called as part of this function call, even if
+  // `ticks_from_now` is zero; it will be called at least one `TimerTick` call after this function
+  // returns.  Thus, if locks etc. are held while `SetTimeout` is called, so long as they're released
+  // before the next `TimerTick` call, they can be reacquired by `fn`.
   Cancel SetTimeout(context::Context* ctx, util::Ticks ticks_from_now, TimeoutFn fn) EXCLUDES(mu_);
   // CancelTimeout cancels a function that was scheduled for the future.  May be called any number
   // of times on a Cancel, and may be called after the ticks for the given function have

@@ -29,7 +29,20 @@ void Timeout::TimerTick(context::Context* ctx) {
 
 Cancel Timeout::SetTimeout(context::Context* ctx, util::Ticks ticks_from_now, std::function<void(context::Context*)> fn) {
   ACQUIRE_LOCK(mu_, ctx, lock_timeout);
+  // Try to do "the right thing" here if we get a 0 or negative [ticks_from_now],
+  // by scheduling for as soon as possible.  We could try to run immediately,
+  // but some calling contexts for this function may hold locks that the passed-in
+  // function needs to also lock, so that could result in deadlocks.
+  // Passing in such a value is technically a programmer error, but could be
+  // the result of some bad math or the like, and we'd really rather not crash
+  // the enclave.
+  if (ticks_from_now + ticks_ <= ticks_) {
+    ticks_from_now = 1;
+  }
+  // We just made this increment, so this should never CHECK-fail, unless we
+  // are at ticks_==INT64_MAX, in which case we probably have bigger problems.
   CHECK(ticks_from_now + ticks_ > ticks_);
+
   Cancel tc(ticks_from_now + ticks_, ++timeout_cancel_gen_);
   auto finder = timeouts_.find(tc.at_tick_);
   if (finder == timeouts_.end()) {

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
@@ -23,7 +24,9 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/gorilla/websocket"
 	"github.com/signalapp/svr2/auth"
+	"github.com/signalapp/svr2/peerid"
 	"github.com/signalapp/svr2/servicetest"
+	"github.com/signalapp/svr2/web/client"
 	"golang.org/x/sync/errgroup"
 
 	pb "github.com/signalapp/svr2/proto"
@@ -77,6 +80,70 @@ func TestConcurrentClients(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+func TestReconnectStressTest(t *testing.T) {
+	ccs := []*client.ControlClient{}
+	for i := 1; i <= 3; i++ {
+		ccs = append(ccs, &client.ControlClient{Addr: fmt.Sprintf("localhost:%v", port(controlType, i))})
+	}
+	ids := []peerid.PeerID{}
+	for _, client := range ccs {
+		resp, err := client.Do(&pb.HostToEnclaveRequest{
+			Inner: &pb.HostToEnclaveRequest_GetEnclaveStatus{GetEnclaveStatus: true},
+		})
+		if err != nil {
+			t.Fatalf("GetEnclaveStatus for %q: %v", client.Addr, err)
+		}
+		status := resp.Inner.(*pb.HostToEnclaveResponse_GetEnclaveStatusReply).GetEnclaveStatusReply
+		for _, peer := range status.Peers {
+			if peer.Me {
+				pid, err := peerid.Make(peer.PeerId)
+				if err != nil {
+					t.Fatalf("PeerID for %q: %v", client.Addr, err)
+				}
+				ids = append(ids, pid)
+			}
+		}
+	}
+
+	for i := 0; i < 25; i++ {
+		time.Sleep(time.Duration(rand.Intn(100)) * time.Millisecond)
+		for j, client := range ccs {
+			for k, id := range ids {
+				if j == k {
+					continue
+				}
+				if rand.Int()%3 < 2 {
+					_, err := client.Do(&pb.HostToEnclaveRequest{
+						Inner: &pb.HostToEnclaveRequest_ResetPeerId{ResetPeerId: id[:]},
+					})
+					log.Printf("disconnecting %q from %v: %v", client.Addr, id, err)
+				}
+				if rand.Int()%3 == 2 {
+					_, err := client.Do(&pb.HostToEnclaveRequest{
+						Inner: &pb.HostToEnclaveRequest_ConnectPeerId{ConnectPeerId: id[:]},
+					})
+					log.Printf("connecting %q from %v: %v", client.Addr, id, err)
+				}
+			}
+		}
+	}
+	time.Sleep(time.Millisecond * 250)
+	for j, client := range ccs {
+		for k, id := range ids {
+			if j == k {
+				continue
+			}
+			_, err := client.Do(&pb.HostToEnclaveRequest{
+				Inner: &pb.HostToEnclaveRequest_PingPeer{PingPeer: &pb.EnclavePeer{PeerId: id[:]}},
+			})
+			t.Logf("ping from %v(%d) to %v(%d): %v", client.Addr, j, id, k, err)
+			if err != nil {
+				t.Fatalf("ping failed")
+			}
+		}
+	}
 }
 
 func TestServerDelete(t *testing.T) {
@@ -242,7 +309,7 @@ peerAddr: localhost:%v
 clientListenAddr: localhost:%v
 controlListenAddr: localhost:%v
 raft:
-  tickDuration: 250ms
+  tickDuration: 100ms
 redis:
   addrs: [%v]`,
 		port(peerType, portOffset),
