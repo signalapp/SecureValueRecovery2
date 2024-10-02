@@ -25,6 +25,7 @@ function rm_blob() {
 }
 trap rm_blob EXIT
 $GCLOUD storage cp ../host/main gs://$GCP_BUCKET/svr3-$VERSION
+$GCLOUD storage cp ../host/cmd/control/control gs://$GCP_BUCKET/svr3control-$VERSION
 tar --transform="s/$(basename $FROM)/disk.raw/" --format=oldgnu -cvf - -C $(dirname $FROM) $(basename $FROM) | pigz >gcp.tar.gz
 if [ -z "$GCP_JUMPHOST" ]; then
   $GCLOUD storage cp ./gcp.tar.gz $BLOB

@@ -140,8 +140,8 @@ RUN apt-get update && apt-get install -y \
     libcurl4
 COPY host/main /bin/svr2
 COPY enclave/releases/sgx /enclaves
-COPY host/cmd/control/control /bin/svr2control
-RUN ln -s /bin/svr2control /bin/svr3control
+COPY host/cmd/control/control /bin/svr3control
+RUN ln -s /bin/svr3control /bin/svr2control
 
 ENTRYPOINT ["/bin/svr2"]
 
@@ -188,4 +188,6 @@ COPY docker/nitro_start.sh nitro_start.sh
 RUN mkdir /releases
 COPY enclave/releases/nitro/* /releases
 COPY host/main /bin/svr2
+COPY host/cmd/control/control /bin/svr3control
+RUN ln -s /bin/svr3control /bin/svr2control
 ENTRYPOINT ["./nitro_start.sh"]
