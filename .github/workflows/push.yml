@@ -69,8 +69,8 @@ jobs:
 
       - name: Build binaries
         run: |
-          make docker_enclave_test
-          make
+          make docker_enclave_test || make DOCKER_MAKE_ARGS=-j1 docker_enclave_test
+          make || make DOCKER_MAKE_ARGS=-j1
 
       - name: Build and push container image
         run: |
