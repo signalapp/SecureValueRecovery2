@@ -8,6 +8,10 @@ dockall: docker_all
 all: validate host enclave cmds
 
 MAKE_ARGS ?=
+ARCH ?= $(shell arch)
+ifeq ($(ARCH),arm64)
+	MAKE_ARGS += 'GO_TEST_FLAGS=-short' # long tests can cause qemu crashes in x86 emulation
+endif
 
 validate:
 	$(MAKE) $(MAKE_ARGS) -C enclave validate
@@ -60,11 +64,7 @@ endif
 ifeq ($(OS), Darwin)
 	PARALLEL ?= $(shell sysctl -n hw.ncpu)
 endif
-DOCKER_MAKE_ARGS ?= -j$(PARALLEL) MAKE_ARGS="$(MAKE_ARGS)"
-ARCH ?= $(shell arch)
-ifeq ($(ARCH),arm64)
-	DOCKER_MAKE_ARGS += 'GO_TEST_FLAGS=-short' # long tests can cause qemu crashes in x86 emulation
-endif
+DOCKER_MAKE_ARGS ?= -j$(PARALLEL) MAKE_ARGS='$(MAKE_ARGS)'
 DOCKER_RUN_ARGS ?=
 DOCKER_BUILD_ARGS ?= 
 docker_%: dockerbase

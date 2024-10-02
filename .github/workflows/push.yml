@@ -9,6 +9,7 @@ env:
   DOCKER_BUILDKIT: 1
   BUILDX_CONTAINER: container
   V: 1
+  MAKE_ARGS: GOFLAGS=-buildvcs=false
 
 jobs:
   build-and-push:
