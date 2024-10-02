@@ -141,6 +141,7 @@ RUN apt-get update && apt-get install -y \
 COPY host/main /bin/svr2
 COPY enclave/releases/sgx /enclaves
 COPY host/cmd/control/control /bin/svr2control
+RUN ln -s /bin/svr2control /bin/svr3control
 
 ENTRYPOINT ["/bin/svr2"]
 
