@@ -1,14 +1,18 @@
 // Copyright 2024 Signal Messenger, LLC
 // SPDX-License-Identifier: AGPL-3.0-only
 
+#[macro_use]
+extern crate simple_error;
+use base64::prelude::BASE64_STANDARD;
+use base64::Engine;
 use hmac::Mac;
-use websocket::header::{Authorization, Basic, Headers};
 use prost::Message;
 use std::env;
 use std::time::SystemTime;
-
-#[macro_use]
-extern crate simple_error;
+use tokio_tungstenite::tungstenite;
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+use tokio_tungstenite::tungstenite::http::header::AUTHORIZATION;
+use tokio_tungstenite::tungstenite::http::HeaderValue;
 
 pub mod svr2 {
     include!(concat!(env!("OUT_DIR"), "/svr2.rs"));
@@ -39,7 +43,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Timestamp: {}", unix_secs);
     let mut mac = HmacSha256::new_from_slice(b"123456")?;
     let user = &[1u8; 16];
-    let to_mac: Vec<u8> = [hex::encode(user).as_bytes(), format!(":{}", unix_secs).as_bytes()].concat();
+    let to_mac: Vec<u8> = [
+        hex::encode(user).as_bytes(),
+        format!(":{}", unix_secs).as_bytes(),
+    ]
+    .concat();
     println!("bytes: {:02x?}", to_mac);
     mac.update(&to_mac);
     let token = format!(
@@ -48,22 +56,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         hex::encode(&mac.finalize().into_bytes()[..10])
     );
 
-    let mut headers = Headers::new();
-    headers.set(Authorization(Basic {
-        username: hex::encode(user).to_owned(),
-        password: Some(token.to_owned()),
-    }));
+    let mut request = args[1].to_owned().into_client_request()?;
+    request.headers_mut().insert(
+        AUTHORIZATION,
+        basic_authorization(hex::encode(user).as_str(), token.to_owned().as_str()),
+    );
 
-    println!("Connecting to {} with user {} token {}", &args[1], hex::encode(user), token);
-    let mut client =
-        websocket::client::builder::ClientBuilder::new(&args[1])?
-        .custom_headers(&headers)
-        .connect_insecure()?;
+    println!(
+        "Connecting to {} with user {} token {}",
+        &args[1],
+        hex::encode(user),
+        token
+    );
+    let (mut stream, _) = tungstenite::connect(request)?;
+
     println!("Connected");
 
     println!("Recv ClientHandshakeStart");
-    let msg1 = client.recv_message()?;
-    let bin1 = if let websocket::OwnedMessage::Binary(b) = msg1 {
+    let msg1 = stream.read()?;
+    let bin1 = if let tungstenite::Message::Binary(b) = msg1 {
         b
     } else {
         bail!("received message not binary");
@@ -78,11 +89,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let len = initiator.write_message(&[], &mut buf)?;
 
     println!("Send handshake start");
-    client.send_message(&websocket::Message::binary(&buf[..len]))?;
+    stream.write(tungstenite::Message::Binary(buf[..len].to_vec()))?;
+    stream.flush()?;
 
     println!("Recv handshake start");
-    let msg2 = client.recv_message()?;
-    let bin2 = if let websocket::OwnedMessage::Binary(b) = msg2 {
+    let msg2 = stream.read()?;
+    let bin2 = if let tungstenite::Message::Binary(b) = msg2 {
         println!("Received!");
         b
     } else {
@@ -97,4 +109,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     initiator.into_transport_mode()?;
 
     Ok(())
+}
+
+pub fn basic_authorization(username: &str, password: &str) -> HeaderValue {
+    let auth = BASE64_STANDARD.encode(format!("{}:{}", username, password).as_bytes());
+    let auth = format!("Basic {}", auth);
+    HeaderValue::try_from(auth).expect("valid header value")
 }

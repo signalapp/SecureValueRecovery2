@@ -59,7 +59,7 @@ then drop you inside of it in a `bash` shell.  You can then run any of
 
 ```
 make all      # Make everything
-make enclave  # Make all of the enclave stuf
+make enclave  # Make all of the enclave stuff
 make host     # Make all of the host stuff
 (cd enclave && make $SOMETARGET)  # Make just a specific target in enclave
 (cd host    && make $SOMETARGET)  # Make just a specific target in host
