@@ -132,14 +132,23 @@ func (r *RaftManager) CreateOrJoin(ctx context.Context) error {
 	if err != nil {
 		return errors.New("failed to fetch raft peers")
 	}
-	if raftPeer == r.me {
-		logger.Infow("attempting to create a new raft group")
-		if err := r.createRaft(); err != nil {
-			return err
+	joined := make(chan error)
+
+	go func() {
+		if raftPeer == r.me {
+			logger.Infow("attempting to create a new raft group")
+			joined <- r.createRaft()
+		} else {
+			logger.Infow("attempting to join existing raft group", "peerID", raftPeer)
+			joined <- r.joinExistingRaftPeer(raftPeer)
 		}
-	} else {
-		logger.Infow("attempting to join existing raft group", "peerID", raftPeer)
-		if err := r.joinExistingRaftPeer(raftPeer); err != nil {
+	}()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case err := <-joined:
+		if err != nil {
 			return err
 		}
 	}

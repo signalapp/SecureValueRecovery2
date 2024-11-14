@@ -21,6 +21,8 @@ type RaftHostConfig struct {
 	EnvStatsPollDuration time.Duration `yaml:"envStatsPollDuration"`
 	// max number of in-flight enclave calls
 	EnclaveConcurrency int `yaml:"enclaveConcurrency"`
+	// timeout for intitial raft Joining attempt
+	InitialJoinDuration time.Duration `yaml:"initialJoinDuration"`
 }
 
 func (r *RaftHostConfig) validate() []string {

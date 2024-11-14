@@ -118,7 +118,7 @@ func Start(ctx context.Context, hconfig *config.Config, authenticator auth.Auth,
 
 	// wait until we successfully create a raft group or join an existing one
 	raftManager := raftmanager.New(nodeID, dispatcher, peerDB, hconfig)
-	joinCtx, joinCancel := context.WithTimeout(ctx, time.Minute)
+	joinCtx, joinCancel := context.WithTimeout(ctx, hconfig.Raft.InitialJoinDuration)
 	defer joinCancel()
 	if err := raftManager.CreateOrJoin(joinCtx); err != nil {
 		return fmt.Errorf("failure to join raft : %v", err)

@@ -114,6 +114,7 @@ func Default() *Config {
 			EnvStatsPollDuration:       0,
 			RefreshAttestationDuration: time.Minute * 10,
 			EnclaveConcurrency:         util.Min(runtime.NumCPU(), 64),
+			InitialJoinDuration:        time.Hour,
 		},
 		Redis: RedisConfig{
 			Name:             "test",
