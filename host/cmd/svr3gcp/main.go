@@ -13,9 +13,9 @@ import (
 	"os"
 	"reflect"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/google/go-tpm-tools/client"
 	"github.com/google/go-tpm/legacy/tpm2"
+	"google.golang.org/protobuf/proto"
 
 	pb "github.com/signalapp/svr2/proto"
 )
