@@ -1,4 +1,5 @@
-# Secure Value Recovery Service v2/3
+Secure Value Recovery Service v2/3
+==================================
 
 The SecureValueRecovery2 (SVR2) project aims to store client-side secrets
 server-side protected by a human-remembered (and thus, low-entropy) pin.
@@ -23,7 +24,8 @@ _liveness_ (the ability to serve back anything) in order to maintain the
 security properties of the system.  We'll happily discard every secret in the
 system rather than expose one of the secrets to a leak.
 
-## History
+History
+-------
 
 SVR2 is a successor to the
 [SecureValueRecovery](https://github.com/signalapp/SecureValueRecovery)
@@ -42,7 +44,8 @@ SVR3 builds upon the implemented SVR2 data model, exposing a different client
 request/response protocol that exposes a Ristretto-based oblivious pseudo-
 random function (OPRF) rather than a direct store/retrieve database.
 
-## Building
+Building
+--------
 
 In order to build and test everything in this repository, you should be able to
 just run `make` at the top-level.  You must have a valid `docker` installed
@@ -65,7 +68,8 @@ make host     # Make all of the host stuff
 (cd host    && make $SOMETARGET)  # Make just a specific target in host
 ```
 
-## Code layout
+Code layout
+-----------
 
 Code is divided into a few main directories at the top-level
 
@@ -83,7 +87,8 @@ Code is divided into a few main directories at the top-level
                     for use in AMD SEV-SNP and other environments where the trusted unit is
                     a VM rather than a binary.
 
-## Verifying build measurements
+Verifying build measurements
+----------------------------
 
 SVR2/3 clients can attest that a server is running a particular application version. These versions
 are hard-coded into clients and correspond to artifacts published in this repository.
@@ -112,11 +117,11 @@ make enclave
 
 ### Verifying SVR3 measurements
 SVR3 supports multiple trusted compute platforms. The specifics of verification depend on the platform.
+
 #### Verifying SGX measurements
-
 See the SVR2 verification section. For SVR3, you can find what MRENCLAVE a client attests [in libsignal](https://github.com/signalapp/libsignal/blob/a4a0663528dadc38215e46c6f94484b435f5fe02/rust/attest/src/constants.rs#L21).
-#### Verifying Nitro measurements
 
+#### Verifying Nitro measurements
 Nitro builds are also deterministic, and so you can verify an attested server corresponds to the committed source code by building the eif image yourself and comparing the resulting PCR measurements.
 
 Suppose your client attests the nitro version [ffe631d7.52b91975.a4544fb5](https://github.com/signalapp/libsignal/blob/a4a0663528dadc38215e46c6f94484b435f5fe02/rust/attest/src/constants.rs#L21) with [these PCRs](https://github.com/signalapp/libsignal/blob/a4a0663528dadc38215e46c6f94484b435f5fe02/rust/attest/src/constants.rs#L29).
@@ -166,7 +171,6 @@ compiled into the Signal client (in libsignal) and can be checked against.  Some
 only a subset will be visible within the Signal client.
 
 #### Running the Verify Script
-
 Run the following script to run numerous automated checks:
 
 ```
@@ -187,8 +191,22 @@ It will then give you the option of keeping the partitions mounted so
 that you can do any further investigation you see fit (checking against
 known files, looking at systemd configuration, etc).
 
-## License
+Contributing bug reports
+------------------------
 
-Copyright 2023-2024 Signal Messenger, LLC
+We use [GitHub][github issues] for bug tracking. Security issues should be sent to <a href="mailto:security@signal.org">security@signal.org</a>.
+
+Help
+----
+
+We cannot provide direct technical support. Get help running this software in your own environment in our [unofficial community forum][community forum].
+
+License
+-------
+
+Copyright 2023 Signal Messenger, LLC
 
 Licensed under the [AGPLv3](LICENSE)
+
+[github issues]: https://github.com/signalapp/SecureValueRecovery2/issues
+[community forum]: https://community.signalusers.org
