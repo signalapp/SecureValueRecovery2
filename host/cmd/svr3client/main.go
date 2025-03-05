@@ -25,9 +25,10 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/gtank/ristretto255"
+	"google.golang.org/protobuf/proto"
+
 	"github.com/signalapp/svr2/auth"
 	"github.com/signalapp/svr2/web/client"
-	"google.golang.org/protobuf/proto"
 
 	pb "github.com/signalapp/svr2/proto"
 )

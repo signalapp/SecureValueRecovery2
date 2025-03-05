@@ -10,10 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/signalapp/svr2/util"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/yaml.v2"
+
+	"github.com/signalapp/svr2/util"
 )
 
 type Config struct {

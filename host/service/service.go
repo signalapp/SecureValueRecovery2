@@ -10,10 +10,14 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/signalapp/svr2/auth"
 	"github.com/signalapp/svr2/config"
@@ -28,11 +32,8 @@ import (
 	"github.com/signalapp/svr2/util"
 	"github.com/signalapp/svr2/web/handlers"
 	"github.com/signalapp/svr2/web/middleware"
-	"go.uber.org/zap"
-	"golang.org/x/sync/errgroup"
 
 	pb "github.com/signalapp/svr2/proto"
-	_ "net/http/pprof"
 )
 
 // Start starts all SVR components and only returns when a component has encountered an

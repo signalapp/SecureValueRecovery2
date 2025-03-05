@@ -19,6 +19,7 @@ import (
 	"sync/atomic"
 
 	"github.com/gorilla/websocket"
+
 	"github.com/signalapp/svr2/auth"
 	"github.com/signalapp/svr2/web/client"
 

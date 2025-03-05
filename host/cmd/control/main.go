@@ -14,10 +14,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/signalapp/svr2/peerid"
-	"github.com/signalapp/svr2/web/client"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/signalapp/svr2/peerid"
+	"github.com/signalapp/svr2/web/client"
 
 	pb "github.com/signalapp/svr2/proto"
 )

@@ -11,10 +11,11 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/hashicorp/go-metrics"
+	"google.golang.org/protobuf/proto"
+
 	"github.com/signalapp/svr2/config"
 	"github.com/signalapp/svr2/logger"
 	"github.com/signalapp/svr2/util"
-	"google.golang.org/protobuf/proto"
 
 	pb "github.com/signalapp/svr2/proto"
 )

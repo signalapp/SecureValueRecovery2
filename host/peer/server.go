@@ -11,11 +11,12 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/signalapp/svr2/logger"
-	"github.com/signalapp/svr2/peerid"
+	metrics "github.com/hashicorp/go-metrics"
 	"golang.org/x/sync/errgroup"
 
-	metrics "github.com/hashicorp/go-metrics"
+	"github.com/signalapp/svr2/logger"
+	"github.com/signalapp/svr2/peerid"
+
 	pb "github.com/signalapp/svr2/proto"
 )
 

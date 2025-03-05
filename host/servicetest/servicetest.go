@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+
 	"github.com/signalapp/svr2/util"
 	"github.com/signalapp/svr2/web/client"
 

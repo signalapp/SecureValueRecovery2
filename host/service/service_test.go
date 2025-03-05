@@ -16,13 +16,12 @@ import (
 	"testing"
 	"time"
 
-	"google.golang.org/protobuf/proto"
-
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
-
 	"github.com/alicebob/miniredis/v2"
 	"github.com/gorilla/websocket"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"google.golang.org/protobuf/proto"
+
 	"github.com/signalapp/svr2/auth"
 	"github.com/signalapp/svr2/config"
 	"github.com/signalapp/svr2/enclave"

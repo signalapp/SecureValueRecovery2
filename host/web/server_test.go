@@ -15,11 +15,12 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"google.golang.org/protobuf/proto"
+
 	"github.com/signalapp/svr2/config"
 	"github.com/signalapp/svr2/dispatch"
 	"github.com/signalapp/svr2/util"
 	"github.com/signalapp/svr2/web/handlers"
-	"google.golang.org/protobuf/proto"
 
 	pb "github.com/signalapp/svr2/proto"
 )

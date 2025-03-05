@@ -10,23 +10,23 @@ import (
 	"fmt"
 	"io"
 	"log"
+	stdlog "log"
 	"net"
 	"os"
 	"os/exec"
 	"os/signal"
 	"time"
 
+	metrics "github.com/hashicorp/go-metrics"
 	"github.com/hashicorp/go-metrics/datadog"
+	"google.golang.org/protobuf/encoding/prototext"
+
 	"github.com/signalapp/svr2/auth"
 	"github.com/signalapp/svr2/config"
 	"github.com/signalapp/svr2/enclave"
 	"github.com/signalapp/svr2/logger"
 	"github.com/signalapp/svr2/service"
-	"google.golang.org/protobuf/encoding/prototext"
 
-	stdlog "log"
-
-	metrics "github.com/hashicorp/go-metrics"
 	pb "github.com/signalapp/svr2/proto"
 )
 

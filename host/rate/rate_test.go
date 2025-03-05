@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
+
 	"github.com/signalapp/svr2/config"
 )
 

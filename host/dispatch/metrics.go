@@ -5,9 +5,10 @@ package dispatch
 
 import (
 	"github.com/google/go-cmp/cmp"
+	metrics "github.com/hashicorp/go-metrics"
+
 	"github.com/signalapp/svr2/peerid"
 
-	metrics "github.com/hashicorp/go-metrics"
 	pb "github.com/signalapp/svr2/proto"
 )
 

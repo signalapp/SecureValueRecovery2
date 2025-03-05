@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	pb "github.com/signalapp/svr2/proto"
-
 	metrics "github.com/hashicorp/go-metrics"
+
+	pb "github.com/signalapp/svr2/proto"
 )
 
 type mockMetricsWriter struct {

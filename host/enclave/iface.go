@@ -5,7 +5,6 @@ package enclave
 
 import (
 	"github.com/signalapp/svr2/peerid"
-
 	pb "github.com/signalapp/svr2/proto"
 )
 

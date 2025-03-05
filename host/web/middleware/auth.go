@@ -4,9 +4,10 @@
 package middleware
 
 import (
+	"net/http"
+
 	"github.com/signalapp/svr2/auth"
 	"github.com/signalapp/svr2/logger"
-	"net/http"
 )
 
 // AuthCheck wraps an http.Handler to check the request's BasicAuth using the provided authenticator

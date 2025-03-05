@@ -7,9 +7,10 @@ package logger
 import (
 	"log"
 
-	"github.com/signalapp/svr2/config"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+
+	"github.com/signalapp/svr2/config"
 )
 
 // init sets up reasonable logging defaults for tests / non-main

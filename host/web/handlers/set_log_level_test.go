@@ -11,8 +11,9 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/signalapp/svr2/config"
 	"go.uber.org/zap/zapcore"
+
+	"github.com/signalapp/svr2/config"
 
 	pb "github.com/signalapp/svr2/proto"
 )

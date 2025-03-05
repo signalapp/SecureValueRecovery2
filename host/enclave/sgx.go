@@ -52,9 +52,10 @@ import (
 	"time"
 	"unsafe"
 
+	"google.golang.org/protobuf/proto"
+
 	"github.com/signalapp/svr2/logger"
 	"github.com/signalapp/svr2/peerid"
-	"google.golang.org/protobuf/proto"
 
 	pb "github.com/signalapp/svr2/proto"
 )

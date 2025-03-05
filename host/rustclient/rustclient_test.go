@@ -15,8 +15,9 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/signalapp/svr2/servicetest"
 	"google.golang.org/protobuf/encoding/prototext"
+
+	"github.com/signalapp/svr2/servicetest"
 
 	pb "github.com/signalapp/svr2/proto"
 )

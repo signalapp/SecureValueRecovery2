@@ -14,11 +14,12 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"google.golang.org/protobuf/encoding/protojson"
+
 	"github.com/signalapp/svr2/config"
 	"github.com/signalapp/svr2/logger"
 	"github.com/signalapp/svr2/peerid"
 	"github.com/signalapp/svr2/util"
-	"google.golang.org/protobuf/encoding/protojson"
 
 	pb "github.com/signalapp/svr2/proto"
 )

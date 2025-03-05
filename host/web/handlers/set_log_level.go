@@ -10,9 +10,10 @@ import (
 	"net/url"
 	"strings"
 
+	"go.uber.org/zap/zapcore"
+
 	"github.com/signalapp/svr2/config"
 	"github.com/signalapp/svr2/logger"
-	"go.uber.org/zap/zapcore"
 
 	pb "github.com/signalapp/svr2/proto"
 )

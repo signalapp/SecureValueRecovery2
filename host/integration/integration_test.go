@@ -23,11 +23,12 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/gorilla/websocket"
+	"golang.org/x/sync/errgroup"
+
 	"github.com/signalapp/svr2/auth"
 	"github.com/signalapp/svr2/peerid"
 	"github.com/signalapp/svr2/servicetest"
 	"github.com/signalapp/svr2/web/client"
-	"golang.org/x/sync/errgroup"
 
 	pb "github.com/signalapp/svr2/proto"
 )

@@ -9,9 +9,10 @@ import (
 	"mime"
 	"net/http"
 
+	"google.golang.org/protobuf/encoding/protojson"
+
 	"github.com/signalapp/svr2/logger"
 	"github.com/signalapp/svr2/peer/peerdb"
-	"google.golang.org/protobuf/encoding/protojson"
 
 	pb "github.com/signalapp/svr2/proto"
 )

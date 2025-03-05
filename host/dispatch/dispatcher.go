@@ -11,13 +11,14 @@ import (
 	"sync"
 	"time"
 
+	metrics "github.com/hashicorp/go-metrics"
+	"golang.org/x/sync/errgroup"
+
 	"github.com/signalapp/svr2/config"
 	"github.com/signalapp/svr2/logger"
 	"github.com/signalapp/svr2/peerid"
 	"github.com/signalapp/svr2/util"
-	"golang.org/x/sync/errgroup"
 
-	metrics "github.com/hashicorp/go-metrics"
 	pb "github.com/signalapp/svr2/proto"
 )
 
