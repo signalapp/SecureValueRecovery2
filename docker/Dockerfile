@@ -23,19 +23,19 @@ RUN wget -qO - https://download.01.org/intel-sgx/sgx_repo/ubuntu/intel-sgx-deb.k
     wget -qO - https://packages.microsoft.com/keys/microsoft.asc | apt-key add - && \
     while true; do apt update && break; done && \
     while true; do apt install -y \
-    libsgx-ae-id-enclave=1.21.100.3-focal1 \
-    libsgx-ae-pce=2.24.100.3-focal1 \
-    libsgx-ae-qe3=1.21.100.3-focal1 \
-    libsgx-dcap-ql=1.21.100.3-focal1 \
-    libsgx-dcap-ql-dev=1.21.100.3-focal1 \
-    libsgx-enclave-common=2.24.100.3-focal1 \
-    libsgx-headers=2.24.100.3-focal1 \
-    libsgx-pce-logic=1.21.100.3-focal1 \
-    libsgx-qe3-logic=1.21.100.3-focal1 \
-    libsgx-urts=2.24.100.3-focal1 \
+    libsgx-ae-id-enclave=1.22.100.3-focal1 \
+    libsgx-ae-pce=2.25.100.3-focal1 \
+    libsgx-ae-qe3=1.22.100.3-focal1 \
+    libsgx-dcap-ql=1.22.100.3-focal1 \
+    libsgx-dcap-ql-dev=1.22.100.3-focal1 \
+    libsgx-enclave-common=2.25.100.3-focal1 \
+    libsgx-headers=2.25.100.3-focal1 \
+    libsgx-pce-logic=1.22.100.3-focal1 \
+    libsgx-qe3-logic=1.22.100.3-focal1 \
+    libsgx-urts=2.25.100.3-focal1 \
     && break; done
-ARG OPENENCLAVE_VERSION=0.19.7
-ARG OPENENCLAVE_HASH=1ee27053e9442619111b5252e02e381895ab79782450bd446faf85fa0cc510cd
+ARG OPENENCLAVE_VERSION=0.19.10
+ARG OPENENCLAVE_HASH=5262223d6bc01ddc2e503fb26a26b851841a2b410228109b9f388984fc328c5a
 ADD --checksum=sha256:${OPENENCLAVE_HASH} \
     https://github.com/openenclave/openenclave/releases/download/v${OPENENCLAVE_VERSION}/Ubuntu_2004_open-enclave_${OPENENCLAVE_VERSION}_amd64.deb ./
 RUN dpkg -i Ubuntu_2004_open-enclave_${OPENENCLAVE_VERSION}_amd64.deb
@@ -135,8 +135,8 @@ CMD ["/bin/bash"]
 FROM base AS sgxrun
 
 RUN apt-get update && apt-get install -y \
-    libsgx-dcap-default-qpl=1.21.100.3-focal1 \
-    libsgx-dcap-default-qpl-dev=1.21.100.3-focal1 \
+    libsgx-dcap-default-qpl=1.22.100.3-focal1 \
+    libsgx-dcap-default-qpl-dev=1.22.100.3-focal1 \
     libcurl4
 COPY host/main /bin/svr2
 COPY enclave/releases/sgx /enclaves
