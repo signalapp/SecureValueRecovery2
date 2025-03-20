@@ -116,10 +116,16 @@ function CompareSHA256 {
     fi
 }
 
+pushd "../../../trustedimage/debian2"
+CompareSHA256 "initramfs_hook.sh"              "$ROOT/etc/initramfs-tools/hooks/initramfs_hook.sh"
+CompareSHA256 "initramfs_local-top.sh"         "$ROOT/etc/initramfs-tools/scripts/local-top/initramfs_local-top.sh"
+CompareSHA256 "initramfs_local-bottom.sh"      "$ROOT/etc/initramfs-tools/scripts/local-bottom/initramfs_local-bottom.sh"
+CompareSHA256 "svr3"                           "$ROOT/usr/bin/svr3"
+popd
 pushd ../../.. >/dev/null
-CompareSHA256 "$ROOT/usr/bin/svr3" "enclave/build/enclave.gcpsnp"
-CompareSHA256 "$ROOT/usr/bin/svr3test" "enclave/build/attest.gcpsnp"
-CompareSHA256 "$ROOT/usr/bin/svr3gcp" "host/cmd/svr3gcp/svr3gcp"
+CompareSHA256 "enclave/build/enclave.gcpsnp"   "$ROOT/usr/bin/enclave.gcpsnp"
+CompareSHA256 "enclave/build/enclave.azuresnp" "$ROOT/usr/bin/enclave.azuresnp"
+CompareSHA256 "host/cmd/svr3gcp/svr3gcp"       "$ROOT/usr/bin/svr3gcp"
 popd >/dev/null
 
 echo
