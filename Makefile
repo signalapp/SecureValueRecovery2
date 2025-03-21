@@ -66,7 +66,7 @@ ifeq ($(OS), Darwin)
 endif
 DOCKER_MAKE_ARGS ?= -j$(PARALLEL) MAKE_ARGS='$(MAKE_ARGS)'
 DOCKER_RUN_ARGS ?=
-DOCKER_BUILD_ARGS ?= 
+DOCKER_BUILD_ARGS ?= --platform=linux/amd64
 docker_%: dockerbase
 	docker run \
 	  -v "$$(pwd):/src" \

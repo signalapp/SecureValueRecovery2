@@ -1,5 +1,2 @@
-deb http://snapshot.debian.org/archive/debian/20250312T000000Z/ bullseye main
-deb http://snapshot.debian.org/archive/debian/20250312T000000Z/ bullseye-updates main
-
-deb http://snapshot.debian.org/archive/debian/20250312T000000Z/ buster main
-deb http://snapshot.debian.org/archive/debian/20250312T000000Z/ buster-updates main
+deb http://snapshot.debian.org/archive/debian/20250312T000000Z/ bookworm main
+deb http://snapshot.debian.org/archive/debian/20250312T000000Z/ bookworm-updates main

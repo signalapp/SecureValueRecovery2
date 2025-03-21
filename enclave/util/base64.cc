@@ -61,13 +61,11 @@ error::Error B64DecodeInline(std::string* inout, const Base64Encoding* const enc
   size_t j = 0;
   uint16_t accumulator = 0;
   uint16_t bits = 0;
-  bool found_padding = false;
   for (size_t i = 0; i < inout->size(); i++) {
     char next = inout->at(i);
     if (next == padding) {
       // We're very permissive with padding.  We allow no padding,
       // or any number of padding characters at the end of a string.
-      found_padding = true;
       for (i++; i < inout->size(); i++) {
         if (inout->at(i) != padding) {
           return COUNTED_ERROR(Util_Base64InvalidPadding);

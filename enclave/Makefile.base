@@ -173,4 +173,5 @@ WARNING_CFLAGS ?= \
   -Wno-c99-extensions \
   -Wno-gnu-anonymous-struct \
   -Wno-nested-anon-types \
+  -Wno-gnu-include-next \
 ##WARNING_CFLAGS
