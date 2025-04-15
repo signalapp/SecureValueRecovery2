@@ -33,13 +33,13 @@ jobs:
         # as well as some environmental data, and exposes them to future steps
         # in the correct locations and formats for their use with the `gha`
         # GitHub Actions cache for Docker.
-        uses: crazy-max/ghaction-github-runtime@b3a9207c0e1ef41f4cf215303c976869d0c2c1c4 # v3.0.0
+        uses: crazy-max/ghaction-github-runtime@3cb05d89e1f492524af3d41a1c98c83bc3025124 # v3.1.0
 
       - name: Setup Docker
         run: docker buildx create --use --name container --driver docker-container
 
       - name: 'Az CLI login'
-        uses: azure/login@a65d910e8af852a8061c627c456678983e180302 # v2.2.0
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # Azure Login Action v2.3.0
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -50,13 +50,13 @@ jobs:
           az acr login --name ${{ secrets.AZURE_CONTAINER_REGISTRY_NAME }}
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@4fc4975a852c8cd99761e2de1f4ba73402e44dd9 # 4.0.3
+        uses: aws-actions/configure-aws-credentials@ececac1a45f3b08a01d2dd070d28d111c5fe6722 # v4.1.0
         with:
           role-to-assume: "${{ vars.ECR_ROLE }}"
           aws-region: us-east-1
 
       - name: Login to ECR
-        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.3.0
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
         with:
           registry: "${{ vars.ECR_REGISTRY }}"
 

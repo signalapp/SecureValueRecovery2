@@ -26,7 +26,7 @@ jobs:
         # as well as some environmental data, and exposes them to future steps
         # in the correct locations and formats for their use with the `gha`
         # GitHub Actions cache for Docker.
-        uses: crazy-max/ghaction-github-runtime@b3a9207c0e1ef41f4cf215303c976869d0c2c1c4 # v3.0.0
+        uses: crazy-max/ghaction-github-runtime@3cb05d89e1f492524af3d41a1c98c83bc3025124 # v3.1.0
 
       - name: Setup Docker
         run: docker buildx create --use --name container --driver docker-container
