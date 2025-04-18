@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 snow = { version = "0.9.6", features = ["hfs", "pqclean_kyber1024"] }
-tokio-tungstenite = "0.24.0"
+tokio-tungstenite = "0.26.2"
 prost = "0.13.1"
 simple-error = "0.3.1"
 base64 = "0.22.1"

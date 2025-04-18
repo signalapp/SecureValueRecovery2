@@ -45,6 +45,7 @@ clean:
 	$(MAKE) $(MAKE_ARGS) -C host clean
 	rm -rf docker/build
 	rm -rf .cargohome/* .cargohome/.*cache* .cargotarget/*
+	git submodule foreach --recursive git clean -fxd
 
 dockerbase: | git
 	[ "" != "$(SKIP_DOCKER_BUILD)" ] || \

@@ -6,34 +6,10 @@ FROM amd64/debian:bookworm@sha256:e83f38eb264420870d48bccc73f04df5fffc710c66528a
 LABEL description="linux build environment for sgx."
 
 COPY docker/apt.conf docker/sources.list /etc/apt/
-RUN rm -rf /etc/apt/sources.list.d/* && \
-    while true; do apt-get update && break; done && \
-    while true; do apt-get install -y \
-      gpg \
-      gnupg2 \
-      wget \
-      software-properties-common \
-    && break; done
+RUN rm -rf /etc/apt/sources.list.d/*
+COPY docker/sgx_runtime_libraries.sh /tmp/
+RUN /tmp/sgx_runtime_libraries.sh
 
-COPY docker/sgx.sources.list docker/ms.sources.list /etc/apt/sources.list.d/
-# ms and intel repos keep old packages around,
-# however if they remove some of these in the future
-# binary packages can be retrieved from github releases
-RUN wget -qO - https://download.01.org/intel-sgx/sgx_repo/ubuntu/intel-sgx-deb.key | apt-key add - && \
-    wget -qO - https://packages.microsoft.com/keys/microsoft.asc | apt-key add - && \
-    while true; do apt-get update && break; done && \
-    while true; do apt-get install -y \
-    libsgx-ae-id-enclave=1.22.100.3-jammy1 \
-    libsgx-ae-pce=2.25.100.3-jammy1 \
-    libsgx-ae-qe3=1.22.100.3-jammy1 \
-    libsgx-dcap-ql=1.22.100.3-jammy1 \
-    libsgx-dcap-ql-dev=1.22.100.3-jammy1 \
-    libsgx-enclave-common=2.25.100.3-jammy1 \
-    libsgx-headers=2.25.100.3-jammy1 \
-    libsgx-pce-logic=1.22.100.3-jammy1 \
-    libsgx-qe3-logic=1.22.100.3-jammy1 \
-    libsgx-urts=2.25.100.3-jammy1 \
-    && break; done && apt-get clean
 ARG OPENENCLAVE_VERSION=0.19.10
 ARG OPENENCLAVE_HASH=4a5f77edaaebb1fee52b6f5b2b5f1200fd57a048fb3fcf82afa5dd69ee3b1a8f
 ADD --checksum=sha256:${OPENENCLAVE_HASH} \

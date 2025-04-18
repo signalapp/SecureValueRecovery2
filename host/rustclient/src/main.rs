@@ -41,7 +41,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let now = SystemTime::now();
     let unix_secs = now.duration_since(SystemTime::UNIX_EPOCH)?.as_secs();
     println!("Timestamp: {}", unix_secs);
-    let mut mac = HmacSha256::new_from_slice(b"123456")?;
+    let key = if let Ok(k) = std::env::var("AUTH_KEY") {
+        BASE64_STANDARD.decode(k)?
+    } else {
+        b"123456".to_vec()
+    };
+    let mut mac = HmacSha256::new_from_slice(&key)?;
     let user = &[1u8; 16];
     let to_mac: Vec<u8> = [
         hex::encode(user).as_bytes(),
@@ -89,7 +94,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let len = initiator.write_message(&[], &mut buf)?;
 
     println!("Send handshake start");
-    stream.write(tungstenite::Message::Binary(buf[..len].to_vec()))?;
+    stream.write(tungstenite::Message::Binary(buf[..len].to_vec().into()))?;
     stream.flush()?;
 
     println!("Recv handshake start");
