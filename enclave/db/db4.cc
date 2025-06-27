@@ -772,4 +772,28 @@ void DB4::RotateRollback(
 
 DB4::Row::Row(merkle::Tree* t) : version(0), new_version(0), encryption_secretshare{0}, encryption_secretshare_delta{0}, tries(0), merkle_leaf_(t) {}
 
+DB4::Row::Row(DB4::Row&& other) :
+    version(other.version),
+    new_version(other.new_version),
+    auth_commitment(other.auth_commitment),
+    oprf_secretshare(other.oprf_secretshare),
+    encryption_secretshare(other.encryption_secretshare),
+    zero_secretshare(other.zero_secretshare),
+    oprf_secretshare_delta(other.oprf_secretshare_delta),
+    encryption_secretshare_delta(other.encryption_secretshare_delta),
+    tries(other.tries),
+    merkle_leaf_(std::move(other.merkle_leaf_)) {
+  // When we move rows around in the database, we don't want to keep old
+  // keys around.  So explicitly clear the old keys as part of the move.
+  other.version = 0;
+  other.new_version = 0;
+  memset(&other.auth_commitment, 0, sizeof(other.auth_commitment));
+  memset(&other.oprf_secretshare, 0, sizeof(other.oprf_secretshare));
+  memset(&other.encryption_secretshare, 0, sizeof(other.encryption_secretshare));
+  memset(&other.zero_secretshare, 0, sizeof(other.zero_secretshare));
+  memset(&other.oprf_secretshare_delta, 0, sizeof(other.oprf_secretshare_delta));
+  memset(&other.encryption_secretshare_delta, 0, sizeof(other.encryption_secretshare_delta));
+  other.tries = 0;
+}
+
 }  // namespace svr2::db

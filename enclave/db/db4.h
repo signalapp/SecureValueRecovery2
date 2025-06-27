@@ -114,6 +114,8 @@ class DB4 : public DB {
   merkle::Tree* merkle_tree_;
   struct Row {
     Row(merkle::Tree* t);
+    Row(const Row& no_copy_allowed) = delete;
+    Row(Row&&);
 
     uint32_t version;
     uint32_t new_version;  // Post-rotation version, zero if not rotating
