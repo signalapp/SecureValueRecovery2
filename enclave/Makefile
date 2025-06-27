@@ -16,7 +16,7 @@ include .testdepends
 
 build: build/enclave.bin build/enclave.nsm build/enclave.gcpsnp build/attest.gcpsnp build/enclave.azuresnp build/attest.azuresnp
 
-sign: build/enclave.signed build/enclave.test build/enclave.small
+sign: build/enclave.signed build/enclave.test build/enclave.small build/enclave.medium
 
 PROTO_FILES= \
   $(patsubst ../shared/proto/%.proto,build/proto/%.pb.cc,$(wildcard ../shared/proto/*.proto)) \
@@ -208,6 +208,10 @@ build/enclave.signed: build/enclave.bin build/public.pem build/private.pem svr2.
 build/enclave.small: build/enclave.bin build/public.pem build/private.pem svr2_small.conf
 	$(QUIET) echo -e "SIGN\t$@"
 	$(QUIET) $(OE_DIR)/bin/oesign sign -e $< -c svr2_small.conf -k build/private.pem -o $@ $(QUIET_OUT)
+
+build/enclave.medium: build/enclave.bin build/public.pem build/private.pem svr2_medium.conf
+	$(QUIET) echo -e "SIGN\t$@"
+	$(QUIET) $(OE_DIR)/bin/oesign sign -e $< -c svr2_medium.conf -k build/private.pem -o $@ $(QUIET_OUT)
 
 build/enclave.test: build/enclave.bin build/public.pem build/private.pem svr2_test.conf
 	$(QUIET) echo -e "SIGN\t$@"
