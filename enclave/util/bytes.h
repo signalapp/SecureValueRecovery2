@@ -45,6 +45,12 @@ inline std::string ByteVectorToString(const std::vector<uint8_t>& bytes) {
   return result;
 }
 
+// Attempt to clear a section of memory to zeros in a way that should
+// be difficult for compilers to ignore.
+// We avoid inlining so the compiler can't then decide to remove certain
+// parts of this function at the call site.
+void MemZeroS(void* v, size_t s) __attribute__((noinline));
+
 }  // namespace svr2::util
 
 #endif // __SVR2_UTIL_BYTES_H

@@ -116,6 +116,9 @@ class DB4 : public DB {
     Row(merkle::Tree* t);
     Row(const Row& no_copy_allowed) = delete;
     Row(Row&&);
+    ~Row();
+
+    void Clear();
 
     uint32_t version;
     uint32_t new_version;  // Post-rotation version, zero if not rotating

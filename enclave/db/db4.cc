@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <sodium/crypto_core_ristretto255.h>
 #include <sodium/crypto_hash_sha256.h>
+#include <string.h>
 
 #include "env/env.h"
 #include "sha/sha.h"
@@ -785,15 +786,25 @@ DB4::Row::Row(DB4::Row&& other) :
     merkle_leaf_(std::move(other.merkle_leaf_)) {
   // When we move rows around in the database, we don't want to keep old
   // keys around.  So explicitly clear the old keys as part of the move.
-  other.version = 0;
-  other.new_version = 0;
-  memset(&other.auth_commitment, 0, sizeof(other.auth_commitment));
-  memset(&other.oprf_secretshare, 0, sizeof(other.oprf_secretshare));
-  memset(&other.encryption_secretshare, 0, sizeof(other.encryption_secretshare));
-  memset(&other.zero_secretshare, 0, sizeof(other.zero_secretshare));
-  memset(&other.oprf_secretshare_delta, 0, sizeof(other.oprf_secretshare_delta));
-  memset(&other.encryption_secretshare_delta, 0, sizeof(other.encryption_secretshare_delta));
-  other.tries = 0;
+  other.Clear();
+}
+
+DB4::Row::~Row() {
+  // When remove rows from the database, we don't want to keep old
+  // keys around.  So explicitly clear the old keys.
+  Clear();
+}
+
+void DB4::Row::Clear() {
+  version = 0;
+  new_version = 0;
+  util::MemZeroS(&auth_commitment, sizeof(auth_commitment));
+  util::MemZeroS(&oprf_secretshare, sizeof(oprf_secretshare));
+  util::MemZeroS(&encryption_secretshare, sizeof(encryption_secretshare));
+  util::MemZeroS(&zero_secretshare, sizeof(zero_secretshare));
+  util::MemZeroS(&oprf_secretshare_delta, sizeof(oprf_secretshare_delta));
+  util::MemZeroS(&encryption_secretshare_delta, sizeof(encryption_secretshare_delta));
+  tries = 0;
 }
 
 }  // namespace svr2::db
