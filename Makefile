@@ -52,9 +52,9 @@ dockerbase: | git
 	    docker buildx build $(DOCKER_BUILD_ARGS) --load -f docker/Dockerfile -t svr2_buildenv --target=builder .
 
 enclave_releaser: enclave host  # depends on 'host' so its tests will run
-	cp -vn enclave/build/enclave.signed "enclave/releases/sgx/default.$$(/opt/openenclave/bin/oesign dump -e enclave/build/enclave.signed | fgrep -i mrenclave | cut -d '=' -f2)"
-	cp -vn enclave/build/enclave.small "enclave/releases/sgx/small.$$(/opt/openenclave/bin/oesign dump -e enclave/build/enclave.small | fgrep -i mrenclave | cut -d '=' -f2)"
-	cp -vn enclave/build/enclave.medium "enclave/releases/sgx/medium.$$(/opt/openenclave/bin/oesign dump -e enclave/build/enclave.medium | fgrep -i mrenclave | cut -d '=' -f2)"
+	cp -vn enclave/build/enclave.Standard_DC2s_v3  "enclave/releases/sgx/Standard_DC2s_v3.$$(/opt/openenclave/bin/oesign  dump -e enclave/build/enclave.Standard_DC2s_v3  | fgrep -i mrenclave | cut -d '=' -f2)"
+	cp -vn enclave/build/enclave.Standard_DC8s_v3  "enclave/releases/sgx/Standard_DC8s_v3.$$(/opt/openenclave/bin/oesign  dump -e enclave/build/enclave.Standard_DC8s_v3  | fgrep -i mrenclave | cut -d '=' -f2)"
+	cp -vn enclave/build/enclave.Standard_DC24s_v3 "enclave/releases/sgx/Standard_DC24s_v3.$$(/opt/openenclave/bin/oesign dump -e enclave/build/enclave.Standard_DC24s_v3 | fgrep -i mrenclave | cut -d '=' -f2)"
 
 
 ### Remaining targets run docker/packer and should be run directly on the host (not with docker_) ###

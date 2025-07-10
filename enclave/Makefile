@@ -16,7 +16,7 @@ include .testdepends
 
 build: build/enclave.bin build/enclave.nsm build/enclave.gcpsnp build/attest.gcpsnp build/enclave.azuresnp build/attest.azuresnp
 
-sign: build/enclave.signed build/enclave.test build/enclave.small build/enclave.medium
+sign: build/enclave.test build/enclave.Standard_DC2s_v3 build/enclave.Standard_DC8s_v3 build/enclave.Standard_DC24s_v3
 
 PROTO_FILES= \
   $(patsubst ../shared/proto/%.proto,build/proto/%.pb.cc,$(wildcard ../shared/proto/*.proto)) \
@@ -201,17 +201,17 @@ build/enclave.bin: $(patsubst %,build/%/SGX.a,$(SGX_LIBRARIES))
 	$(QUIET) echo -e "BUILD\t$@"
 	$(QUIET) $(CXX) -o $@ $(SGX_LDFLAGS) -Wl,--start-group $^ -Wl,--end-group $(SGX_LDFLAGS)
 
-build/enclave.signed: build/enclave.bin build/public.pem build/private.pem svr2.conf
+build/enclave.Standard_DC2s_v3: build/enclave.bin build/public.pem build/private.pem svr2_Standard_DC2s_v3.conf
 	$(QUIET) echo -e "SIGN\t$@"
-	$(QUIET) $(OE_DIR)/bin/oesign sign -e $< -c svr2.conf -k build/private.pem -o $@ $(QUIET_OUT)
+	$(QUIET) $(OE_DIR)/bin/oesign sign -e $< -c svr2_Standard_DC2s_v3.conf -k build/private.pem -o $@ $(QUIET_OUT)
 
-build/enclave.small: build/enclave.bin build/public.pem build/private.pem svr2_small.conf
+build/enclave.Standard_DC8s_v3: build/enclave.bin build/public.pem build/private.pem svr2_Standard_DC8s_v3.conf
 	$(QUIET) echo -e "SIGN\t$@"
-	$(QUIET) $(OE_DIR)/bin/oesign sign -e $< -c svr2_small.conf -k build/private.pem -o $@ $(QUIET_OUT)
+	$(QUIET) $(OE_DIR)/bin/oesign sign -e $< -c svr2_Standard_DC8s_v3.conf -k build/private.pem -o $@ $(QUIET_OUT)
 
-build/enclave.medium: build/enclave.bin build/public.pem build/private.pem svr2_medium.conf
+build/enclave.Standard_DC24s_v3: build/enclave.bin build/public.pem build/private.pem svr2_Standard_DC24s_v3.conf
 	$(QUIET) echo -e "SIGN\t$@"
-	$(QUIET) $(OE_DIR)/bin/oesign sign -e $< -c svr2_medium.conf -k build/private.pem -o $@ $(QUIET_OUT)
+	$(QUIET) $(OE_DIR)/bin/oesign sign -e $< -c svr2_Standard_DC24s_v3.conf -k build/private.pem -o $@ $(QUIET_OUT)
 
 build/enclave.test: build/enclave.bin build/public.pem build/private.pem svr2_test.conf
 	$(QUIET) echo -e "SIGN\t$@"
