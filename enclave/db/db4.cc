@@ -239,18 +239,19 @@ const DB::Protocol* DB4::P() const {
 size_t DB4::Protocol::MaxRowSerializedSize() const {
   const size_t PROTOBUF_SMALL_STRING_EXTRA = 2;  // additional bytes for serializing string
   const size_t PROTOBUF_SMALL_INT = 2;           // bytes for serializing a small integer
-  const size_t PROTOBUF_FIXED64 = 9;
+  const size_t PROTOBUF_FIXED32 = 5;
   static const DB4::Row* row = nullptr;
+  static const DB4::RotateRow* rotate_row = nullptr;
   return sizeof(BackupID) + PROTOBUF_SMALL_STRING_EXTRA +
          PROTOBUF_SMALL_INT +  // tries
          sizeof(row->auth_commitment) + PROTOBUF_SMALL_STRING_EXTRA +
          sizeof(row->oprf_secretshare) + PROTOBUF_SMALL_STRING_EXTRA +
          sizeof(row->encryption_secretshare) + PROTOBUF_SMALL_STRING_EXTRA +
          sizeof(row->zero_secretshare) + PROTOBUF_SMALL_STRING_EXTRA +
-         sizeof(row->oprf_secretshare_delta) + PROTOBUF_SMALL_STRING_EXTRA +
-         sizeof(row->encryption_secretshare_delta) + PROTOBUF_SMALL_STRING_EXTRA +
-         PROTOBUF_FIXED64 +  // version
-         PROTOBUF_FIXED64 +  // new_version
+         sizeof(rotate_row->oprf_secretshare_delta) + PROTOBUF_SMALL_STRING_EXTRA +
+         sizeof(rotate_row->encryption_secretshare_delta) + PROTOBUF_SMALL_STRING_EXTRA +
+         PROTOBUF_FIXED32 +  // version
+         PROTOBUF_FIXED32 +  // new_version
          0;
 }
 
@@ -314,16 +315,18 @@ DB::Effect* DB4::Run(context::Context* ctx, const DB::Log& log_pb) {
 
 std::pair<std::string, error::Error> DB4::RowsAsProtos(context::Context* ctx, const std::string& exclusive_start, size_t size, google::protobuf::RepeatedPtrField<std::string>* out) const {
   MEASURE_CPU(ctx, cpu_db_repl_send);
-  auto iter = rows_.begin();
+  auto iter = rows_.cbegin();
+  auto rr_iter = rotate_rows_.cbegin();
   BackupID id;
   if (!exclusive_start.empty()) {
     if (auto err = util::StringIntoByteArray(exclusive_start, &id); err != error::OK) {
       return std::make_pair("", err);
     }
     iter = rows_.upper_bound(id);
+    rr_iter = rotate_rows_.upper_bound(id);
   }
   auto row = ctx->Protobuf<e2e::DB4RowState>();
-  for (size_t i = 0; i < size && iter != rows_.end(); i++, ++iter) {
+  for (size_t i = 0; i < size && iter != rows_.cend(); i++, ++iter) {
     row->Clear();
     row->set_backup_id(util::ByteArrayToString(iter->first));
     row->set_version(iter->second.version);
@@ -332,10 +335,12 @@ std::pair<std::string, error::Error> DB4::RowsAsProtos(context::Context* ctx, co
     row->set_auth_commitment(iter->second.auth_commitment.ToString());
     row->set_encryption_secretshare(util::ByteArrayToString(iter->second.encryption_secretshare));
     row->set_zero_secretshare(iter->second.zero_secretshare.ToString());
-    if (iter->second.new_version) {
-      row->set_oprf_secretshare_delta(iter->second.oprf_secretshare_delta.ToString());
-      row->set_encryption_secretshare_delta(util::ByteArrayToString(iter->second.encryption_secretshare_delta));
-      row->set_new_version(iter->second.new_version);
+
+    if (rr_iter != rotate_rows_.cend() && rr_iter->first == iter->first) {
+      row->set_oprf_secretshare_delta(rr_iter->second.oprf_secretshare_delta.ToString());
+      row->set_encryption_secretshare_delta(util::ByteArrayToString(rr_iter->second.encryption_secretshare_delta));
+      row->set_new_version(rr_iter->second.new_version);
+      ++rr_iter;
     }
     if (!row->SerializeToString(out->Add())) {
       return std::make_pair("", COUNTED_ERROR(DB4_ReplicationInvalidRow));
@@ -375,17 +380,21 @@ std::pair<std::string, error::Error> DB4::LoadRowsFromProtos(context::Context* c
         error::OK != util::StringIntoByteArray(row->encryption_secretshare(), &r.encryption_secretshare)) {
       return std::make_pair("", COUNTED_ERROR(DB4_ReplicationInvalidRow));
     }
+    const RotateRow* rr_ptr = nullptr;
     if (row->new_version()) {
-      if (!r.oprf_secretshare_delta.FromString(row->oprf_secretshare_delta()) ||
-          error::OK != util::StringIntoByteArray(row->encryption_secretshare_delta(), &r.encryption_secretshare_delta)) {
+      RotateRow rr;
+      if (!rr.oprf_secretshare_delta.FromString(row->oprf_secretshare_delta()) ||
+          error::OK != util::StringIntoByteArray(row->encryption_secretshare_delta(), &rr.encryption_secretshare_delta)) {
         return std::make_pair("", COUNTED_ERROR(DB4_ReplicationInvalidRow));
       }
-      r.new_version = row->new_version();
+      rr.new_version = row->new_version();
+      auto rr_iter = rotate_rows_.emplace_hint(rotate_rows_.end(), key, std::move(rr));
+      rr_ptr = &rr_iter->second;
     }
     merkle::Hash h;
     {
       MEASURE_CPU(ctx, cpu_db_repl_merkle_hash);
-      h = merkle::HashFrom(HashRow(key, r));
+      h = merkle::HashFrom(HashRow(key, r, rr_ptr));
     }
     {
       MEASURE_CPU(ctx, cpu_db_repl_merkle_update);
@@ -402,18 +411,19 @@ std::pair<std::string, error::Error> DB4::LoadRowsFromProtos(context::Context* c
   return std::make_pair(row->backup_id(), error::OK);
 }
 
-std::array<uint8_t, 16> DB4::HashRow(const BackupID& id, const Row& row) {
+std::array<uint8_t, 16> DB4::HashRow(const BackupID& id, const Row& row, const RotateRow* rr) {
   std::array<uint8_t,
       sizeof(BackupID) +
       sizeof(row.auth_commitment) +
       sizeof(row.oprf_secretshare) +
       sizeof(row.encryption_secretshare) +
       sizeof(row.zero_secretshare) +
-      sizeof(row.oprf_secretshare_delta) +
-      sizeof(row.encryption_secretshare_delta) +
       1 +  // tries
       sizeof(row.version) +
-      sizeof(row.new_version) +
+      // *RotateRow
+      sizeof(rr->oprf_secretshare_delta) +
+      sizeof(rr->encryption_secretshare_delta) +
+      sizeof(rr->new_version) +
       0> scratch = {0};
   size_t offset = 0;
 
@@ -427,16 +437,25 @@ std::array<uint8_t, 16> DB4::HashRow(const BackupID& id, const Row& row) {
   FILL_SCRATCH(row.oprf_secretshare);
   FILL_SCRATCH(row.encryption_secretshare);
   FILL_SCRATCH(row.zero_secretshare);
-  FILL_SCRATCH(row.oprf_secretshare_delta);
-  FILL_SCRATCH(row.encryption_secretshare_delta);
   FILL_SCRATCH(row.tries);
-#undef FILL_SCRATCH
   CHECK(offset + 4 <= scratch.size());
   util::BigEndian32Bytes(row.version, scratch.data() + offset);
   offset += 4;
   CHECK(offset + 4 <= scratch.size());
-  util::BigEndian32Bytes(row.new_version, scratch.data() + offset);
-  offset += 4;
+  if (rr) {
+    util::BigEndian32Bytes(rr->new_version, scratch.data() + offset);
+    offset += 4;
+    FILL_SCRATCH(rr->oprf_secretshare_delta);
+    FILL_SCRATCH(rr->encryption_secretshare_delta);
+  } else {
+    size_t zero_size = 
+       4 +
+       sizeof(rr->oprf_secretshare_delta) +
+       sizeof(rr->encryption_secretshare_delta);
+    memset(scratch.data() + offset, 0, zero_size);
+    offset += zero_size;
+  }
+#undef FILL_SCRATCH
 
   CHECK(offset == scratch.size());
 
@@ -451,10 +470,17 @@ std::array<uint8_t, 32> DB4::Hash(context::Context* ctx) const {
   uint8_t num[8];
   util::BigEndian64Bytes(rows_.size(), num);
   crypto_hash_sha256_update(&sha, num, sizeof(num));
+  auto rr_iter = rotate_rows_.cbegin();
   for (auto iter = rows_.cbegin(); iter != rows_.cend(); ++iter) {
-    auto row_hash = HashRow(iter->first, iter->second);
+    const RotateRow* rr = nullptr;
+    if (rr_iter != rotate_rows_.cend() && rr_iter->first == iter->first) {
+      rr = &rr_iter->second;
+      ++rr_iter;
+    }
+    auto row_hash = HashRow(iter->first, iter->second, rr);
     crypto_hash_sha256_update(&sha, row_hash.data(), row_hash.size());
   }
+  CHECK(rr_iter == rotate_rows_.cend());
   std::array<uint8_t, 32> out;
   crypto_hash_sha256_final(&sha, out.data());
   return out;
@@ -487,11 +513,9 @@ void DB4::Create(
   CHECK(r->zero_secretshare.FromString(req.zero_secretshare()));
   CHECK(error::OK == util::StringIntoByteArray(req.encryption_secretshare(), &r->encryption_secretshare));
   // Reset any stored deltas.
-  r->oprf_secretshare_delta.Clear();
-  memset(r->encryption_secretshare_delta.data(), 0, sizeof(r->encryption_secretshare_delta));
-  r->new_version = 0;
+  rotate_rows_.erase(id);
 
-  r->merkle_leaf_.Update(merkle::HashFrom(HashRow(id, *r)));
+  r->merkle_leaf_.Update(merkle::HashFrom(HashRow(id, *r, nullptr)));
   resp->set_status(client::Response4::OK);
   resp->set_tries_remaining(r->tries);
 }
@@ -508,7 +532,11 @@ void DB4::Restore1(
     return;
   }
   Row* row = &find->second;
-  if (error::Error err = row->merkle_leaf_.Verify(merkle::HashFrom(HashRow(id, *row))); err != error::OK) {
+
+  auto rr_find = rotate_rows_.find(id);
+  const RotateRow* rr = rr_find == rotate_rows_.end() ? nullptr : &rr_find->second;
+
+  if (error::Error err = row->merkle_leaf_.Verify(merkle::HashFrom(HashRow(id, *row, rr))); err != error::OK) {
     resp->set_status(client::Response4::MERKLE_FAILURE);
     LOG(ERROR) << "Error in verifying Merkle root during Restore1: " << err;
     return;
@@ -540,8 +568,8 @@ void DB4::Restore1(
     goto restore1_error;
   }
 
-  if (row->new_version != 0) {
-    auto sum = row->oprf_secretshare.Add(row->oprf_secretshare_delta);
+  if (rr) {
+    auto sum = row->oprf_secretshare.Add(rr->oprf_secretshare_delta);
     ristretto::Point blinded_prime;
     ristretto::Point mask;
     if (!blinded.ScalarMult(sum, &blinded_prime)) {
@@ -555,10 +583,10 @@ void DB4::Restore1(
     }
     auto new_secretshare = row->encryption_secretshare;
     for (size_t i = 0; i < sizeof(row->encryption_secretshare); i++) {
-      new_secretshare[i] ^= row->encryption_secretshare_delta[i];
+      new_secretshare[i] ^= rr->encryption_secretshare_delta[i];
     }
     state->set_new_encryption_secretshare(util::ByteArrayToString(new_secretshare));
-    state->set_new_version(row->new_version);
+    state->set_new_version(rr->new_version);
   }
 
   resp->set_status(client::Response4::OK);
@@ -573,19 +601,24 @@ void DB4::Restore1(
     auth1->set_element(evaluated1.ToString());
     auth1->set_version(row->version);
   }
-  if (row->new_version) {
+  if (rr) {
     auto auth2 = resp->add_auth();
     auth2->set_element(evaluated2.ToString());
-    auth2->set_version(row->new_version);
+    auth2->set_version(rr->new_version);
   }
 restore1_error:
   if (row->tries == 0) {
     COUNTER(db, guess_limit_reached)->Increment();
     rows_.erase(find);
-    row = nullptr;  // The `row` ptr is no longer valid due to the `erase` call.
+    if (rr) {
+      rotate_rows_.erase(rr_find);
+    }
+    // The `row` and `rr` ptrs are no longer valid due to the `erase` calls.
+    row = nullptr;
+    rr = nullptr;
     GAUGE(db, rows)->Set(rows_.size());
   } else {
-    row->merkle_leaf_.Update(merkle::HashFrom(HashRow(id, *row)));
+    row->merkle_leaf_.Update(merkle::HashFrom(HashRow(id, *row, rr)));
   }
 }
 
@@ -649,6 +682,7 @@ void DB4::Remove(
   if (find != rows_.end()) {
     // This calls the destructor of row.merkle_leaf_, updating the merkle tree.
     rows_.erase(find);
+    rotate_rows_.erase(id);
     GAUGE(db, rows)->Set(rows_.size());
   }
 }
@@ -664,10 +698,14 @@ void DB4::Query(
     return;
   }
   const Row* row = &find->second;
+
   resp->set_status(client::Response4::OK);
   resp->set_tries_remaining(row->tries);
   resp->set_version(row->version);
-  if (row->new_version) resp->set_new_version(row->new_version);
+  auto rr_find = rotate_rows_.find(id);
+  if (rr_find != rotate_rows_.end()) {
+    resp->set_new_version(rr_find->second.new_version);
+  }
 }
 
 void DB4::RotateStart(
@@ -681,7 +719,9 @@ void DB4::RotateStart(
     return;
   }
   Row* row = &find->second;
-  if (row->new_version) {
+
+  auto rr_find = rotate_rows_.find(id);
+  if (rr_find != rotate_rows_.end()) {
     resp->set_status(client::Response4::ALREADY_ROTATING);
     return;
   } else if (req.version() == row->version) {
@@ -694,15 +734,19 @@ void DB4::RotateStart(
   AESKey enc;
   // Checked in ValidateClientLog.
   CHECK(error::OK == util::StringIntoByteArray(req.encryption_secretshare_delta(), &enc));
-  if (error::Error err = row->merkle_leaf_.Verify(merkle::HashFrom(HashRow(id, *row))); err != error::OK) {
+  if (error::Error err = row->merkle_leaf_.Verify(merkle::HashFrom(HashRow(id, *row, nullptr))); err != error::OK) {
     resp->set_status(client::Response4::MERKLE_FAILURE);
     LOG(ERROR) << "Error in verifying Merkle root during RotateStart: " << err;
     return;
   }
-  row->oprf_secretshare_delta = oprf;
-  row->encryption_secretshare_delta = enc;
-  row->new_version = req.version();
-  row->merkle_leaf_.Update(merkle::HashFrom(HashRow(id, *row)));
+
+  RotateRow rr;
+  rr.oprf_secretshare_delta = oprf;
+  rr.encryption_secretshare_delta = enc;
+  rr.new_version = req.version();
+
+  row->merkle_leaf_.Update(merkle::HashFrom(HashRow(id, *row, &rr)));
+  rotate_rows_.emplace(id, std::move(rr));
   resp->set_status(client::Response4::OK);
 }
 
@@ -717,27 +761,29 @@ void DB4::RotateCommit(
     return;
   }
   Row* row = &find->second;
-  if (!row->new_version) {
+
+  auto rr_find = rotate_rows_.find(id);
+  const RotateRow* rr = rr_find == rotate_rows_.end() ? nullptr : &rr_find->second;
+
+  if (!rr) {
     resp->set_status(client::Response4::NOT_ROTATING);
     return;
-  } else if (row->new_version != req.version()) {
+  } else if (rr->new_version != req.version()) {
     resp->set_status(client::Response4::VERSION_MISMATCH);
     return;
   }
-  if (error::Error err = row->merkle_leaf_.Verify(merkle::HashFrom(HashRow(id, *row))); err != error::OK) {
+  if (error::Error err = row->merkle_leaf_.Verify(merkle::HashFrom(HashRow(id, *row, rr))); err != error::OK) {
     resp->set_status(client::Response4::MERKLE_FAILURE);
     LOG(ERROR) << "Error in verifying Merkle root during RotateCommit: " << err;
     return;
   }
-  row->oprf_secretshare = row->oprf_secretshare.Add(row->oprf_secretshare_delta);
+  row->oprf_secretshare = row->oprf_secretshare.Add(rr->oprf_secretshare_delta);
   for (size_t i = 0; i < sizeof(row->encryption_secretshare); i++) {
-    row->encryption_secretshare[i] ^= row->encryption_secretshare_delta[i];
+    row->encryption_secretshare[i] ^= rr->encryption_secretshare_delta[i];
   }
-  row->oprf_secretshare_delta.Clear();
-  row->encryption_secretshare_delta = {0};
-  row->version = row->new_version;
-  row->new_version = 0;
-  row->merkle_leaf_.Update(merkle::HashFrom(HashRow(id, *row)));
+  row->version = rr->new_version;
+  rotate_rows_.erase(rr_find);
+  row->merkle_leaf_.Update(merkle::HashFrom(HashRow(id, *row, nullptr)));
   resp->set_status(client::Response4::OK);
 }
 
@@ -752,36 +798,35 @@ void DB4::RotateRollback(
     return;
   }
   Row* row = &find->second;
-  if (!row->new_version) {
+
+  auto rr_find = rotate_rows_.find(id);
+  const RotateRow* rr = rr_find == rotate_rows_.end() ? nullptr : &rr_find->second;
+
+  if (!rr) {
     resp->set_status(client::Response4::NOT_ROTATING);
     return;
-  } else if (row->new_version != req.version()) {
+  } else if (rr->new_version != req.version()) {
     resp->set_status(client::Response4::VERSION_MISMATCH);
     return;
   }
-  if (error::Error err = row->merkle_leaf_.Verify(merkle::HashFrom(HashRow(id, *row))); err != error::OK) {
+  if (error::Error err = row->merkle_leaf_.Verify(merkle::HashFrom(HashRow(id, *row, rr))); err != error::OK) {
     resp->set_status(client::Response4::MERKLE_FAILURE);
     LOG(ERROR) << "Error in verifying Merkle root during RotateRollback: " << err;
     return;
   }
-  row->oprf_secretshare_delta.Clear();
-  row->encryption_secretshare_delta = {0};
-  row->new_version = 0;
-  row->merkle_leaf_.Update(merkle::HashFrom(HashRow(id, *row)));
+  rotate_rows_.erase(rr_find);
+  row->merkle_leaf_.Update(merkle::HashFrom(HashRow(id, *row, nullptr)));
   resp->set_status(client::Response4::OK);
 }
 
-DB4::Row::Row(merkle::Tree* t) : version(0), new_version(0), encryption_secretshare{0}, encryption_secretshare_delta{0}, tries(0), merkle_leaf_(t) {}
+DB4::Row::Row(merkle::Tree* t) : encryption_secretshare{0}, version(0), tries(0), merkle_leaf_(t) {}
 
 DB4::Row::Row(DB4::Row&& other) :
-    version(other.version),
-    new_version(other.new_version),
     auth_commitment(other.auth_commitment),
     oprf_secretshare(other.oprf_secretshare),
     encryption_secretshare(other.encryption_secretshare),
     zero_secretshare(other.zero_secretshare),
-    oprf_secretshare_delta(other.oprf_secretshare_delta),
-    encryption_secretshare_delta(other.encryption_secretshare_delta),
+    version(other.version),
     tries(other.tries),
     merkle_leaf_(std::move(other.merkle_leaf_)) {
   // When we move rows around in the database, we don't want to keep old
@@ -796,15 +841,35 @@ DB4::Row::~Row() {
 }
 
 void DB4::Row::Clear() {
-  version = 0;
-  new_version = 0;
   util::MemZeroS(&auth_commitment, sizeof(auth_commitment));
   util::MemZeroS(&oprf_secretshare, sizeof(oprf_secretshare));
   util::MemZeroS(&encryption_secretshare, sizeof(encryption_secretshare));
   util::MemZeroS(&zero_secretshare, sizeof(zero_secretshare));
+  version = 0;
+  tries = 0;
+}
+
+DB4::RotateRow::RotateRow() : new_version(0), encryption_secretshare_delta{0} {}
+
+DB4::RotateRow::RotateRow(DB4::RotateRow&& other) :
+new_version(other.new_version),
+oprf_secretshare_delta(other.oprf_secretshare_delta),
+encryption_secretshare_delta(other.encryption_secretshare_delta) {
+  // When we move rows around in the database, we don't want to keep old
+  // keys around.  So explicitly clear the old keys as part of the move.
+  other.Clear();
+}
+
+DB4::RotateRow::~RotateRow() {
+  // When remove rows from the database, we don't want to keep old
+  // keys around.  So explicitly clear the old keys.
+  Clear();
+}
+
+void DB4::RotateRow::Clear() {
+  new_version = 0;
   util::MemZeroS(&oprf_secretshare_delta, sizeof(oprf_secretshare_delta));
   util::MemZeroS(&encryption_secretshare_delta, sizeof(encryption_secretshare_delta));
-  tries = 0;
 }
 
 }  // namespace svr2::db

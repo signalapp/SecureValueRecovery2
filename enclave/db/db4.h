@@ -120,23 +120,38 @@ class DB4 : public DB {
 
     void Clear();
 
-    uint32_t version;
-    uint32_t new_version;  // Post-rotation version, zero if not rotating
     ristretto::Point auth_commitment;
     ristretto::Scalar oprf_secretshare;
     AESKey encryption_secretshare;
     ristretto::Scalar zero_secretshare;
 
-    // Rotation deltas
-    ristretto::Scalar oprf_secretshare_delta;
-    AESKey encryption_secretshare_delta;
-
+    uint32_t version;
     uint8_t tries;
     merkle::Leaf merkle_leaf_;
   };
   std::map<BackupID, Row> rows_;
 
-  static std::array<uint8_t, 16> HashRow(const BackupID& id, const Row& row);
+  // Rotations should stick around relatively infrequently...
+  // they should be executed quickly, and once complete, their metadata
+  // no longer requires storage.  Sometimes, they're not used at all.
+  // For these reasons, we keep rotate-specific metadata in a separate,
+  // smaller map.  This allows us to avoid paying the cost of storing
+  // rotation-specific metadata for all non-rotating rows.
+  struct RotateRow {
+    RotateRow();
+    RotateRow(const RotateRow& no_copy_allowed) = delete;
+    RotateRow(RotateRow&&);
+    ~RotateRow();
+
+    void Clear();
+
+    uint32_t new_version;  // Post-rotation version, zero if not rotating
+    ristretto::Scalar oprf_secretshare_delta;
+    AESKey encryption_secretshare_delta;
+  };
+  std::map<BackupID, RotateRow> rotate_rows_;
+
+  static std::array<uint8_t, 16> HashRow(const BackupID& id, const Row& row, const RotateRow* rotate);
 
   void Create(
       context::Context* ctx,

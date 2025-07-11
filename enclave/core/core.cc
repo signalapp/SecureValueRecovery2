@@ -537,9 +537,7 @@ void Core::JoinRaftFromFirstPeer(context::Context* ctx) {
         // actions change raft_ with out changing raft_state).
         
         auto got = resp->get_raft();
-        enclaveconfig::RaftGroupConfig group_config_equality_check = got.group_config();
-        group_config_equality_check.clear_group_id();
-        if (!RaftGroupConfigsEqualExceptForGroupID(raft_config_template_, group_config_equality_check)) {
+        if (!RaftGroupConfigsEqualExceptForGroupID(raft_config_template_, got.group_config())) {
           ReplyWithError(ctx, tx, COUNTED_ERROR(Core_GroupConfigMismath));
           return;
         }

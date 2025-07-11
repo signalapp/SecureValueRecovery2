@@ -419,6 +419,52 @@ TEST_F(DB4Test, RemoveRemovesRow) {
   }
 }
 
+TEST_F(DB4Test, RemoveRemovesRotation) {
+  Create(10);
+  std::array<uint8_t, 32> handshake_hash{42};
+
+  uint64_t v;
+  auto rotate_start = client.RotateStart(&v);
+  for (int i = 0; i < N; i++) {
+    VerifyRestore();
+    LOG(INFO) << "RotateStart." << i;
+    auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), rotate_start[i], handshake_hash);
+    ASSERT_EQ(error::OK, err);
+    ASSERT_EQ(client::Response4::kRotateStart, resp->inner_case());
+    ASSERT_EQ(resp->rotate_start().status(), client::Response4::OK);
+  }
+
+  rotate_start = client.RotateStart(&v);
+  for (int i = 0; i < N; i++) {
+    VerifyRestore();
+    LOG(INFO) << "RotateStart." << i;
+    auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), rotate_start[i], handshake_hash);
+    ASSERT_EQ(error::OK, err);
+    ASSERT_EQ(client::Response4::kRotateStart, resp->inner_case());
+    ASSERT_EQ(resp->rotate_start().status(), client::Response4::ALREADY_ROTATING);
+  }
+
+  { int i = 0;
+    LOG(INFO) << "Remove." << i;
+    client::Request4 req;
+    req.mutable_remove();
+    auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), req, handshake_hash);
+    ASSERT_EQ(error::OK, err);
+    ASSERT_EQ(client::Response4::kRemove, resp->inner_case());
+  }
+
+  Create(10);
+  rotate_start = client.RotateStart(&v);
+  for (int i = 0; i < N; i++) {
+    VerifyRestore();
+    LOG(INFO) << "RotateStart." << i;
+    auto [resp, err] = RunRequest(&ctx, dbs[i].get(), states[i].get(), rotate_start[i], handshake_hash);
+    ASSERT_EQ(error::OK, err);
+    ASSERT_EQ(client::Response4::kRotateStart, resp->inner_case());
+    ASSERT_EQ(resp->rotate_start().status(), client::Response4::OK);
+  }
+}
+
 TEST_F(DB4Test, MaxTriesZeroKeepsTriesTheSame) {
   Create(10);
   std::array<uint8_t, 32> handshake_hash{42};
