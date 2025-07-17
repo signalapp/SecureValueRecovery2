@@ -32,6 +32,7 @@ class Scalar {
   bool Invert(Scalar* s) const
       __attribute__ ((warn_unused_result));
   bool Valid() const;
+  bool IsZero() const;
 
   const uint8_t* data() const { return s_.data(); }
   uint8_t* data() { return s_.data(); }

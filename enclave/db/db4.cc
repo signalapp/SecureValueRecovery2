@@ -561,7 +561,7 @@ void DB4::Restore1(
   if (!blinded.ScalarMult(row->oprf_secretshare, &blinded_prime)) {
     goto restore1_error;
   }
-  if (!ristretto_hash.ScalarMult(row->zero_secretshare, &mask)) {
+  if (!row->zero_secretshare.IsZero() && !ristretto_hash.ScalarMult(row->zero_secretshare, &mask)) {
     goto restore1_error;
   }
   if (!blinded_prime.Add(mask, &evaluated1)) {
@@ -575,7 +575,7 @@ void DB4::Restore1(
     if (!blinded.ScalarMult(sum, &blinded_prime)) {
       goto restore1_error;
     }
-    if (!ristretto_hash.ScalarMult(row->zero_secretshare, &mask)) {
+    if (!row->zero_secretshare.IsZero() && !ristretto_hash.ScalarMult(row->zero_secretshare, &mask)) {
       goto restore1_error;
     }
     if (!blinded_prime.Add(mask, &evaluated2)) {

@@ -518,4 +518,39 @@ TEST_F(DB4Test, RotateLifecycle) {
     VerifyRestore();
 }
 
+TEST_F(DB4Test, SingleServerBackupRestore) {
+  DB4Client<1> client;
+  LOG(INFO) << "Create";
+  merkle::Tree merk;
+  auto db = std::make_unique<DB4>(&merk);
+  auto state = db->P()->NewClientState(client.authenticated_id());
+  DB::HandshakeHash handshake_hash{1};
+
+  {
+    auto req = client.Create(0, 10);
+    auto [resp, err] = RunRequest(&ctx, db.get(), state.get(), req, handshake_hash);
+    ASSERT_EQ(error::OK, err);
+    ASSERT_EQ(client::Response4::kCreate, resp->inner_case());
+    ASSERT_EQ(resp->create().status(), client::Response4::OK);
+  }
+  {
+    ristretto::Scalar b = ristretto::Scalar::Random();
+    auto req1 = client.Restore1(0, b);
+    auto [resp1, err1] = RunRequest(&ctx, db.get(), state.get(), req1, handshake_hash);
+    ASSERT_EQ(error::OK, err1);
+    ASSERT_EQ(client::Response4::kRestore1, resp1->inner_case());
+    ASSERT_EQ(resp1->restore1().status(), client::Response4::OK);
+    const std::array<client::Response4::Restore1, 1> resps{resp1->restore1()};
+
+    auto req2 = client.Restore2(0, b, req1.restore1().blinded(), resps, handshake_hash);
+    auto [resp2, err2] = RunRequest(&ctx, db.get(), state.get(), req2, handshake_hash);
+    ASSERT_EQ(error::OK, err2);
+    ASSERT_EQ(client::Response4::kRestore2, resp2->inner_case());
+    ASSERT_EQ(resp2->restore2().status(), client::Response4::OK);
+    const std::array<client::Response4::Restore2, 1> restores{resp2->restore2()};
+
+    ASSERT_TRUE(client.EncryptionKeyMatches(restores));
+  }
+}
+
 }  // namespace svr2::db

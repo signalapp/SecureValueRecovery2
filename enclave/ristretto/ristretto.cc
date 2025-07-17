@@ -4,6 +4,7 @@
 #include "ristretto/ristretto.h"
 #include "proto/error.pb.h"
 #include "util/bytes.h"
+#include "util/constant.h"
 
 namespace svr2::ristretto {
 
@@ -81,6 +82,11 @@ int sc25519_is_canonical(const unsigned char s[32]);
 
 bool Scalar::Valid() const {
   return sc25519_is_canonical(U8(*this));
+}
+
+bool Scalar::IsZero() const {
+  static const std::array<uint8_t, 32> zeros{0};
+  return util::ConstantTimeEquals(s_, zeros);
 }
 
 bool Scalar::FromString(const std::string& in) {
