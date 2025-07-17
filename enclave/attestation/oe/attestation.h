@@ -5,12 +5,14 @@
 #define __SVR2_ATTESTATION_ATTESTATION_H__
 
 #include <array>
+#include <ostream>
 
 #include <openenclave/attestation/custom_claims.h>
 #include <openenclave/attestation/verifier.h>
 
 #include "proto/error.pb.h"
 
+std::ostream& operator<<(std::ostream& os, oe_result_t err);
 
 namespace svr2::attestation {
   

@@ -32,8 +32,14 @@ class Environment : public ::svr2::env::Environment {
   DELETE_COPY_AND_ASSIGN(Environment);
   Environment(bool simulated) : ::svr2::env::Environment(), simulated_(simulated) {
     if (!simulated_) {
-      CHECK(OE_OK == oe_attester_initialize());
-      CHECK(OE_OK == oe_verifier_initialize());
+      if (auto r = oe_attester_initialize(); r != OE_OK) {
+        LOG(ERROR) << "oe_attester_initialize: " << r;
+        CHECK(false);
+      }
+      if (auto r = oe_verifier_initialize(); r != OE_OK) {
+        LOG(ERROR) << "oe_verifier_initialize: " << r;
+        CHECK(false);
+      }
       CHECK(error::OK == GetMRENCLAVE());
     }
   }
@@ -82,9 +88,11 @@ class Environment : public ::svr2::env::Environment {
           .value_size = serialized_minimums.size(),
         },
     };
-    if (OE_OK != oe_serialize_custom_claims(custom_claims, sizeof(custom_claims) / sizeof(custom_claims[0]),
+    if (auto r = oe_serialize_custom_claims(custom_claims, sizeof(custom_claims) / sizeof(custom_claims[0]),
                                             &custom_claims_buffer,
-                                            &custom_claims_buffer_size)) {
+                                            &custom_claims_buffer_size);
+        r != OE_OK) {
+      LOG(ERROR) << "oe_serialize_custom_claims: " << r;
       return std::make_pair(e2e::Attestation(),
                             COUNTED_ERROR(Env_SerializeCustomClaims));
     }
@@ -95,11 +103,13 @@ class Environment : public ::svr2::env::Environment {
     size_t evidence_buffer_size = 0;
     uint8_t* endorsements_buffer = NULL;
     size_t endorsements_buffer_size = 0;
-    if (OE_OK != oe_get_evidence(&attestation::sgx_remote_uuid, 0, custom_claims_buffer,
+    if (auto r = oe_get_evidence(&attestation::sgx_remote_uuid, 0, custom_claims_buffer,
                                  custom_claims_buffer_size, NULL, 0,
                                  &evidence_buffer, &evidence_buffer_size,
                                  &endorsements_buffer,
-                                 &endorsements_buffer_size)) {
+                                 &endorsements_buffer_size);
+        r != OE_OK) {
+      LOG(ERROR) << "oe_get_evidence: " << r;
       return std::make_pair(e2e::Attestation(), error::Env_GetEvidence);
     }
 
@@ -119,7 +129,9 @@ class Environment : public ::svr2::env::Environment {
 
   virtual error::Error RandomBytes(void* bytes, size_t size) const {
     CHECK(size > 0);
-    if (OE_OK != oe_random(bytes, size)) {
+    if (auto r = oe_random(bytes, size);
+        r != OE_OK) {
+      LOG(ERROR) << "oe_random: " << r;
       return COUNTED_ERROR(Env_RandomBytes);
     }
     return error::OK;
@@ -159,13 +171,13 @@ class Environment : public ::svr2::env::Environment {
       .policy = &now_datetime,
       .policy_size = sizeof(now_datetime),
     };
-    auto verify_err = oe_verify_evidence(
-        &attestation::sgx_remote_uuid,
-        evidence_data, attestation.evidence().size(),
-        endorsements_data, attestation.endorsements().size(),
-        &policy, 1, &claims, &claims_length);
-    if (OE_OK != verify_err) {
-      LOG(ERROR) << "oe_verify_evidence failed with code " << verify_err << " (" << oe_result_str(verify_err) << ")";
+    if (auto r = oe_verify_evidence(
+            &attestation::sgx_remote_uuid,
+            evidence_data, attestation.evidence().size(),
+            endorsements_data, attestation.endorsements().size(),
+            &policy, 1, &claims, &claims_length);
+        r != OE_OK) {
+      LOG(ERROR) << "oe_verify_evidence: " << r;
       return std::make_pair(out, error::Env_AttestationFailure);
     }
 
@@ -189,6 +201,9 @@ class Environment : public ::svr2::env::Environment {
 
   virtual error::Error SendMessage(context::Context* ctx, const std::string& msg) const {
     MEASURE_CPU(ctx, cpu_env_sendmessage);
+    // We specifically don't log the actual result in this one case,
+    // since SendMessage is used as a part of logging, and we don't
+    // want to loop infinitely.
     if (OE_OK !=
         svr2_output_message(
             msg.size(), const_cast<uint8_t*>(
@@ -208,7 +223,8 @@ class Environment : public ::svr2::env::Environment {
 
   virtual error::Error UpdateEnvStats() const {
     oe_mallinfo_t info;
-    if (OE_OK != oe_allocator_mallinfo(&info)) {
+    if (auto r = oe_allocator_mallinfo(&info); r != OE_OK) {
+      LOG(WARNING) << "oe_allocator_mallinfo: " << r;
       return COUNTED_ERROR(Env_MallinfoFailure);
     }
     GAUGE(env, total_heap_size)->Set(info.max_total_heap_size);

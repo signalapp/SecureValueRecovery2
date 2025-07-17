@@ -13,6 +13,12 @@
 #include "metrics/metrics.h"
 #include "proto/error.pb.h"
 #include "util/macros.h"
+#include "util/log.h"
+
+std::ostream& operator<<(std::ostream& os, oe_result_t err) {
+  os << oe_result_str(err);
+  return os;
+}
 
 namespace svr2::attestation {
 const oe_uuid_t sgx_remote_uuid = {OE_FORMAT_UUID_SGX_ECDSA};
@@ -43,9 +49,11 @@ error::Error ReadKeyFromVerifiedClaims(oe_claim_t* claims, size_t claims_length,
   }
 
   // deserialize custom claims
-  if (oe_deserialize_custom_claims(claim->value, claim->value_size,
-                                   &custom_claims,
-                                   &custom_claims_length) != OE_OK) {
+  if (auto r = oe_deserialize_custom_claims(claim->value, claim->value_size,
+                                            &custom_claims,
+                                            &custom_claims_length);
+      r != OE_OK) {
+    LOG(ERROR) << "oe_deserialize_custom_claims: " << r;
     return COUNTED_ERROR(Env_CustomClaimsDeserialize);
   }
 
@@ -78,10 +86,14 @@ std::pair<oe_claim_t*, size_t> VerifyAndReadClaims(
       reinterpret_cast<const uint8_t*>(endorsements.data());
   oe_claim_t* claims = nullptr;
   size_t claims_length = 0;
-  CHECK(OE_OK == oe_verify_evidence(&sgx_remote_uuid, evidence_data,
-                                    evidence.size(), endorsements_data,
-                                    endorsements.size(), nullptr, 0, &claims,
-                                    &claims_length));
+  if (auto r = oe_verify_evidence(&sgx_remote_uuid, evidence_data,
+                                  evidence.size(), endorsements_data,
+                                  endorsements.size(), nullptr, 0, &claims,
+                                  &claims_length);
+      r != OE_OK) {
+    LOG(ERROR) << "oe_verify_evidence: " << r;
+    CHECK(false);
+  }
 
   return std::make_pair(claims, claims_length);
 }
