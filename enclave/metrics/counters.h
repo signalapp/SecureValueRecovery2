@@ -116,6 +116,11 @@ CREATE_COUNTER(db4, client_err_NOT_ROTATING, client_errors, ({{"err", "NOT_ROTAT
 CREATE_COUNTER(db4, client_err_ALREADY_ROTATING, client_errors, ({{"err", "ALREADY_ROTATING"}}))
 CREATE_COUNTER(db4, client_err_MERKLE_FAILURE, client_errors, ({{"err", "MERKLE_FAILURE"}}))
 
+CREATE_COUNTER(db5, ops_upload, ops, ({{"type", "upload"}}))
+CREATE_COUNTER(db5, ops_download, ops, ({{"type", "download"}}))
+CREATE_COUNTER(db5, ops_purge, ops, ({{"type", "purge"}}))
+CREATE_COUNTER(db5, ops_unknown, ops, ({{"type", "unknown"}}))
+
 CREATE_COUNTER(merkle, nodes, nodes, ({}))
 CREATE_COUNTER(merkle, leaves, leaves, ({}))
 

@@ -5,6 +5,7 @@
 #include "db/db2.h"
 #include "db/db3.h"
 #include "db/db4.h"
+#include "db/db5.h"
 
 #include <memory>
 
@@ -20,6 +21,8 @@ const DB::Protocol* DB::P(enclaveconfig::DatabaseVersion version) {
       return &db3_protocol;
     case enclaveconfig::DATABASE_VERSION_SVR4:
       return &db4_protocol;
+    case enclaveconfig::DATABASE_VERSION_SVR5:
+      return &db5_protocol;
     default:
       return nullptr;
   }

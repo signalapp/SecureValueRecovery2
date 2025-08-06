@@ -25,6 +25,7 @@ enum DatabaseVersion {
   DATABASE_VERSION_SVR2 = 2;
   DATABASE_VERSION_SVR3 = 3;
   DATABASE_VERSION_SVR4 = 4;
+  DATABASE_VERSION_SVR5 = 5;
 }
 
 message RaftConfig {

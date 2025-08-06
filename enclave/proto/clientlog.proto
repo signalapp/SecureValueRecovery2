@@ -9,6 +9,7 @@ option optimize_for = LITE_RUNTIME;
 import "client.proto";
 import "client3.proto";
 import "client4.proto";
+import "client5.proto";
 
 // Log2 is the logged message used by the SVR2 (db2) database.
 message Log2 {
@@ -29,6 +30,12 @@ message Log3 {
 message Log4 {
   bytes backup_id = 1;
   client.Request4 req = 2;
+}
+
+// Log5 is the logged message used by the SVR5 (db5) database.
+message Log5 {
+  bytes backup_id = 1;
+  client.Request5 req = 2;
 }
 
 // Effect4 is the effect of applying a Log4 on a SVR4 (db4) database.

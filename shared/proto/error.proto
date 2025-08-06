@@ -334,4 +334,15 @@ enum Error {
   DB4_ReplicationInvalidRow = 2406;
   DB4_LoadedRowsAlreadyInDB = 2407;
   DB4_ReplicationOutOfOrder = 2408;
+
+  DB5_NS = 2500;
+  DB5_BackupIDSize = 2501;
+  DB5_LoadedRowsAlreadyInDB = 2502;
+  DB5_ReplicationOutOfOrder = 2503;
+  DB5_ReplicationInvalidRow = 2504;
+  DB5_ClientRequestCase = 2505;
+  DB5_ClientPasswordSize = 2506;
+  DB5_ClientDataSize = 2507;
+  DB5_ClientBackupIDSize = 2508;
+  DB5_InvalidRequestType = 2509;
 };

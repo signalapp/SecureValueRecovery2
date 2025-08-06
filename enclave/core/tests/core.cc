@@ -46,6 +46,7 @@
 #include "proto/e2e.pb.h"
 #include "proto/client3.pb.h"
 #include "proto/client4.pb.h"
+#include "proto/client5.pb.h"
 #include "noise/noise.h"
 #include "env/test/test.h"
 #include "util/bytes.h"
@@ -3186,6 +3187,168 @@ TEST_F(CoreTest, GroupTimeParticipants) {
     ASSERT_EQ(want, core1->GroupTimeParticipants(&ctx));
   }
 
+}
+
+TEST_F(CoreTest, Hashes5) {
+  enclaveconfig::InitConfig config = valid_init_config;
+  config.mutable_group_config()->set_db_version(enclaveconfig::DATABASE_VERSION_SVR5);
+  auto [core, err] = Core::Create(ctx, config);
+  ASSERT_TRUE(core->ID().Valid());
+  CoreMap cores;
+  cores[core->ID()] = core.get();
+
+  {  // Set up as one-replica Raft
+    UntrustedMessage msg;
+
+    auto host = msg.mutable_h2e_request();
+    host->set_request_id(999);
+    host->set_create_new_raft_group(true);
+
+    context::Context ctx;
+    ASSERT_EQ(error::OK, core->Receive(&ctx, msg));
+    auto resp = Response(env::test::SentMessages());
+    ASSERT_EQ(resp.request_id(), 999);
+    ASSERT_EQ(resp.inner_case(), HostToEnclaveResponse::kStatus);
+    ASSERT_EQ(resp.status(), error::OK);
+  }
+
+  LOG(INFO) << "sending upload request";
+
+  client::Request5 req;
+  auto b = req.mutable_upload();
+  uint8_t enc[32] = {1};
+  b->set_data(enc, 32);
+
+  client::Response5 resp;
+  ClientRequest(cores, core.get(), req, &resp, "backup7890123456");
+  ASSERT_EQ(client::Response5::kUpload, resp.inner_case());
+  ASSERT_EQ(client::Response5::OK, resp.upload().status());
+
+  {
+    UntrustedMessage msg;
+
+    auto host = msg.mutable_h2e_request();
+    host->set_request_id(10101);
+    host->set_hashes(true);
+
+    context::Context ctx;
+    ASSERT_EQ(error::OK, core->Receive(&ctx, msg));
+    auto resp = Response(env::test::SentMessages());
+    ASSERT_EQ(resp.request_id(), 10101);
+    ASSERT_EQ(resp.inner_case(), HostToEnclaveResponse::kHashes);
+    ASSERT_EQ(resp.status(), error::OK);
+    EXPECT_EQ(util::BigEndian64FromBytes(reinterpret_cast<const uint8_t*>(resp.hashes().db_hash().data())),
+              17376963105219621682ULL);
+    EXPECT_EQ(resp.hashes().commit_idx(), 2);
+    EXPECT_EQ(util::BigEndian64FromBytes(reinterpret_cast<const uint8_t*>(resp.hashes().commit_hash_chain().data())),
+              4045387633118599271ULL);
+  }
+}
+
+TEST_F(CoreTest, DB5NewNodeReplication) {
+  auto config = valid_init_config;
+  config.mutable_group_config()->set_db_version(enclaveconfig::DATABASE_VERSION_SVR5);
+  config.mutable_group_config()->set_min_voting_replicas(1);
+  config.mutable_group_config()->set_max_voting_replicas(3);
+  config.mutable_enclave_config()->mutable_raft()->set_replication_chunk_bytes(10000);
+  auto [core1, err1] = Core::Create(ctx, config);
+  ASSERT_EQ(err1, error::OK);
+  auto [core2, err2] = Core::Create(ctx, config);
+  ASSERT_EQ(err2, error::OK);
+  LOG(INFO) << "core1=" << core1->ID() << ", core2=" << core2->ID();
+
+  // Create cores map for PassMessages
+  CoreMap cores;
+  cores[core1->ID()] = core1.get();
+  cores[core2->ID()] = core2.get();
+
+  {
+    LOG(INFO) << "\n\nSet up as one-replica Raft on core 1";
+    UntrustedMessage msg;
+    auto host = msg.mutable_h2e_request();
+    host->set_request_id(1000);
+    host->set_create_new_raft_group(true);
+
+    context::Context ctx;
+    ASSERT_EQ(error::OK, core1->Receive(&ctx, msg));
+    auto out = env::test::SentMessages();
+    ASSERT_EQ(1, out.size());
+    auto resp = out[0].h2e_response();
+    ASSERT_EQ(resp.request_id(), 1000);
+    ASSERT_EQ(resp.inner_case(), HostToEnclaveResponse::kStatus);
+    ASSERT_EQ(resp.status(), error::OK);
+  }
+
+  for (uint64_t i = 0; i < 100; i++) {
+    LOG(INFO) << "\n\nRequest to leader core1";
+
+    client::Request5 req;
+    auto b = req.mutable_upload();
+    uint8_t enc[32] = {1};
+    b->set_data(enc, 32);
+
+    std::string auth_id = "XXXXXXXXbackup78";
+    util::BigEndian64Bytes(i, reinterpret_cast<uint8_t*>(auth_id.data()));
+
+    client::Response5 resp;
+    ClientRequest(cores, core1.get(), req, &resp, auth_id);
+    ASSERT_EQ(client::Response5::kUpload, resp.inner_case());
+    ASSERT_EQ(client::Response5::OK, resp.upload().status());
+  }
+
+  {
+    LOG(INFO) << "\n\nRequest join on core 2";
+    UntrustedMessage msg;
+    auto host = msg.mutable_h2e_request();
+    host->set_request_id(1001);
+    auto req = host->mutable_join_raft();
+    core1->ID().ToString(req->mutable_peer_id());
+
+    context::Context ctx;
+    ASSERT_EQ(error::OK, core2->Receive(&ctx, msg));
+    auto out = PassMessages(cores, core2.get());
+    ASSERT_EQ(1, out[core2->ID()].size());
+    auto resp = out[core2->ID()][0].h2e_response();
+    ASSERT_EQ(resp.request_id(), 1001);
+    ASSERT_EQ(resp.inner_case(), HostToEnclaveResponse::kStatus);
+    ASSERT_EQ(resp.status(), error::OK);
+  }
+
+  HashResponse h1;
+  HashResponse h2;
+  {
+    UntrustedMessage msg;
+
+    auto host = msg.mutable_h2e_request();
+    host->set_request_id(10101);
+    host->set_hashes(true);
+
+    context::Context ctx;
+    ASSERT_EQ(error::OK, core1->Receive(&ctx, msg));
+    auto resp = Response(env::test::SentMessages());
+    ASSERT_EQ(resp.request_id(), 10101);
+    ASSERT_EQ(resp.inner_case(), HostToEnclaveResponse::kHashes);
+    ASSERT_EQ(resp.status(), error::OK);
+    h1 = resp.hashes();
+  }
+  {
+    UntrustedMessage msg;
+
+    auto host = msg.mutable_h2e_request();
+    host->set_request_id(10101);
+    host->set_hashes(true);
+
+    context::Context ctx;
+    ASSERT_EQ(error::OK, core2->Receive(&ctx, msg));
+    auto resp = Response(env::test::SentMessages());
+    ASSERT_EQ(resp.request_id(), 10101);
+    ASSERT_EQ(resp.inner_case(), HostToEnclaveResponse::kHashes);
+    ASSERT_EQ(resp.status(), error::OK);
+    h2 = resp.hashes();
+  }
+  EXPECT_EQ(h1.db_hash(), h2.db_hash());
+  EXPECT_EQ(h1.commit_hash_chain(), h2.commit_hash_chain());
+  EXPECT_EQ(h1.commit_idx(), h2.commit_idx());
 }
 
 }  // namespace svr2::core

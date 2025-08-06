@@ -114,6 +114,11 @@ message DB4RowState {
   fixed64 new_version = 10;
 }
 
+message DB5RowState {
+  bytes backup_id = 1;
+  bytes data = 2;
+}
+
 // --- Replication of State ---
 //
 // ReplicateStateRequest and ReplicateStatePush allow a new and not-yet-part-of-Raft

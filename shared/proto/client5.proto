@@ -1,0 +1,56 @@
+// Copyright 2025 Signal Messenger, LLC
+// SPDX-License-Identifier: AGPL-3.0-only
+
+syntax = "proto3";
+
+package svr2.client;
+option go_package = "github.com/signalapp/svr2/proto";
+option optimize_for = LITE_RUNTIME;
+
+// Client protocol for SVR4.
+
+message Request5 {
+  oneof inner {
+    Upload upload = 1;
+    Download download = 2;
+    Purge purge = 3;
+  }
+
+  message Upload {
+    bytes data = 1;
+  }
+  message Download {
+    bytes password = 1;
+  }
+  message Purge {
+  }
+}
+
+message Response5 {
+  oneof inner {
+    Upload upload = 1;
+    Download download = 2;
+    Purge purge = 3;
+  }
+
+  enum Status {
+    UNSET = 0;
+    OK = 1;
+    INVALID_REQUEST = 2;
+    MISSING = 3;
+    ERROR = 4;
+    MERKLE_FAILURE = 5;
+  }
+
+  message Upload {
+    Status status = 1;
+  }
+
+  message Download {
+    Status status = 1;
+    bytes output = 2;
+  }
+
+  message Purge {
+  }
+}
