@@ -1,6 +1,6 @@
 module github.com/signalapp/svr2
 
-go 1.23.5
+go 1.24.0
 
 require (
 	github.com/alicebob/miniredis/v2 v2.34.0
@@ -11,9 +11,9 @@ require (
 	github.com/gtank/ristretto255 v0.1.2
 	github.com/hashicorp/go-metrics v0.5.4
 	github.com/mdlayher/vsock v1.2.1
-	github.com/redis/go-redis/v9 v9.7.0
-	golang.org/x/exp v0.0.0-20250106191152-7588d65b2ba8
-	golang.org/x/sync v0.10.0
+	github.com/redis/go-redis/v9 v9.14.0
+	golang.org/x/exp v0.0.0-20250911091902-df9299821621
+	golang.org/x/sync v0.17.0
 )
 
 require (
@@ -30,17 +30,17 @@ require (
 	github.com/hashicorp/golang-lru v1.0.2 // indirect
 	github.com/mdlayher/socket v0.5.1 // indirect
 	github.com/yuin/gopher-lua v1.1.1 // indirect
-	golang.org/x/crypto v0.32.0 // indirect
-	golang.org/x/net v0.34.0 // indirect
-	golang.org/x/sys v0.29.0 // indirect
+	golang.org/x/crypto v0.42.0 // indirect
+	golang.org/x/net v0.44.0 // indirect
+	golang.org/x/sys v0.36.0 // indirect
 )
 
 require (
 	github.com/flynn/noise v1.1.0
-	github.com/google/go-cmp v0.6.0
+	github.com/google/go-cmp v0.7.0
 	github.com/gorilla/websocket v1.5.3
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0
-	google.golang.org/protobuf v1.36.3
+	google.golang.org/protobuf v1.36.9
 	gopkg.in/yaml.v2 v2.4.0
 )

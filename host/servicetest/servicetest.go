@@ -27,7 +27,7 @@ type TestClient struct {
 func (tc *TestClient) Send(req *pb.Request) *pb.Response {
 	res, err := tc.Sc.Send2(req)
 	if err != nil {
-		tc.t.Fatalf(err.Error())
+		tc.t.Fatalf("error sending request: %v", err)
 	}
 	return res
 }

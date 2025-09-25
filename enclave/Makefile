@@ -80,13 +80,13 @@ build/boringssl/TEST.a:
 	$(QUIET) echo -e "BUILD\t$@"
 	$(QUIET) mkdir -p $(@D) $(QUIET_OUT)
 	$(QUIET) (cd boringssl && rm -rf build && mkdir build && cd build && CC=$(CC) CXX=$(CXX) CFLAGS="$(TEST_CFLAGS)" CXXFLAGS="$(TEST_CXXFLAGS)" LDFLAGS="$(TEST_LDFLAGS)" cmake .. && $(MAKE) crypto) $(QUIET_OUT)
-	$(QUIET) cp -v boringssl/build/crypto/libcrypto.a $@ $(QUIET_OUT)
+	$(QUIET) cp -v boringssl/build/libcrypto.a $@ $(QUIET_OUT)
 	$(QUIET) echo -e "BUILT\t$@"
 build/boringssl/X86.a: | build/boringssl/TEST.a
 	$(QUIET) echo -e "BUILD\t$@"
 	$(QUIET) mkdir -p $(@D) $(QUIET_OUT)
 	$(QUIET) (cd boringssl && rm -rf build && mkdir build && cd build && CC=$(CC) CXX=$(CXX) CFLAGS="$(X86_CFLAGS)" CXXFLAGS="$(X86_CXXFLAGS)" LDFLAGS="$(X86_LDFLAGS)" cmake .. && $(MAKE) crypto) $(QUIET_OUT)
-	$(QUIET) cp -v boringssl/build/crypto/libcrypto.a $@ $(QUIET_OUT)
+	$(QUIET) cp -v boringssl/build/libcrypto.a $@ $(QUIET_OUT)
 	$(QUIET) echo -e "BUILT\t$@"
 
 build/tinycbor/TEST.a:

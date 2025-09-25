@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -35,7 +36,7 @@ type SocketConfig struct {
 func (sc *SocketConfig) sock() (_ net.Conn, returnedErr error) {
 	switch {
 	case sc.Host != "":
-		return net.Dial("tcp", fmt.Sprintf("%s:%d", sc.Host, sc.Port))
+		return net.Dial("tcp", net.JoinHostPort(sc.Host, strconv.FormatUint(uint64(sc.Port), 10)))
 	case sc.VsockCID != 0:
 		return vsock.Dial(sc.VsockCID, sc.Port, nil)
 	default:

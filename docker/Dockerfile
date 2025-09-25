@@ -16,11 +16,11 @@ ADD --checksum=sha256:${OPENENCLAVE_HASH} \
     https://github.com/openenclave/openenclave/releases/download/v${OPENENCLAVE_VERSION}/Ubuntu_2204_open-enclave_${OPENENCLAVE_VERSION}_amd64.deb ./
 RUN dpkg -i Ubuntu_2204_open-enclave_${OPENENCLAVE_VERSION}_amd64.deb
 
-FROM public.ecr.aws/amazonlinux/amazonlinux:2023.4.20240611.0@sha256:e96baa46e2effb0f69d488007bde35a7d01d7fc2ec9f4e1cd65c59846c01775e AS amazon
+FROM public.ecr.aws/amazonlinux/amazonlinux:2023.8.20250908.0@sha256:0afbc075facf7bb19482cd244d037222d6f998e8a443106fe245d23008910452 AS amazon
 
 FROM amazon AS nsmbuild
 ENV HOST_MACHINE=x86_64
-ENV RUST_VERSION=1.58.1
+ENV RUST_VERSION=1.89.0
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH
@@ -78,10 +78,10 @@ RUN mkdir -p ${PROTOBUF_BASE} \
   && mv ${PROTOBUF_BASE} /opt/protobuf
 
 ARG GOLANG_PLATFORM=linux-amd64
-ARG GOLANG_VERSION=1.21.3
+ARG GOLANG_VERSION=1.25.1
 ARG GOLANG_TAR_GZ=go${GOLANG_VERSION}.${GOLANG_PLATFORM}.tar.gz
 
-ADD --checksum=sha256:1241381b2843fae5a9707eec1f8fb2ef94d827990582c7c7c32f5bdfbfd420c8 https://go.dev/dl/${GOLANG_TAR_GZ} ./
+ADD --checksum=sha256:7716a0d940a0f6ae8e1f3b3f4f36299dc53e31b16840dbd171254312c41ca12e https://go.dev/dl/${GOLANG_TAR_GZ} ./
 RUN tar xzf ${GOLANG_TAR_GZ} \
   && mv go /opt/
 
@@ -119,11 +119,11 @@ WORKDIR /src
 COPY --from=nsmbuild /build/target/release/libnsm.a /opt/nsm/libnsm.a
 COPY --from=nsmbuild /build/target/release/nsm.h    /opt/nsm/nsm.h
 
-ADD --checksum=sha256:ce552d6bf22a2544ea78647d98cb405d5089af58dbcaa4efea711bf8becd71c5 https://static.rust-lang.org/dist/rust-1.79.0-x86_64-unknown-linux-gnu.tar.xz /tmp/
+ADD --checksum=sha256:c4f2796b10ee886001f0799bc40caea38746403a33c379d77878c4f4683f9b51 https://static.rust-lang.org/dist/rust-1.89.0-x86_64-unknown-linux-gnu.tar.xz /tmp/
 RUN apt-get install -y xz-utils && \
-    (cd /tmp && tar xJf /tmp/rust-1.79.0-x86_64-unknown-linux-gnu.tar.xz) && \
-    (cd /tmp/rust-1.79.0-x86_64-unknown-linux-gnu && ./install.sh) && \
-    rm -fv /tmp/rust-1.79.0-x86_64-unknown-linux-gnu.tar.xz
+    (cd /tmp && tar xJf /tmp/rust-1.89.0-x86_64-unknown-linux-gnu.tar.xz) && \
+    (cd /tmp/rust-1.89.0-x86_64-unknown-linux-gnu && ./install.sh) && \
+    (rm -fv /tmp/rust-1.89.0-x86_64-unknown-linux-gnu.tar.xz && rm -rf /tmp/rust-1.89.0-x86_64-unknown-linux-gnu)
 
 CMD ["/bin/bash"]
 
