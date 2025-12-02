@@ -38,6 +38,8 @@ type Config struct {
 	EnclaveID string `yaml:"enclaveId"`
 	// Address to reach a datadog compatible statsd
 	DatadogAgentHost string `yaml:"datadogAgentHost"`
+	// Whether to configure OpenTelemetry Metrics
+	OtlpEnabled bool `yaml:"otlpEnabled"`
 	// TTL of initial Redis peerdb entry.
 	InitialRedisPeerDBTTL time.Duration `yaml:"initialRedisPeerDBTTL"`
 	// TTL of recurring Redis peerdb entry.

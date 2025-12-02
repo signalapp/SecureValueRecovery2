@@ -25,6 +25,7 @@ import (
 	"github.com/signalapp/svr2/config"
 	"github.com/signalapp/svr2/enclave"
 	"github.com/signalapp/svr2/logger"
+	svr2metrics "github.com/signalapp/svr2/metrics"
 	"github.com/signalapp/svr2/service"
 
 	pb "github.com/signalapp/svr2/proto"
@@ -82,42 +83,6 @@ func main() {
 	defer logger.Sync()
 	logger.Infof("Host config: %+v", *hconfig)
 
-	// configure metrics
-	if hconfig.DatadogAgentHost != "" {
-		logger.Infof("initializing datadog at %v", hconfig.DatadogAgentHost)
-		sink, err := datadog.NewDogStatsdSink(hconfig.DatadogAgentHost, "")
-		if err != nil {
-			logger.Fatalf("error initializing statsd client: %v", err)
-		}
-		defer sink.Shutdown()
-
-		// disable hostname tagging, this can be provided by the downstream sink
-		cfg := metrics.DefaultConfig("svr2")
-		cfg.EnableHostname = false
-		cfg.EnableHostnameLabel = false
-
-		_, err = metrics.NewGlobal(cfg, sink)
-		if err != nil {
-			logger.Fatalf("error initializing metrics : %v", err)
-		}
-	}
-	authSecret, ok := os.LookupEnv("AUTH_SECRET")
-	if !ok {
-		logger.Fatalf("no auth secret env (AUTH_SECRET)")
-	}
-	authBytes, err := base64.StdEncoding.DecodeString(authSecret)
-	if err != nil {
-		logger.Fatalf("auth secret invalid base64: %v", err)
-	}
-	authenticator := auth.New(authBytes)
-
-	var econfig pb.InitConfig
-	if configBytes, err := os.ReadFile(*econfigPath); err != nil {
-		logger.Fatalf("error reading config file %q: %v", *econfigPath, err)
-	} else if err = prototext.Unmarshal([]byte(os.ExpandEnv(string(configBytes))), &econfig); err != nil {
-		logger.Fatalf("error reading config (ASCII proto): %v", err)
-	}
-
 	ctx, cancel := context.WithCancel(context.Background())
 	interrupts := make(chan os.Signal, 1)
 	signal.Notify(interrupts, os.Interrupt)
@@ -134,6 +99,57 @@ func main() {
 		case <-ctx.Done():
 		}
 	}()
+
+	// configure metrics
+	fanoutSink := metrics.FanoutSink{}
+	defer fanoutSink.Shutdown()
+
+	// disable hostname tagging, this can be provided by the downstream sink
+	cfg := metrics.DefaultConfig("svr2")
+	cfg.EnableHostname = false
+	cfg.EnableHostnameLabel = false
+
+	if hconfig.DatadogAgentHost != "" {
+		logger.Infof("initializing datadog at %v", hconfig.DatadogAgentHost)
+		statsdSink, err := datadog.NewDogStatsdSink(hconfig.DatadogAgentHost, "")
+		if err != nil {
+			logger.Fatalf("error initializing statsd client: %v", err)
+		}
+
+		fanoutSink = append(fanoutSink, statsdSink)
+	}
+
+	if hconfig.OtlpEnabled {
+		logger.Infof("initializing otlp")
+		otlpSink, err := svr2metrics.NewOTLPSink(ctx)
+		if err != nil {
+			logger.Fatalf("error initializing otlp client: %v", err)
+		}
+
+		fanoutSink = append(fanoutSink, otlpSink)
+	}
+
+	_, err = metrics.NewGlobal(cfg, fanoutSink)
+	if err != nil {
+		logger.Fatalf("error initializing metrics : %v", err)
+	}
+
+	authSecret, ok := os.LookupEnv("AUTH_SECRET")
+	if !ok {
+		logger.Fatalf("no auth secret env (AUTH_SECRET)")
+	}
+	authBytes, err := base64.StdEncoding.DecodeString(authSecret)
+	if err != nil {
+		logger.Fatalf("auth secret invalid base64: %v", err)
+	}
+	authenticator := auth.New(authBytes)
+
+	var econfig pb.InitConfig
+	if configBytes, err := os.ReadFile(*econfigPath); err != nil {
+		logger.Fatalf("error reading config file %q: %v", *econfigPath, err)
+	} else if err = prototext.Unmarshal([]byte(os.ExpandEnv(string(configBytes))), &econfig); err != nil {
+		logger.Fatalf("error reading config (ASCII proto): %v", err)
+	}
 
 	var enc enclave.Enclave
 	logger.Infof("creating enclave")
