@@ -1,5 +1,5 @@
-deb http://snapshot.debian.org/archive/debian/20250312T000000Z/ bookworm main
-deb http://snapshot.debian.org/archive/debian/20250312T000000Z/ bookworm-updates main
+deb http://snapshot.debian.org/archive/debian/20260107T000000Z/ bookworm main
+deb http://snapshot.debian.org/archive/debian/20260107T000000Z/ bookworm-updates main
 
 # for old libprotobuf
-deb http://snapshot.debian.org/archive/debian/20250312T000000Z/ bullseye main
+deb http://snapshot.debian.org/archive/debian/20260107T000000Z/ bullseye main

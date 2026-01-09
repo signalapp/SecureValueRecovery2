@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # To build use:
 # docker build -t oebuild .
-FROM amd64/debian:bookworm@sha256:e83f38eb264420870d48bccc73f04df5fffc710c66528ad424f857eeff269915 AS base
+FROM amd64/debian:bookworm@sha256:f2c0a2c38468521a54160b3e6105d4be0afa9f0c70eddc45def08aa75c8b4404 AS base
 
 LABEL description="linux build environment for sgx."
 
@@ -78,10 +78,10 @@ RUN mkdir -p ${PROTOBUF_BASE} \
   && mv ${PROTOBUF_BASE} /opt/protobuf
 
 ARG GOLANG_PLATFORM=linux-amd64
-ARG GOLANG_VERSION=1.25.1
+ARG GOLANG_VERSION=1.25.5
 ARG GOLANG_TAR_GZ=go${GOLANG_VERSION}.${GOLANG_PLATFORM}.tar.gz
 
-ADD --checksum=sha256:7716a0d940a0f6ae8e1f3b3f4f36299dc53e31b16840dbd171254312c41ca12e https://go.dev/dl/${GOLANG_TAR_GZ} ./
+ADD --checksum=sha256:9e9b755d63b36acf30c12a9a3fc379243714c1c6d3dd72861da637f336ebb35b https://go.dev/dl/${GOLANG_TAR_GZ} ./
 RUN tar xzf ${GOLANG_TAR_GZ} \
   && mv go /opt/
 
@@ -105,7 +105,7 @@ ENV GOROOT="/opt/go"
 ENV GOBIN="/opt/go/bin"
 ENV PKG_CONFIG_PATH="/opt/openenclave/share/pkgconfig"
 
-ARG PROTOC_GEN_GO_GITREV=6875c3d7242d1a3db910ce8a504f124cb840c23a
+ARG PROTOC_GEN_GO_GITREV=96a179180f0ad6bba9b1e7b6e38d0affb0168e9a
 RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@${PROTOC_GEN_GO_GITREV}
 RUN echo "export PS1='buildenv: \w$ '" >> /etc/bash.bashrc
 
@@ -119,11 +119,12 @@ WORKDIR /src
 COPY --from=nsmbuild /build/target/release/libnsm.a /opt/nsm/libnsm.a
 COPY --from=nsmbuild /build/target/release/nsm.h    /opt/nsm/nsm.h
 
-ADD --checksum=sha256:c4f2796b10ee886001f0799bc40caea38746403a33c379d77878c4f4683f9b51 https://static.rust-lang.org/dist/rust-1.89.0-x86_64-unknown-linux-gnu.tar.xz /tmp/
+ARG RUST_VERSION=1.92.0
+ADD --checksum=sha256:d2ccef59dd9f7439f2c694948069f789a044dc1addcc0803613232af8f88ee0c https://static.rust-lang.org/dist/rust-${RUST_VERSION}-x86_64-unknown-linux-gnu.tar.xz /tmp/
 RUN apt-get install -y xz-utils && \
-    (cd /tmp && tar xJf /tmp/rust-1.89.0-x86_64-unknown-linux-gnu.tar.xz) && \
-    (cd /tmp/rust-1.89.0-x86_64-unknown-linux-gnu && ./install.sh) && \
-    (rm -fv /tmp/rust-1.89.0-x86_64-unknown-linux-gnu.tar.xz && rm -rf /tmp/rust-1.89.0-x86_64-unknown-linux-gnu)
+    (cd /tmp && tar xJf /tmp/rust-${RUST_VERSION}-x86_64-unknown-linux-gnu.tar.xz) && \
+    (cd /tmp/rust-${RUST_VERSION}-x86_64-unknown-linux-gnu && ./install.sh) && \
+    (rm -fv /tmp/rust-${RUST_VERSION}-x86_64-unknown-linux-gnu.tar.xz && rm -rf /tmp/rust-${RUST_VERSION}-x86_64-unknown-linux-gnu)
 
 CMD ["/bin/bash"]
 
