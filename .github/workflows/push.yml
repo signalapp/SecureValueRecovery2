@@ -49,17 +49,6 @@ jobs:
         run:
           az acr login --name ${{ secrets.AZURE_CONTAINER_REGISTRY_NAME }}
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@ececac1a45f3b08a01d2dd070d28d111c5fe6722 # v4.1.0
-        with:
-          role-to-assume: "${{ vars.ECR_ROLE }}"
-          aws-region: us-east-1
-
-      - name: Login to ECR
-        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
-        with:
-          registry: "${{ vars.ECR_REGISTRY }}"
-
       # https://github.com/actions/runner-images/issues/2840#issuecomment-790492173
       - name: Clear some disk space
         run: |
@@ -78,5 +67,3 @@ jobs:
           make enclave_release
           docker tag svr2_sgxrun:latest "${{ secrets.REGISTRY_LOGIN_SERVER }}/svr2:${GITHUB_REF_NAME}"
           docker push "${{ secrets.REGISTRY_LOGIN_SERVER }}/svr2:${GITHUB_REF_NAME}"
-          docker tag svr2_nsmhost:latest "${{ vars.ECR_REGISTRY }}/signal-ecr/svr:${GITHUB_REF_NAME}"
-          docker push "${{ vars.ECR_REGISTRY }}/signal-ecr/svr:${GITHUB_REF_NAME}"
