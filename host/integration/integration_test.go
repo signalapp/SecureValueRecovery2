@@ -187,7 +187,7 @@ func TestServerDelete(t *testing.T) {
 }
 
 func authHeaders(user string) http.Header {
-	authenticator := auth.New([]byte(authSecret))
+	authenticator := auth.New([]byte(authSecret), auth.DefaultAuthenticationTokenMaxAge)
 	headers := http.Header{}
 	headers.Set("Authorization", "Basic "+base64.URLEncoding.EncodeToString([]byte(user+":"+authenticator.PassFor(user))))
 	return headers

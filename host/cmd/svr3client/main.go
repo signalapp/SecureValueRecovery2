@@ -164,7 +164,7 @@ func newWebsocket(username string, hs *hostSet) (*websocket.Conn, error) {
 		return nil, err
 	}
 	c, resp, err := dialer.Dial(u.String(), http.Header{
-		"Authorization": []string{"Basic " + base64.URLEncoding.EncodeToString([]byte(username+":"+auth.New(authBytes).PassFor(username)))},
+		"Authorization": []string{"Basic " + base64.URLEncoding.EncodeToString([]byte(username+":"+auth.New(authBytes, auth.DefaultAuthenticationTokenMaxAge).PassFor(username)))},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("dial %v", err)
@@ -380,7 +380,7 @@ func runAuthHeaders() error {
 	if err != nil {
 		return err
 	}
-	pass := auth.New(authBytes).PassFor(user)
+	pass := auth.New(authBytes, auth.DefaultAuthenticationTokenMaxAge).PassFor(user)
 	log.Printf("USER: %q", user)
 	log.Printf("PASS: %q", pass)
 	log.Printf("HEADERS: Authorization: Basic %s", base64.URLEncoding.EncodeToString([]byte(user+":"+pass)))

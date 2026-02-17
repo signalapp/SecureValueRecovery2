@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/yaml.v2"
 
+	"github.com/signalapp/svr2/auth"
 	"github.com/signalapp/svr2/util"
 )
 
@@ -49,6 +50,8 @@ type Config struct {
 	// Periodicity/timeout for local liveness checks
 	LocalLivenessCheckPeriod  time.Duration `yaml:"localLivenessCheckPeriod"`
 	LocalLivenessCheckTimeout time.Duration `yaml:"localLivenessCheckTimeout"`
+	// Maximum age for authentication tokens
+	AuthenticationTokenMaxAge time.Duration `yaml:"authenticationTokenMaxAge"`
 }
 
 // validate returns a list of validation errors, or empty if there are no errors.
@@ -145,5 +148,6 @@ func Default() *Config {
 		RecurringRedisPeerDBTTL:   time.Minute * 5,
 		LocalLivenessCheckPeriod:  time.Minute,
 		LocalLivenessCheckTimeout: time.Minute,
+		AuthenticationTokenMaxAge: auth.DefaultAuthenticationTokenMaxAge,
 	}
 }

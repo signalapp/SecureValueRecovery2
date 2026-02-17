@@ -120,7 +120,7 @@ func newClient(username string) (*client.SVRClient, error) {
 		return nil, err
 	}
 	c, resp, err := dialer.Dial(u.String(), http.Header{
-		"Authorization": []string{"Basic " + base64.URLEncoding.EncodeToString([]byte(username+":"+auth.New(authBytes).PassFor(username)))},
+		"Authorization": []string{"Basic " + base64.URLEncoding.EncodeToString([]byte(username+":"+auth.New(authBytes, auth.DefaultAuthenticationTokenMaxAge).PassFor(username)))},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("dial %v", err)

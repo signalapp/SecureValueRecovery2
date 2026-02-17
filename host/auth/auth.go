@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	authenticationTokenMaxAgeSeconds = 30 * 86400
+	DefaultAuthenticationTokenMaxAge = 120 * 24 * time.Hour
 )
 
 // Auth allows us to check a username and password, or generate a password for a user.
@@ -32,9 +32,9 @@ type Auth interface {
 	PassFor(user string) string
 }
 
-// New returns a new production Auth based on the given secret and expiration.
-func New(secret []byte) Auth {
-	return &auth{secret: secret, clock: util.RealClock, expiration: time.Second * authenticationTokenMaxAgeSeconds}
+// New returns a new production Auth based on the given secret and max token age.
+func New(secret []byte, authenticationTokenMaxAge time.Duration) Auth {
+	return &auth{secret: secret, clock: util.RealClock, expiration: authenticationTokenMaxAge}
 }
 
 type alwaysAllow struct{}

@@ -142,7 +142,7 @@ func main() {
 	if err != nil {
 		logger.Fatalf("auth secret invalid base64: %v", err)
 	}
-	authenticator := auth.New(authBytes)
+	authenticator := auth.New(authBytes, hconfig.AuthenticationTokenMaxAge)
 
 	var econfig pb.InitConfig
 	if configBytes, err := os.ReadFile(*econfigPath); err != nil {
