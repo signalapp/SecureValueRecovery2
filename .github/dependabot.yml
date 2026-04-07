@@ -10,7 +10,7 @@ updates:
       update-types: [ minor, patch ]
 
 - package-ecosystem: gomod
-  directory: /
+  directory: /host
   allow:
     # Go: allow direct and indirect updates
     - dependency-type: all
