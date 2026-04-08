@@ -46,7 +46,7 @@ func (s sequenceNumber) nextEpoch() sequenceNumber {
 //	== 0 if this is equal to the provided sequenceNumber
 //	 > 0 if this is greater than the provided sequenceNumber
 func (s sequenceNumber) cmp(o sequenceNumber) int {
-	if ecmp := int(s.epoch - o.epoch); ecmp != 0 {
+	if ecmp := int(int32(s.epoch - o.epoch)); ecmp != 0 {
 		return ecmp
 	}
 	return int(s.seq - o.seq)
