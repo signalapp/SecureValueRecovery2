@@ -326,6 +326,7 @@ std::pair<std::string, error::Error> DB2::LoadRowsFromProtos(context::Context* c
       return std::make_pair("", COUNTED_ERROR(DB2_ReplicationInvalidRow));
     }
     if (row->tries() > MAX_ALLOWED_MAX_TRIES ||
+        row->tries() == 0 ||
         row->pin().size() != PIN_SIZE ||
         row->data().size() < MIN_DATA_SIZE ||
         row->data().size() > MAX_DATA_SIZE) {
