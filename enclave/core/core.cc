@@ -1101,6 +1101,9 @@ error::Error Core::HandleE2E(context::Context* ctx, const peerid::PeerID& from, 
       if (f == outstanding_e2e_transactions_.end()) {
         LOG(VERBOSE) << "received response to e2e transaction that has no callback " << txn_resp.request_id();
         return error::OK;
+      } else if (f->second.to != from) {
+        LOG(ERROR) << "received response to e2e transaction from incorrect peer, want " << f->second.to << ", got " << from;
+        return error::OK;
       }
       auto callback = std::move(f->second);
       IDLOG(VERBOSE) << "received response to e2e transaction " << f->first << ": " << msg.transaction_response().status();
