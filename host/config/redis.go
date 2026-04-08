@@ -35,3 +35,12 @@ func (r *RedisConfig) validate() []string {
 	}
 	return errs
 }
+
+// String overrides the normal string mechanism to hide Password.
+func (r *RedisConfig) String() string {
+	return fmt.Sprintf("RedisConfig{Addrs: %v, Password: <elided>, Name: %q, MinSleepDuration: %v, MaxSleepDuration: %v}", r.Addrs, r.Name, r.MinSleepDuration, r.MaxSleepDuration)
+}
+
+func (r *RedisConfig) GoString() string {
+	return r.String()
+}
