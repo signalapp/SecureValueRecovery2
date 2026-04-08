@@ -3032,7 +3032,7 @@ TEST_F(CoreTest, GroupTimeParticipants) {
     ASSERT_EQ(resp.inner_case(), HostToEnclaveResponse::kStatus);
     ASSERT_EQ(resp.status(), error::OK);
 
-    std::set<peerid::PeerID> want{ core2->ID() };
+    std::set<peerid::PeerID> want{};  // core2 isn't voting yet
     ASSERT_EQ(want, core1->GroupTimeParticipants(&ctx));
   }
 
@@ -3097,7 +3097,7 @@ TEST_F(CoreTest, GroupTimeParticipants) {
     // core1 has disconnected from core2, the only other voting member.
     // It should fall back to using all connected peers, which in this
     // case is core3.
-    std::set<peerid::PeerID> want{ core3->ID() };
+    std::set<peerid::PeerID> want{ };  // core3 is not voting
     ASSERT_EQ(want, core1->GroupTimeParticipants(&ctx));
   }
 
@@ -3141,7 +3141,7 @@ TEST_F(CoreTest, GroupTimeParticipants) {
 
     // core1 has disconnected from all cores, it should just use
     // its own local time.
-    std::set<peerid::PeerID> want{ core3->ID() };
+    std::set<peerid::PeerID> want{ };  // core3 is not voting
     ASSERT_EQ(want, core1->GroupTimeParticipants(&ctx));
   }
 

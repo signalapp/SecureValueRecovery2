@@ -954,23 +954,21 @@ std::set<peerid::PeerID> Core::GroupTimeParticipants(context::Context* ctx) {
     }
   }
 
-  // We can't just use voting replicas, because due to network issues we
-  // may be in a state where they're all (or mostly) disconnected, causing
-  // our timestamp to be stuck.  For this reason, we try to use the set
-  // of voting peers that are connected, falling back to the set of all
-  // connected peers if we must.
+  // If we have no voting replicas, we always just use our own clock.
+  // However, if we do have replicas and they're connected, we use their
+  // clock values.
+  //
+  // Unfortunately, we can't always use all voting replicas, since network
+  // states can easily disconnect all of our voting replicas from ourselves,
+  // leading to a case where we have only very old timestamps for all of them,
+  // which may disallow voting replicas from reconnecting.
+  //
+  // So... we do our best.
   std::set<peerid::PeerID> peers;
-  if (voting_peers.size() == 0) {
-    peers = std::move(connected_peers);
-  } else {
-    std::set_intersection(
-        connected_peers.begin(), connected_peers.end(),
-        voting_peers.begin(), voting_peers.end(),
-        std::inserter(peers, peers.begin()));
-    if (peers.empty()) {
-      peers = std::move(connected_peers);
-    }
-  }
+  std::set_intersection(
+      connected_peers.begin(), connected_peers.end(),
+      voting_peers.begin(), voting_peers.end(),
+      std::inserter(peers, peers.begin()));
   return peers;
 }
 
