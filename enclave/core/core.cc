@@ -388,8 +388,8 @@ void Core::HandleNewClient(context::Context* ctx, const NewClientRequest& msg, i
 
 error::Error Core::HandleExistingClient(context::Context* ctx, const ExistingClientRequest& msg, internal::TransactionID tx) {
   client::ClientID client_id = msg.client_id();
-  client::Client* c = client_manager_->GetClient(ctx, client_id);
-  if (c == nullptr) {
+  std::shared_ptr<client::Client> c = client_manager_->GetClient(ctx, client_id);
+  if (c.get() == nullptr) {
     return COUNTED_ERROR(Core_ClientNotFound);
   }
   if (c->Handshaking()) {
@@ -1594,8 +1594,8 @@ Core::LogTransactionCallback Core::ClientLogTransaction(context::Context* ctx, c
       errctr = COUNTER(core, client_transaction_invalid);
       err2return = COUNTED_ERROR(Client_TransactionInvalid);
     } else if (
-        client::Client* client = client_manager_->GetClient(ctx, client_id);
-        client == nullptr) {
+        std::shared_ptr<client::Client> client = client_manager_->GetClient(ctx, client_id);
+        client.get() == nullptr) {
       err2log = "does_not_exist";
       errctr = COUNTER(core, client_transaction_dne);
       err2return = COUNTED_ERROR(Client_AlreadyClosed);

@@ -162,11 +162,12 @@ std::pair<Client*, error::Error> ClientManager::NewClient(
   return std::make_pair(ptr, error::OK);
 }
 
-Client* ClientManager::GetClient(context::Context* ctx, ClientID id) const {
+std::shared_ptr<Client> ClientManager::GetClient(context::Context* ctx, ClientID id) const {
   ACQUIRE_LOCK(mu_, ctx, lock_clientmanager);
   auto find = clients_.find(id);
   if (find == clients_.end()) { return nullptr; }
-  return find->second.get();
+  std::shared_ptr ret(find->second);
+  return ret;
 }
 
 bool ClientManager::RemoveClient(context::Context* ctx, ClientID id) {

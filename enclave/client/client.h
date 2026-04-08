@@ -69,7 +69,7 @@ class ClientManager {
   std::pair<Client*, error::Error> NewClient(
       context::Context* ctx,
       std::unique_ptr<db::DB::ClientState> cs) EXCLUDES(mu_);
-  Client* GetClient(context::Context* ctx, ClientID id) const EXCLUDES(mu_);
+  std::shared_ptr<Client> GetClient(context::Context* ctx, ClientID id) const EXCLUDES(mu_);
   // Deallocate and remove a client by its ID.
   // Client pointers are owned by the ClientManager and can only be deallocated
   // via a call to RemoveClient.
@@ -82,7 +82,7 @@ class ClientManager {
   mutable util::mutex mu_;
   noise::DHState dhstate_ GUARDED_BY(mu_);
   e2e::Attestation attestation_ GUARDED_BY(mu_);
-  std::unordered_map<ClientID, std::unique_ptr<Client>> clients_ GUARDED_BY(mu_);
+  std::unordered_map<ClientID, std::shared_ptr<Client>> clients_ GUARDED_BY(mu_);
   const bool pq_;
 };
 
