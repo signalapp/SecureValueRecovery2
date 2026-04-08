@@ -444,12 +444,14 @@ void Core::HandleCreateNewRaftGroupRequest(context::Context* ctx, internal::Tran
   ACQUIRE_LOCK(raft_.mu, ctx, lock_core_raft);
   if (raft_.state != svr2::RAFTSTATE_NO_STATE) {
     ReplyWithError(ctx, tx, COUNTED_ERROR(Core_RaftState));
+    return;
   }
   enclaveconfig::RaftGroupConfig cfg = raft_config_template_;
   uint8_t group_id_bytes[8];
-  error::Error gid_err = env::environment->RandomBytes(group_id_bytes, sizeof(group_id_bytes));
-  if (gid_err != error::OK) {
+  if (error::Error gid_err = env::environment->RandomBytes(group_id_bytes, sizeof(group_id_bytes));
+      gid_err != error::OK) {
     ReplyWithError(ctx, tx, gid_err);
+    return;
   }
   raft::GroupId group_id = util::BigEndian64FromBytes(group_id_bytes);
   cfg.set_group_id(group_id);
