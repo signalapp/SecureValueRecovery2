@@ -17,6 +17,8 @@
 
 namespace svr2::client {
 
+extern const bool NOISE_VERIFY_LENGTH_WITH_AD;
+
 class ClientManager;
 typedef uint64_t ClientID;
 extern const NoiseProtocolId client_protocol;

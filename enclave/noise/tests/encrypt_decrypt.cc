@@ -31,7 +31,7 @@ class CipherStateTest : public ::testing::Test {
     env::Init(env::SIMULATED);
   }
 
-  void EncryptDecrypt(const std::string& plaintext, std::string* ciphertext_out, int type) {
+  void EncryptDecrypt(const std::string& plaintext, std::string* ciphertext_out, int type, bool with_ad) {
     std::array<uint8_t, 32> key = {1};
     NoiseCipherState* s1n;
     NoiseCipherState* s2n;
@@ -41,9 +41,9 @@ class CipherStateTest : public ::testing::Test {
     ASSERT_EQ(NOISE_ERROR_NONE, noise_cipherstate_init_key(s2n, key.data(), key.size()));
     noise::CipherState s1 = noise::WrapCipherState(s1n);
     noise::CipherState s2 = noise::WrapCipherState(s2n);
-    auto [ciphertext, enc_err] = noise::Encrypt(s1n, plaintext);
+    auto [ciphertext, enc_err] = noise::Encrypt(s1n, plaintext, with_ad);
     ASSERT_EQ(error::OK, enc_err);
-    auto [computed_plaintext, dec_err] = noise::Decrypt(s2n, ciphertext);
+    auto [computed_plaintext, dec_err] = noise::Decrypt(s2n, ciphertext, with_ad);
     ASSERT_EQ(error::OK, dec_err);
     ASSERT_EQ(plaintext, computed_plaintext);
     ciphertext_out->swap(ciphertext);
@@ -52,26 +52,115 @@ class CipherStateTest : public ::testing::Test {
 
 TEST_F(CipherStateTest, EncryptDecrypt) {
   std::string ciphertext;
-  EncryptDecrypt("", &ciphertext, NOISE_CIPHER_CHACHAPOLY);
+  EncryptDecrypt("", &ciphertext, NOISE_CIPHER_CHACHAPOLY, false);
   ASSERT_EQ(16, ciphertext.size());
-  EncryptDecrypt("a", &ciphertext, NOISE_CIPHER_CHACHAPOLY);
+  EncryptDecrypt("a", &ciphertext, NOISE_CIPHER_CHACHAPOLY, false);
   ASSERT_EQ(17, ciphertext.size());
 
-  EncryptDecrypt("this is a test of the emergency broadcast system", &ciphertext, NOISE_CIPHER_CHACHAPOLY);
+  EncryptDecrypt("this is a test of the emergency broadcast system", &ciphertext, NOISE_CIPHER_CHACHAPOLY, false);
 
   std::string s;
 
   s.resize(65535-16, 'a');
-  EncryptDecrypt(s, &ciphertext, NOISE_CIPHER_CHACHAPOLY);
+  EncryptDecrypt(s, &ciphertext, NOISE_CIPHER_CHACHAPOLY, false);
   ASSERT_EQ(ciphertext.size(), 65535);
 
   s.resize(65535-15, 'a');
-  EncryptDecrypt(s, &ciphertext, NOISE_CIPHER_CHACHAPOLY);
+  EncryptDecrypt(s, &ciphertext, NOISE_CIPHER_CHACHAPOLY, false);
   ASSERT_EQ(ciphertext.size(), 65535-15+32);
 
   s.resize((65535-16)*10, 'a');
-  EncryptDecrypt(s, &ciphertext, NOISE_CIPHER_CHACHAPOLY);
+  EncryptDecrypt(s, &ciphertext, NOISE_CIPHER_CHACHAPOLY, false);
   ASSERT_EQ(ciphertext.size(), 65535*10);
+}
+
+TEST_F(CipherStateTest, EncryptDecryptWithLengthAD) {
+  std::string ciphertext;
+  EncryptDecrypt("", &ciphertext, NOISE_CIPHER_CHACHAPOLY, true);
+  ASSERT_EQ(16, ciphertext.size());
+  EncryptDecrypt("a", &ciphertext, NOISE_CIPHER_CHACHAPOLY, true);
+  ASSERT_EQ(17, ciphertext.size());
+
+  EncryptDecrypt("this is a test of the emergency broadcast system", &ciphertext, NOISE_CIPHER_CHACHAPOLY, true);
+
+  std::string s;
+
+  s.resize(65535-16, 'a');
+  EncryptDecrypt(s, &ciphertext, NOISE_CIPHER_CHACHAPOLY, true);
+  ASSERT_EQ(ciphertext.size(), 65535);
+
+  s.resize(65535-15, 'a');
+  EncryptDecrypt(s, &ciphertext, NOISE_CIPHER_CHACHAPOLY, true);
+  ASSERT_EQ(ciphertext.size(), 65535-15+32);
+
+  s.resize((65535-16)*10, 'a');
+  EncryptDecrypt(s, &ciphertext, NOISE_CIPHER_CHACHAPOLY, true);
+  ASSERT_EQ(ciphertext.size(), 65535*10);
+}
+
+TEST_F(CipherStateTest, DecryptTruncatedWithLengthADFails) {
+    std::array<uint8_t, 32> key = {1};
+    NoiseCipherState* s1n;
+    NoiseCipherState* s2n;
+    ASSERT_EQ(NOISE_ERROR_NONE, noise_cipherstate_new_by_id(&s1n, NOISE_CIPHER_CHACHAPOLY));
+    ASSERT_EQ(NOISE_ERROR_NONE, noise_cipherstate_init_key(s1n, key.data(), key.size()));
+    ASSERT_EQ(NOISE_ERROR_NONE, noise_cipherstate_new_by_id(&s2n, NOISE_CIPHER_CHACHAPOLY));
+    ASSERT_EQ(NOISE_ERROR_NONE, noise_cipherstate_init_key(s2n, key.data(), key.size()));
+
+    size_t max_message_size = 65535;
+    size_t mac_size = noise_cipherstate_get_mac_length(s1n);
+    size_t max_encrypt_size = max_message_size - mac_size;
+    noise::CipherState s1 = noise::WrapCipherState(s1n);
+    noise::CipherState s2 = noise::WrapCipherState(s2n);
+
+    bool with_ad = true;
+    std::string plaintext(65535, 'a');
+    auto [ciphertext, enc_err] = noise::Encrypt(s1n, plaintext, with_ad);
+    ASSERT_EQ(error::OK, enc_err);
+    ASSERT_EQ(ciphertext.size(), max_message_size + mac_size * 2);
+    // Truncate ciphertext at a message size boundary.
+    ciphertext.resize(max_message_size);
+    auto [computed_plaintext, dec_err] = noise::Decrypt(s2n, ciphertext, with_ad);
+    // Note that this would be error::OK if with_ad were false.
+    ASSERT_EQ(error::Peers_Decrypt, dec_err);
+}
+
+TEST_F(CipherStateTest, DecryptTruncatedWithoutLengthADSucceedsButBreaksCiphertext) {
+    std::array<uint8_t, 32> key = {1};
+    NoiseCipherState* s1n;
+    NoiseCipherState* s2n;
+    ASSERT_EQ(NOISE_ERROR_NONE, noise_cipherstate_new_by_id(&s1n, NOISE_CIPHER_CHACHAPOLY));
+    ASSERT_EQ(NOISE_ERROR_NONE, noise_cipherstate_init_key(s1n, key.data(), key.size()));
+    ASSERT_EQ(NOISE_ERROR_NONE, noise_cipherstate_new_by_id(&s2n, NOISE_CIPHER_CHACHAPOLY));
+    ASSERT_EQ(NOISE_ERROR_NONE, noise_cipherstate_init_key(s2n, key.data(), key.size()));
+
+    size_t max_message_size = 65535;
+    size_t mac_size = noise_cipherstate_get_mac_length(s1n);
+    size_t max_encrypt_size = max_message_size - mac_size;
+    noise::CipherState s1 = noise::WrapCipherState(s1n);
+    noise::CipherState s2 = noise::WrapCipherState(s2n);
+
+    bool with_ad = false;
+    std::string plaintext(65535, 'a');
+    {
+      auto [ciphertext, enc_err] = noise::Encrypt(s1n, plaintext, with_ad);
+      ASSERT_EQ(error::OK, enc_err);
+      ASSERT_EQ(ciphertext.size(), max_message_size + mac_size * 2);
+      // Truncate ciphertext at a message size boundary.
+      ciphertext.resize(max_message_size);
+      auto [computed_plaintext, dec_err] = noise::Decrypt(s2n, ciphertext, with_ad);
+      ASSERT_EQ(error::OK, dec_err);
+    }
+
+    // While our truncation was successful, unless the rest of the truncation is then
+    // fed into the receiving ciphertext, it will be broken.
+    plaintext = "a";
+    {
+      auto [ciphertext, enc_err] = noise::Encrypt(s1n, plaintext, with_ad);
+      ASSERT_EQ(error::OK, enc_err);
+      auto [computed_plaintext, dec_err] = noise::Decrypt(s2n, ciphertext, with_ad);
+      ASSERT_EQ(error::Peers_Decrypt, dec_err);
+    }
 }
 
 TEST_F(CipherStateTest, BenchmarkChaChaPoly) {
@@ -81,7 +170,7 @@ TEST_F(CipherStateTest, BenchmarkChaChaPoly) {
   auto start = util::asm_rdtsc();
   int times = 100;
   for (int i = 0; i < times; i++) {
-    EncryptDecrypt(plaintext, &ciphertext, NOISE_CIPHER_CHACHAPOLY);
+    EncryptDecrypt(plaintext, &ciphertext, NOISE_CIPHER_CHACHAPOLY, false);
   }
   LOG(INFO) << "took " << ((util::asm_rdtsc() - start) * 1.0 / (times * plaintext.size())) << " cycles/byte";
 }
@@ -93,7 +182,7 @@ TEST_F(CipherStateTest, BenchmarkAesGcm) {
   auto start = util::asm_rdtsc();
   int times = 100;
   for (int i = 0; i < times; i++) {
-    EncryptDecrypt(plaintext, &ciphertext, NOISE_CIPHER_AESGCM);
+    EncryptDecrypt(plaintext, &ciphertext, NOISE_CIPHER_AESGCM, false);
   }
   LOG(INFO) << "took " << ((util::asm_rdtsc() - start) * 1.0 / (times * plaintext.size())) << " cycles/byte";
 }

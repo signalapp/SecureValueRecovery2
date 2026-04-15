@@ -57,6 +57,7 @@
 #include "core/coretest/replicagroup.h"
 #include "core/coretest/testingclient.h"
 #include "ristretto/ristretto.h"
+#include "client/client.h"
 
 // This test is pretty large and contains a lot of code which should maybe be
 // moved into some coretest library at a later date.  There's a few very
@@ -281,7 +282,7 @@ class CoreTest : public ::testing::Test {
     {  // send the request, parse response.
       std::string req_str;
       ASSERT_TRUE(req.SerializeToString(&req_str));
-      auto [ciphertext, encrypt_err] = noise::Encrypt(txp, req_str);
+      auto [ciphertext, encrypt_err] = noise::Encrypt(txp, req_str, client::NOISE_VERIFY_LENGTH_WITH_AD);
       ASSERT_EQ(error::OK, encrypt_err);
       UntrustedMessage msg;
       auto host = msg.mutable_h2e_request();
@@ -298,7 +299,7 @@ class CoreTest : public ::testing::Test {
       ASSERT_EQ(resp.status(), error::OK);
       ASSERT_EQ(resp.inner_case(), HostToEnclaveResponse::kExistingClientReply);
       auto ec2 = resp.existing_client_reply();
-      auto [plaintext, decrypt_err] = noise::Decrypt(rxp, ec2.data());
+      auto [plaintext, decrypt_err] = noise::Decrypt(rxp, ec2.data(), client::NOISE_VERIFY_LENGTH_WITH_AD);
       ASSERT_EQ(error::OK, decrypt_err);
       ASSERT_TRUE(cli_resp->ParseFromString(plaintext));
     }

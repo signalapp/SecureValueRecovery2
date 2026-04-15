@@ -10,7 +10,7 @@ namespace svr2::noise {
 
 static size_t max_message_size = 65535;
 
-std::pair<std::string, error::Error> Encrypt(NoiseCipherState* cs, const std::string& plaintext) {
+std::pair<std::string, error::Error> Encrypt(NoiseCipherState* cs, const std::string& plaintext, bool with_length_verifying_ad) {
   std::string ciphertext;
   size_t mac_size = noise_cipherstate_get_mac_length(cs);
   size_t max_encrypt_size = max_message_size - mac_size;
@@ -37,14 +37,23 @@ std::pair<std::string, error::Error> Encrypt(NoiseCipherState* cs, const std::st
     plaintext_start += plaintext_size;
     NoiseBuffer buf;
     noise_buffer_set_inout(buf, StrU8Ptr(&ciphertext) + start, plaintext_size, plaintext_size + mac_size);
-    if (NOISE_ERROR_NONE != noise_cipherstate_encrypt(cs, &buf)) {
+    // The approach that doesn't utilize an AD has an issue where a middleman can
+    // truncate an incoming/outgoing message at a message boundary, and the received
+    // message will still decrypt and verify successfully.  To avoid this, we
+    // use a very simple AD which is the array [0] if this message is part of a longer
+    // message, and [1] if this is the final piece in a longer multi-part message.
+    // Reordering of messages/etc should all be caught by Noise's internal MAC-ing.
+    const uint8_t ad[1] = {static_cast<uint8_t>(
+        start + max_message_size >= final_size ? 1 : 0)};
+    if (NOISE_ERROR_NONE != noise_cipherstate_encrypt_with_ad(
+          cs, ad, with_length_verifying_ad ? 1 : 0, &buf)) {
       return std::make_pair("", COUNTED_ERROR(Peers_Encrypt));
     }
   }
   return std::make_pair(ciphertext, error::OK);
 }
 
-std::pair<std::string, error::Error> Decrypt(NoiseCipherState* cs, const std::string& ciphertext) {
+std::pair<std::string, error::Error> Decrypt(NoiseCipherState* cs, const std::string& ciphertext, bool with_length_verifying_ad) {
   std::string plaintext(ciphertext.size(), 0);
   size_t plaintext_start = 0;
   // Data comes in as [ciphertext][mac][ciphertext][mac].
@@ -53,7 +62,16 @@ std::pair<std::string, error::Error> Decrypt(NoiseCipherState* cs, const std::st
     memcpy(StrU8Ptr(&plaintext) + plaintext_start, StrU8Ptr(ciphertext) + start, size);
     NoiseBuffer buf;
     noise_buffer_set_inout(buf, StrU8Ptr(&plaintext) + plaintext_start, size, size);
-    if (NOISE_ERROR_NONE != noise_cipherstate_decrypt(cs, &buf)) {
+    // The approach that doesn't utilize an AD has an issue where a middleman can
+    // truncate an incoming/outgoing message at a message boundary, and the received
+    // message will still decrypt and verify successfully.  To avoid this, we
+    // use a very simple AD which is the array [0] if this message is part of a longer
+    // message, and [1] if this is the final piece in a longer multi-part message.
+    // Reordering of messages/etc should all be caught by Noise's internal MAC-ing.
+    const uint8_t ad[1] = {static_cast<uint8_t>(
+        start + max_message_size >= ciphertext.size() ? 1 : 0)};
+    if (NOISE_ERROR_NONE != noise_cipherstate_decrypt_with_ad(
+          cs, ad, with_length_verifying_ad ? 1 : 0, &buf)) {
       return std::make_pair("", COUNTED_ERROR(Peers_Decrypt));
     }
     plaintext_start += buf.size;

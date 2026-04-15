@@ -82,7 +82,7 @@ error::Error Peer::Send(
   if (!msg.SerializeToString(&serialized)) {
     return COUNTED_ERROR(Peers_EncryptSerialize);
   }
-  auto [ciphertext, err] = noise::Encrypt(tx_.get(), serialized);
+  auto [ciphertext, err] = noise::Encrypt(tx_.get(), serialized, true);
   if (err != error::OK) {
     // An encryption error probably means bad noise state, which is unrecoverable.
     InternalDisconnect();
@@ -128,7 +128,7 @@ error::Error Peer::Recv(
         SendRst(ctx, id_);
         return COUNTED_ERROR(Peers_DataNotConnected);
       }
-      auto [plaintext, err] = noise::Decrypt(rx_.get(), msg.data());
+      auto [plaintext, err] = noise::Decrypt(rx_.get(), msg.data(), true);
       if (err != error::OK) {
         // A decryption error probably means bad noise state, which is unrecoverable.
         InternalDisconnect();

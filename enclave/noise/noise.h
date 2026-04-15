@@ -68,9 +68,9 @@ inline CipherState WrapCipherState(NoiseCipherState* s) {
 }
 
 // Encrypt the given string.
-std::pair<std::string, error::Error> Encrypt(NoiseCipherState* cs, const std::string& plaintext);
+std::pair<std::string, error::Error> Encrypt(NoiseCipherState* cs, const std::string& plaintext, bool with_length_verifying_ad);
 // Decrypt the given string.
-std::pair<std::string, error::Error> Decrypt(NoiseCipherState* cs, const std::string& ciphertext);
+std::pair<std::string, error::Error> Decrypt(NoiseCipherState* cs, const std::string& ciphertext, bool with_length_verifying_ad);
 
 }  // namespace svr2::noise
 

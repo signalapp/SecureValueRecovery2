@@ -12,6 +12,17 @@
 
 namespace svr2::client {
 
+// If this boolean is set to true, clients will utilize ADs during
+// multipart noise message encryption to verify that messages are not
+// truncated.  Changing this, though, does require a client-side
+// change, so it's currently off.  Within normal SVR operation, though,
+// clients should never send messages large enough to allow for truncation,
+// so this default is safe (at least for current DB implementations).
+//
+// Note that when talking enclave-to-enclave, larger messages are the norm,
+// hence for peer communication, we do always utilize length-verifying ADs.
+const bool NOISE_VERIFY_LENGTH_WITH_AD = false;
+
 static std::atomic<uint64_t> id_gen{1};
 
 const NoiseProtocolId client_protocol = {
@@ -121,7 +132,7 @@ error::Error Client::DecryptRequest(context::Context* ctx, const std::string& da
   if (hs_.get() || !tx_.get() || !rx_.get()) {
     return COUNTED_ERROR(Client_DecryptState);
   }
-  auto [plaintext, err] = noise::Decrypt(rx_.get(), data);
+  auto [plaintext, err] = noise::Decrypt(rx_.get(), data, NOISE_VERIFY_LENGTH_WITH_AD);
   if (err != error::OK) {
     return err;
   }
@@ -141,7 +152,7 @@ std::pair<std::string, error::Error> Client::EncryptResponse(context::Context* c
   if (!response.SerializeToString(&plaintext)) {
     return std::make_pair("", COUNTED_ERROR(Client_EncryptSerialize));
   }
-  return noise::Encrypt(tx_.get(), plaintext);
+  return noise::Encrypt(tx_.get(), plaintext, NOISE_VERIFY_LENGTH_WITH_AD);
 }
 
 std::pair<Client*, error::Error> ClientManager::NewClient(

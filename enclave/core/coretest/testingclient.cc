@@ -8,6 +8,7 @@
 
 #include "testingcore.h"
 #include "util/bytes.h"
+#include "client/client.h"
 
 #define NOISE_OK(x)                                               \
   do {                                                            \
@@ -51,7 +52,7 @@ void TestingClient::RequestBackup(SecretData data, PIN pin, uint32_t tries) {
   // serialize and encrypt
   std::string req_str;
   ASSERT_TRUE(req.SerializeToString(&req_str));
-  auto [ciphertext, encrypt_err] = noise::Encrypt(tx_.get(), req_str);
+  auto [ciphertext, encrypt_err] = noise::Encrypt(tx_.get(), req_str, client::NOISE_VERIFY_LENGTH_WITH_AD);
   ASSERT_EQ(error::OK, encrypt_err);
   ASSERT_EQ(error::OK,
             core_.ExistingClientRequest(this, client_id_, ciphertext));
@@ -68,7 +69,7 @@ void TestingClient::RequestExpose(SecretData data) {
   // serialize and encrypt
   std::string req_str;
   ASSERT_TRUE(req.SerializeToString(&req_str));
-  auto [ciphertext, encrypt_err] = noise::Encrypt(tx_.get(), req_str);
+  auto [ciphertext, encrypt_err] = noise::Encrypt(tx_.get(), req_str, client::NOISE_VERIFY_LENGTH_WITH_AD);
   ASSERT_EQ(error::OK, encrypt_err);
   ASSERT_EQ(error::OK,
             core_.ExistingClientRequest(this, client_id_, ciphertext));
@@ -85,7 +86,7 @@ void TestingClient::RequestRestore(PIN pin) {
   // serialize and encrypt
   std::string req_str;
   ASSERT_TRUE(req.SerializeToString(&req_str));
-  auto [ciphertext, encrypt_err] = noise::Encrypt(tx_.get(), req_str);
+  auto [ciphertext, encrypt_err] = noise::Encrypt(tx_.get(), req_str, client::NOISE_VERIFY_LENGTH_WITH_AD);
   ASSERT_EQ(error::OK, encrypt_err);
   ASSERT_EQ(error::OK,
             core_.ExistingClientRequest(this, client_id_, ciphertext));
@@ -101,7 +102,7 @@ void TestingClient::RequestTries() {
   // serialize and encrypt
   std::string req_str;
   ASSERT_TRUE(req.SerializeToString(&req_str));
-  auto [ciphertext, encrypt_err] = noise::Encrypt(tx_.get(), req_str);
+  auto [ciphertext, encrypt_err] = noise::Encrypt(tx_.get(), req_str, client::NOISE_VERIFY_LENGTH_WITH_AD);
   ASSERT_EQ(error::OK, encrypt_err);
   ASSERT_EQ(error::OK,
             core_.ExistingClientRequest(this, client_id_, ciphertext));
@@ -153,7 +154,7 @@ void TestingClient::FinishHandshake(ExistingClientReply ecr) {
 
 void TestingClient::DecryptClientReply(ExistingClientReply ecr,
                                        client::Response* rsp) {
-  auto [plaintext, decrypt_err] = noise::Decrypt(rx_.get(), ecr.data());
+  auto [plaintext, decrypt_err] = noise::Decrypt(rx_.get(), ecr.data(), client::NOISE_VERIFY_LENGTH_WITH_AD);
   ASSERT_EQ(error::OK, decrypt_err);
 
   ASSERT_TRUE(rsp->ParseFromString(plaintext));
