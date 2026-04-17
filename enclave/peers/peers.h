@@ -102,7 +102,7 @@ class Peer {
   // Disconnect the peer.
   void Disconnect(context::Context* ctx) EXCLUDES(mu_);
   // Disconnect the peer if its attestation timestamp is out of date.
-  void MaybeDisconnectIfAttestationTooOld(context::Context* ctx, util::UnixSecs now, util::UnixSecs attestation_timeout) EXCLUDES(mu_);
+  bool MaybeDisconnectIfAttestationTooOld(context::Context* ctx, util::UnixSecs now, util::UnixSecs attestation_timeout) EXCLUDES(mu_);
   
   PeerState CurrentState(context::Context* ctx) const EXCLUDES(mu_);
   void PopulateConnectionStatus(context::Context* ctx, ConnectionStatus* status) const EXCLUDES(mu_);
@@ -236,7 +236,8 @@ class PeerManager {
   std::set<peerid::PeerID> AllPeers(context::Context* ctx) const;
   void PeerStatus(context::Context* ctx, const peerid::PeerID& id, ConnectionStatus* status) const;
 
-  void SetPeerAttestationTimestamp(context::Context* ctx, util::UnixSecs secs, util::UnixSecs attestation_timeout) EXCLUDES(mu_);
+  // Returns true if any peers were disconnected due to the attestation timestamp change.
+  bool SetPeerAttestationTimestamp(context::Context* ctx, util::UnixSecs secs, util::UnixSecs attestation_timeout) EXCLUDES(mu_);
   util::UnixSecs CurrentTime() const { return time_.load(); }
 
   void MinimumsUpdated(context::Context* ctx) EXCLUDES(mu_);

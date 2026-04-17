@@ -148,9 +148,10 @@ class Core {
   void HandleTimerTick(context::Context* ctx, const TimerTick& tick);
     // Update our group-based concept of time.
     void MaybeUpdateGroupTime(context::Context* ctx) EXCLUDES(raft_.mu);
+      void MaybeUpdateGroupTimeLocked(context::Context* ctx) REQUIRES(raft_.mu);
  public_for_test:
-      // Return the set of peers that should participate in a group time calculation
-      std::set<peerid::PeerID> GroupTimeParticipants(context::Context* ctx) EXCLUDES(raft_.mu);
+        // Return the set of peers that should participate in a group time calculation
+        std::set<peerid::PeerID> GroupTimeParticipants(context::Context* ctx, size_t* remotes_required_for_voting_quorum) REQUIRES(raft_.mu);
  private:
     // If we're in Raft with some other replicas but don't yet have peer connections
     // to them, try to establish them.
@@ -254,6 +255,7 @@ class Core {
   merkle::Tree merkle_tree_ GUARDED_BY(raft_.mu);
 
   internal::Raft raft_;
+  bool peers_attested_with_raft_quorum_timestamp_ GUARDED_BY(raft_.mu);
   const enclaveconfig::DatabaseVersion db_version_;
   const db::DB::Protocol* const db_protocol_;
   groupclock::Clock clock_;

@@ -2981,7 +2981,7 @@ TEST_F(CoreTest, DB4NewNodeReplication) {
   EXPECT_EQ(h1.commit_idx(), h2.commit_idx());
 }
 
-TEST_F(CoreTest, GroupTimeParticipants) {
+TEST_F(CoreTest, GroupTimeParticipants) NO_THREAD_SAFETY_ANALYSIS {
   auto [core1, err1] = Core::Create(ctx, valid_init_config);
   ASSERT_EQ(err1, error::OK);
   auto [core2, err2] = Core::Create(ctx, valid_init_config);
@@ -2996,6 +2996,14 @@ TEST_F(CoreTest, GroupTimeParticipants) {
   cores[core2->ID()] = core2.get();
   cores[core3->ID()] = core3.get();
 
+  size_t remotes = 0;
+  {
+    LOG(INFO) << "\n\nPre-raft";
+    context::Context ctx;
+    std::set<peerid::PeerID> want{};
+    ASSERT_EQ(want, core1->GroupTimeParticipants(&ctx, &remotes));
+    ASSERT_EQ(remotes, SIZE_MAX);
+  }
   {
     LOG(INFO) << "\n\nSet up as one-replica Raft on core 1";
     UntrustedMessage msg;
@@ -3013,7 +3021,7 @@ TEST_F(CoreTest, GroupTimeParticipants) {
     ASSERT_EQ(resp.status(), error::OK);
 
     std::set<peerid::PeerID> want{};
-    ASSERT_EQ(want, core1->GroupTimeParticipants(&ctx));
+    ASSERT_EQ(want, core1->GroupTimeParticipants(&ctx, &remotes));
   }
 
   {
@@ -3034,7 +3042,7 @@ TEST_F(CoreTest, GroupTimeParticipants) {
     ASSERT_EQ(resp.status(), error::OK);
 
     std::set<peerid::PeerID> want{};  // core2 isn't voting yet
-    ASSERT_EQ(want, core1->GroupTimeParticipants(&ctx));
+    ASSERT_EQ(want, core1->GroupTimeParticipants(&ctx, &remotes));
   }
 
   {
@@ -3054,7 +3062,7 @@ TEST_F(CoreTest, GroupTimeParticipants) {
     ASSERT_EQ(resp.status(), error::OK);
 
     std::set<peerid::PeerID> want{ core2->ID() };
-    ASSERT_EQ(want, core1->GroupTimeParticipants(&ctx));
+    ASSERT_EQ(want, core1->GroupTimeParticipants(&ctx, &remotes));
   }
 
   {
@@ -3076,7 +3084,7 @@ TEST_F(CoreTest, GroupTimeParticipants) {
 
     // core3 has joined but is not voting, use only core2.
     std::set<peerid::PeerID> want{ core2->ID() };
-    ASSERT_EQ(want, core1->GroupTimeParticipants(&ctx));
+    ASSERT_EQ(want, core1->GroupTimeParticipants(&ctx, &remotes));
   }
 
   {
@@ -3099,7 +3107,7 @@ TEST_F(CoreTest, GroupTimeParticipants) {
     // It should fall back to using all connected peers, which in this
     // case is core3.
     std::set<peerid::PeerID> want{ };  // core3 is not voting
-    ASSERT_EQ(want, core1->GroupTimeParticipants(&ctx));
+    ASSERT_EQ(want, core1->GroupTimeParticipants(&ctx, &remotes));
   }
 
   {
@@ -3121,7 +3129,7 @@ TEST_F(CoreTest, GroupTimeParticipants) {
     // core1 has disconnected from all cores, it should just use
     // its own local time.
     std::set<peerid::PeerID> want{};
-    ASSERT_EQ(want, core1->GroupTimeParticipants(&ctx));
+    ASSERT_EQ(want, core1->GroupTimeParticipants(&ctx, &remotes));
   }
 
   {
@@ -3143,7 +3151,7 @@ TEST_F(CoreTest, GroupTimeParticipants) {
     // core1 has disconnected from all cores, it should just use
     // its own local time.
     std::set<peerid::PeerID> want{ };  // core3 is not voting
-    ASSERT_EQ(want, core1->GroupTimeParticipants(&ctx));
+    ASSERT_EQ(want, core1->GroupTimeParticipants(&ctx, &remotes));
   }
 
   {
@@ -3165,7 +3173,7 @@ TEST_F(CoreTest, GroupTimeParticipants) {
     // core1 has disconnected from all cores, it should just use
     // its own local time.
     std::set<peerid::PeerID> want{ core2->ID() };
-    ASSERT_EQ(want, core1->GroupTimeParticipants(&ctx));
+    ASSERT_EQ(want, core1->GroupTimeParticipants(&ctx, &remotes));
   }
 
   {
@@ -3185,7 +3193,7 @@ TEST_F(CoreTest, GroupTimeParticipants) {
     ASSERT_EQ(resp.status(), error::OK);
 
     std::set<peerid::PeerID> want{ core2->ID(), core3->ID() };
-    ASSERT_EQ(want, core1->GroupTimeParticipants(&ctx));
+    ASSERT_EQ(want, core1->GroupTimeParticipants(&ctx, &remotes));
   }
 
 }

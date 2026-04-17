@@ -98,6 +98,7 @@ static bool ContainsMe(const peerid::PeerID& me, const raft::ReplicaGroup& group
  
 Core::Core(const enclaveconfig::RaftGroupConfig& group_config)
     : raft_config_template_(group_config),
+      peers_attested_with_raft_quorum_timestamp_(false),
       db_version_(group_config.db_version()),
       db_protocol_(db::DB::P(group_config.db_version())),
       e2e_txn_id_(0) {
@@ -479,6 +480,7 @@ void Core::HandleCreateNewRaftGroupRequest(context::Context* ctx, internal::Tran
   raft_.loaded.UpdateLastAppliedLog(ctx, 0);
   GAUGE(core, last_index_applied_to_db)->Set(0);
   RaftStep(ctx);
+  MaybeUpdateGroupTimeLocked(ctx);
   ReplyWithError(ctx, tx, error::OK);
 }
 
@@ -495,6 +497,7 @@ void Core::HandleJoinRaft(context::Context* ctx, const JoinRaftRequest& msg, int
     return;
   }
   raft_.ClearState();
+  peers_attested_with_raft_quorum_timestamp_ = false;
   raft_.state = svr2::RAFTSTATE_WAITING_FOR_FIRST_CONNECTION;
   raft_.waiting_for_first_connection = {
     .peer = peer,
@@ -633,6 +636,7 @@ void Core::RequestRaftReplication(context::Context* ctx) {
         }
         ACQUIRE_LOCK(raft_.mu, ctx, lock_core_raft);
         IDLOG(INFO) << "finished replicating database, fully loaded " << raft_.loading.db->row_count() << " rows";
+        MaybeUpdateGroupTimeLocked(ctx);
         PromoteRaftToLoaded(ctx);
       });
 }
@@ -904,9 +908,9 @@ void Core::HandleTimerTick(context::Context* ctx, const TimerTick& tick) {
   auto time = tick.new_timestamp_unix_secs();
   clock_.SetLocalTime(time);
   GAUGE(core, current_local_time)->Set(time);
-  MaybeUpdateGroupTime(ctx);
   timeout_.TimerTick(ctx);
   ACQUIRE_LOCK(raft_.mu, ctx, lock_core_raft);
+  MaybeUpdateGroupTimeLocked(ctx);
   if (raft_.state == svr2::RAFTSTATE_LOADED_PART_OF_GROUP) {
     ConnectToRaftMembers(ctx);
     {
@@ -929,29 +933,51 @@ void Core::HandleTimerTick(context::Context* ctx, const TimerTick& tick) {
 }
 
 void Core::MaybeUpdateGroupTime(context::Context* ctx) {
-  MEASURE_CPU(ctx, cpu_core_updating_group_time);
-  std::set<peerid::PeerID> peers = GroupTimeParticipants(ctx);
-  auto ts = clock_.GetTime(ctx, peers);
-  GAUGE(core, current_groupclock_time)->Set(ts);
-  peer_manager_->SetPeerAttestationTimestamp(ctx, ts, raft_config_template_.attestation_timeout());
+  ACQUIRE_LOCK(raft_.mu, ctx, lock_core_raft);
+  MaybeUpdateGroupTimeLocked(ctx);
 }
 
-std::set<peerid::PeerID> Core::GroupTimeParticipants(context::Context* ctx) {
+void Core::MaybeUpdateGroupTimeLocked(context::Context* ctx) {
+  MEASURE_CPU(ctx, cpu_core_updating_group_time);
+  // We loop here since GroupTimeParticipants is based on only connected
+  // peers, but peer_manager_->SetPeerAttestationTimestamp can disconnect
+  // peers.  Note that it can only disconnect them, and only if they're
+  // already connected.  So this loop should not be infinite... it will
+  // only keep looping if it disconnects peers, and there are a finite
+  // (small) number of them.
+  util::UnixSecs ts;
+  do {
+    size_t remote_peers_required_for_voting_quorum = SIZE_MAX;
+    std::set<peerid::PeerID> peers = GroupTimeParticipants(ctx, &remote_peers_required_for_voting_quorum);
+    size_t remote_peers_used = 0;
+    ts = clock_.GetTime(ctx, peers, &remote_peers_used);
+    GAUGE(core, current_groupclock_time)->Set(ts);
+    peers_attested_with_raft_quorum_timestamp_ = remote_peers_used >= remote_peers_required_for_voting_quorum;
+    LOG(DEBUG) << "MaybeUpdateGroupTime updating with time:" << ts << " remote_peers_used:" << remote_peers_used << " remote_peers_required_for_voting_quorum:" << remote_peers_required_for_voting_quorum;
+  } while (peer_manager_->SetPeerAttestationTimestamp(
+        ctx, ts, raft_config_template_.attestation_timeout()));
+}
+
+std::set<peerid::PeerID> Core::GroupTimeParticipants(context::Context* ctx, size_t* remote_peers_required_for_voting_quorum) {
   std::set<peerid::PeerID> connected_peers = peer_manager_->ConnectedPeers(ctx);
   std::set<peerid::PeerID> voting_peers;
-  {
-    ACQUIRE_LOCK(raft_.mu, ctx, lock_core_raft);
-    switch (raft_.state) {
-      case RAFTSTATE_LOADED_PART_OF_GROUP:
-      case RAFTSTATE_LOADED_REQUESTING_MEMBERSHIP:
-        voting_peers = raft_.loaded.raft->membership().voting_replicas();
-        break;
-      case RAFTSTATE_LOADING:
-        voting_peers = raft_.loading.mem->voting_replicas();
-        break;
-      default:
-        break;
-    }
+  *remote_peers_required_for_voting_quorum = SIZE_MAX;
+  switch (raft_.state) {
+    case RAFTSTATE_LOADED_PART_OF_GROUP:
+    case RAFTSTATE_LOADED_REQUESTING_MEMBERSHIP:
+      voting_peers = raft_.loaded.raft->membership().voting_replicas();
+      *remote_peers_required_for_voting_quorum = voting_peers.size();
+      if (raft_.loaded.raft->voting()) {
+        // We're one of the voting members, and we will use our own timestamp.
+        *remote_peers_required_for_voting_quorum -= 1;
+      }
+      break;
+    case RAFTSTATE_LOADING:
+      voting_peers = raft_.loading.mem->voting_replicas();
+      *remote_peers_required_for_voting_quorum = voting_peers.size();
+      break;
+    default:
+      break;
   }
 
   // If we have no voting replicas, we always just use our own clock.
@@ -1203,9 +1229,10 @@ error::Error Core::HandleReplicateStateRequest(context::Context* ctx, const peer
   ACQUIRE_LOCK(raft_.mu, ctx, lock_core_raft);
   if (raft_.state != svr2::RAFTSTATE_LOADED_PART_OF_GROUP) {
     return SendE2EError(ctx, target, req.request_id(), COUNTED_ERROR(Replicate_RaftState));
-  }
-  if (msg.group_id() != raft_.loaded.raft->group_id()) {
+  } else if (msg.group_id() != raft_.loaded.raft->group_id()) {
     return SendE2EError(ctx, target, req.request_id(), COUNTED_ERROR(Replicate_GroupMismatch));
+  } else if (!peers_attested_with_raft_quorum_timestamp_) {
+    return SendE2EError(ctx, target, req.request_id(), COUNTED_ERROR(Core_RefusingWithoutQuorumTimestamp));
   }
   // push_state will live for the duration of this replication.
   auto push_state = std::make_shared<Core::ReplicationPushState>(
@@ -1411,6 +1438,8 @@ error::Error Core::HandleRequestRaftMembership(context::Context* ctx, const peer
   ACQUIRE_LOCK(raft_.mu, ctx, lock_core_raft);
   if (raft_.state != svr2::RAFTSTATE_LOADED_PART_OF_GROUP) {
     return COUNTED_ERROR(Core_RaftState);
+  } else if (!peers_attested_with_raft_quorum_timestamp_) {
+    return COUNTED_ERROR(Core_RefusingWithoutQuorumTimestamp);
   }
   std::string peer_string = from.AsString();
   raft::ReplicaGroup g = raft_.loaded.raft->membership().AsProto();
@@ -1435,11 +1464,12 @@ error::Error Core::HandleRequestRaftVoting(context::Context* ctx, const peerid::
   ACQUIRE_LOCK(raft_.mu, ctx, lock_core_raft);
   if (raft_.state != svr2::RAFTSTATE_LOADED_PART_OF_GROUP) {
     return COUNTED_ERROR(Core_RaftState);
-  }
-  if (raft_.loaded.raft->membership().all_replicas().count(from) != 1) {
+  } else if (raft_.loaded.raft->membership().all_replicas().count(from) != 1) {
     return COUNTED_ERROR(Core_VotingRequestedForNonMember);
   } else if (raft_.loaded.raft->membership().voting_replicas().count(from) != 0) {
     return COUNTED_ERROR(Core_VotingRequestedForVotingMember);
+  } else if (!peers_attested_with_raft_quorum_timestamp_) {
+    return COUNTED_ERROR(Core_RefusingWithoutQuorumTimestamp);
   }
 
   // This does not respect the max_voting attribute of the RaftConfig.  That's
@@ -1467,9 +1497,10 @@ error::Error Core::HandleRaftWrite(context::Context* ctx, const std::string& dat
   ACQUIRE_LOCK(raft_.mu, ctx, lock_core_raft);
   if (raft_.state != svr2::RAFTSTATE_LOADED_PART_OF_GROUP) {
     return COUNTED_ERROR(Core_RaftState);
-  }
-  if (raft_.loaded.raft->membership().voting_replicas().size() < raft_.loaded.group_config.min_voting_replicas()) {
+  } else if (raft_.loaded.raft->membership().voting_replicas().size() < raft_.loaded.group_config.min_voting_replicas()) {
     return COUNTED_ERROR(Core_NotEnoughVotingReplicas);
+  } else if (!peers_attested_with_raft_quorum_timestamp_) {
+    return COUNTED_ERROR(Core_RefusingWithoutQuorumTimestamp);
   }
   auto log_entry = ctx->Protobuf<raft::LogEntry>();
   if (!log_entry->ParseFromString(data)) {
@@ -1809,6 +1840,9 @@ void Core::HandleRaftMembershipChange(
       CHECK(nullptr == "in HandleRaftMembershipChange but not part of group or requesting membership");
       break;
   }
+  // A potential change in leadership may have affected the quorum of
+  // voting replicas, which we use for time calculation.
+  MaybeUpdateGroupTimeLocked(ctx);
 }
 
 void Core::HandleRaftMinimumsChange(

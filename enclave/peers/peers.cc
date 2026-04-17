@@ -451,7 +451,7 @@ error::Error Peer::CheckNextAttestation(context::Context* ctx, const e2e::Attest
   return error::OK;
 }
 
-void Peer::MaybeDisconnectIfAttestationTooOld(context::Context* ctx, util::UnixSecs now, util::UnixSecs attestation_timeout) {
+bool Peer::MaybeDisconnectIfAttestationTooOld(context::Context* ctx, util::UnixSecs now, util::UnixSecs attestation_timeout) {
   ACQUIRE_LOCK(mu_, ctx, lock_peer);
   auto state = InternalCurrentState();
   if (// If we're already disconnected ...
@@ -461,11 +461,12 @@ void Peer::MaybeDisconnectIfAttestationTooOld(context::Context* ctx, util::UnixS
       // ... or we're connecting and we haven't yet received a synack with an attestation ...
       (state == PEER_CONNECTING && last_attestation_ == 0)) {
     // ... then there's no need for us to disconnect due to attestation timestamp.
-    return;
+    return false;
   }
   LOG(WARNING) << "Attestation for " << id_ << " too old (ts=" << last_attestation_ << ", now=" << now << "), disconnecting";
   InternalDisconnect();
   SendRst(ctx, id_);
+  return true;
 }
 
 void Peer::PopulateConnectionStatus(context::Context* ctx, ConnectionStatus* status) const {
@@ -716,17 +717,21 @@ std::set<peerid::PeerID> PeerManager::AllPeers(context::Context* ctx) const {
   return out;
 }
 
-void PeerManager::SetPeerAttestationTimestamp(context::Context* ctx, util::UnixSecs secs, util::UnixSecs attestation_timeout) {
+bool PeerManager::SetPeerAttestationTimestamp(context::Context* ctx, util::UnixSecs secs, util::UnixSecs attestation_timeout) {
   auto old_secs = time_.exchange(secs);
   if (old_secs == secs) {
-    return;
+    return false;
   } else if (old_secs > secs) {
     LOG(WARNING) << "PeerManager timestamp went backwards: " << old_secs << " -> " << secs;
   }
   ACQUIRE_LOCK(mu_, ctx, lock_peermanager);
+  bool any_peers_disconnected = false;
   for (auto iter = peers_.begin(); iter != peers_.end(); ++iter) {
-    iter->second->MaybeDisconnectIfAttestationTooOld(ctx, secs, attestation_timeout);
+    if (iter->second->MaybeDisconnectIfAttestationTooOld(ctx, secs, attestation_timeout)) {
+      any_peers_disconnected = true;
+    }
   }
+  return any_peers_disconnected;
 }
 
 void PeerManager::MinimumsUpdated(context::Context* ctx) {

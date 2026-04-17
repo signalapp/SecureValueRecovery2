@@ -18,7 +18,7 @@ void Clock::SetRemoteTime(context::Context* ctx, const peerid::PeerID& peer, uti
   remotes_[peer] = secs;
 }
 
-util::UnixSecs Clock::GetTime(context::Context* ctx, const std::set<peerid::PeerID>& remotes) const {
+util::UnixSecs Clock::GetTime(context::Context* ctx, const std::set<peerid::PeerID>& remotes, size_t* remotes_used) const {
   std::vector<util::UnixSecs> secs(1 /* local_ */ + remotes.size());
   ACQUIRE_LOCK(mu_, ctx, lock_groupclock);
   auto set_iter = remotes.begin();
@@ -39,6 +39,7 @@ util::UnixSecs Clock::GetTime(context::Context* ctx, const std::set<peerid::Peer
     }
   }
   secs.resize(secs_size);
+  *remotes_used = secs_size - 1;
   // `secs` now contains a list of my timestamp and the timestamps of all
   // peers in `remotes` that we've received a timestamp from.  Get the median.
   std::sort(secs.begin(), secs.end());

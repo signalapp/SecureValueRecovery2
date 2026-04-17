@@ -23,7 +23,7 @@ class Clock {
   Clock() : local_(0) {};
   void SetLocalTime(util::UnixSecs secs);
   void SetRemoteTime(context::Context* ctx, const peerid::PeerID& peer, util::UnixSecs secs) EXCLUDES(mu_);
-  util::UnixSecs GetTime(context::Context* ctx, const std::set<peerid::PeerID>& remotes) const EXCLUDES(mu_);
+  util::UnixSecs GetTime(context::Context* ctx, const std::set<peerid::PeerID>& remotes, size_t* remotes_used) const EXCLUDES(mu_);
   util::UnixSecs GetLocalTime() const;
 
  private:
