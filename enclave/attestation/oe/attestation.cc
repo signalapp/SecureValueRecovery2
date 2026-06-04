@@ -6,6 +6,8 @@
 #include <openenclave/attestation/custom_claims.h>
 #include <openenclave/attestation/verifier.h>
 #include <openenclave/attestation/sgx/evidence.h>
+#include <openenclave/bits/attestation.h>
+#include <rapidjson/document.h>
 
 #include <array>
 
@@ -96,6 +98,27 @@ std::pair<oe_claim_t*, size_t> VerifyAndReadClaims(
   }
 
   return std::make_pair(claims, claims_length);
+}
+
+error::Error TcbEvaluationDataNumber(
+    const oe_claim_t* claims, size_t claims_length, uint64_t* tcb_evaluation_number) {
+  const oe_claim_t* claim;
+  if (claim = attestation::FindClaim(claims, claims_length,
+                                     OE_CLAIM_SGX_TCB_INFO);
+      claim == nullptr) {
+    LOG(ERROR) << "Unable to find OE_SGX_ENDORSEMENT_FIELD_TCB_INFO in claims";
+    return COUNTED_ERROR(Env_AttestationFailure);
+  }
+  rapidjson::Document d;
+  if (rapidjson::ParseResult ok = d.Parse(reinterpret_cast<const char*>(claim->value), claim->value_size); !ok) {
+    LOG(ERROR) << "Unable to parse TCB info: " << ok.Code();
+    return COUNTED_ERROR(Env_AttestationFailure);
+  } else if (!d.HasMember("tcbEvaluationDataNumber") || !d["tcbEvaluationDataNumber"].IsInt()) {
+    LOG(ERROR) << "Unable to get tcbEvaluationDataNumber from TCB info";
+    return COUNTED_ERROR(Env_AttestationFailure);
+  }
+  *tcb_evaluation_number = d["tcbEvaluationDataNumber"].GetInt();
+  return error::OK;
 }
 
 };  // namespace svr2::attestation

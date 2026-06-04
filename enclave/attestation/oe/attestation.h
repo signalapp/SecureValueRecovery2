@@ -47,6 +47,9 @@ error::Error ReadKeyFromVerifiedClaims(oe_claim_t* claims, size_t claims_length,
 std::pair<oe_claim_t*, size_t> VerifyAndReadClaims(
     const std::string& evidence, const std::string& endorsements);
 
+error::Error TcbEvaluationDataNumber(
+    const oe_claim_t* claims, size_t claims_length, uint64_t* tcb_evaluation_number);
+
 };  // namespace svr2::attestation
 
 

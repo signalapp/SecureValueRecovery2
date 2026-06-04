@@ -18,6 +18,7 @@
 #include "util/constant.h"
 #include "util/log.h"
 #include "util/bytes.h"
+#include "minimums/minimums.h"
 
 namespace svr2::env {
 namespace sgx {
@@ -192,6 +193,13 @@ class Environment : public ::svr2::env::Environment {
     if (error::OK != err) {
       return std::make_pair(out, err);
     }
+
+    uint64_t tcb_evaluation_number = 0;
+    if (auto err = attestation::TcbEvaluationDataNumber(claims, claims_length, &tcb_evaluation_number); err != error::OK) {
+      return std::make_pair(out, err);
+    }
+    (*out.mutable_minimum_values()->mutable_val())["sgx_tcb_evaluation_data_number"] =
+        minimums::Minimums::U64(tcb_evaluation_number);
 
     PublicKey key;
     err = attestation::ReadKeyFromVerifiedClaims(claims, claims_length, &key);
