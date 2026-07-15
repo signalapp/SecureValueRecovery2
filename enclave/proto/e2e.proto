@@ -10,6 +10,7 @@ option optimize_for = LITE_RUNTIME;
 import "raft.proto";
 import "error.proto";
 import "enclaveconfig.proto";
+import "minimums.proto";
 
 //
 // transactions
@@ -78,6 +79,7 @@ message TransactionResponse {
 message GetRaftResponse {
   enclaveconfig.RaftGroupConfig group_config = 1;
   raft.ReplicaGroup replica_group = 2;
+  minimums.MinimumLimits minimum_limits = 3;
 }
 
 message DB2RowState {
@@ -172,4 +174,6 @@ message ReplicateStatePush {
   // This may be set even if this response doesn't contain
   // logs up to the point of the commit idx.
   raft.ReplicaGroup committed_membership = 7;
+
+  minimums.MinimumLimits minimum_limits = 8;
 }

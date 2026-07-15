@@ -10,6 +10,7 @@ namespace svr2::minimums {
 
 error::Error Minimums::UpdateLimits(context::Context* ctx, const MinimumLimits& s) {
   ACQUIRE_LOCK(mu_, ctx, lock_minimums_updateset);
+  bool updated = false;
   for (const auto& iter : s_.lim()) {
     if (s.lim().count(iter.first) == 0) {
       return error::Minimums_KeyMissing;
@@ -23,6 +24,7 @@ error::Error Minimums::UpdateLimits(context::Context* ctx, const MinimumLimits& 
     }
     auto finder = s_.lim().find(iter.first);
     if (finder == s_.lim().end()) {
+      updated = true;
       continue;
     }
     const auto& v_old = finder->second;
@@ -31,11 +33,23 @@ error::Error Minimums::UpdateLimits(context::Context* ctx, const MinimumLimits& 
       return error::Minimums_LimitDecreased;
     } else if (v_old.size() != v_new.size()) {
       return error::Minimums_SizeMismatch;
+    } else if (v_old != v_new) {
+      updated = true;
     }
   }
   s_ = s;
-  LOG(INFO) << "Minimums update: " << s_;
+  if (updated) {
+    LOG(INFO) << "Minimums update: " << s_;
+  } else {
+    LOG(DEBUG) << "Minimums received non-impacting update";
+  }
   return error::OK;
+}
+
+MinimumLimits Minimums::CurrentLimits() const {
+  util::unique_lock lock(mu_);
+  MinimumLimits out = s_;
+  return out;
 }
 
 error::Error Minimums::CheckValuesAgainstSet(const MinimumLimits& s, const MinimumValues& v) {

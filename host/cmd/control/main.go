@@ -53,9 +53,8 @@ var (
 			updateEnvStats bool
 		}
 		updateMinimum struct {
-			key           string
-			value         string
-			valueEncoding string
+			key   string
+			value string
 		}
 		eventLog struct {
 			filename string

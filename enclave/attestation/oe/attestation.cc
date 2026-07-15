@@ -113,11 +113,19 @@ error::Error TcbEvaluationDataNumber(
   if (rapidjson::ParseResult ok = d.Parse(reinterpret_cast<const char*>(claim->value), claim->value_size); !ok) {
     LOG(ERROR) << "Unable to parse TCB info: " << ok.Code();
     return COUNTED_ERROR(Env_AttestationFailure);
-  } else if (!d.HasMember("tcbEvaluationDataNumber") || !d["tcbEvaluationDataNumber"].IsInt()) {
+  } else if (!d.HasMember("tcbInfo")) {
+    LOG(ERROR) << "Unable to get tcbInfo from TCB info";
+    return COUNTED_ERROR(Env_AttestationFailure);
+  }
+  const auto& tcb_info = d["tcbInfo"];
+  if (!tcb_info.IsObject()) {
+    LOG(ERROR) << "tcbInfo is not an object in TCB info";
+    return COUNTED_ERROR(Env_AttestationFailure);
+  } else if (!tcb_info.HasMember("tcbEvaluationDataNumber") || !tcb_info["tcbEvaluationDataNumber"].IsInt()) {
     LOG(ERROR) << "Unable to get tcbEvaluationDataNumber from TCB info";
     return COUNTED_ERROR(Env_AttestationFailure);
   }
-  *tcb_evaluation_number = d["tcbEvaluationDataNumber"].GetInt();
+  *tcb_evaluation_number = tcb_info["tcbEvaluationDataNumber"].GetInt();
   return error::OK;
 }
 

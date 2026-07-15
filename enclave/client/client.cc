@@ -206,9 +206,9 @@ noise::DHState ClientManager::NewDHState() {
   return out;
 }
 
-error::Error ClientManager::RotateKeyAndRefreshAttestation(context::Context* ctx, const enclaveconfig::RaftGroupConfig& config) {
+error::Error ClientManager::RotateKeyAndRefreshAttestation(context::Context* ctx, const enclaveconfig::RaftGroupConfig& config, const minimums::MinimumLimits& minimum_limits) {
   auto dhstate = NewDHState();
-  auto [attestation, err] = GetAttestation(ctx, dhstate, config);
+  auto [attestation, err] = GetAttestation(ctx, dhstate, config, minimum_limits);
   if (err != error::OK) {
     COUNTER(client, key_rotate_failure)->Increment();
     return err;
@@ -225,9 +225,9 @@ error::Error ClientManager::RotateKeyAndRefreshAttestation(context::Context* ctx
   return error::OK;
 }
 
-error::Error ClientManager::RefreshAttestation(context::Context* ctx, const enclaveconfig::RaftGroupConfig& config) {
+error::Error ClientManager::RefreshAttestation(context::Context* ctx, const enclaveconfig::RaftGroupConfig& config, const minimums::MinimumLimits& minimum_limits) {
   auto [dhstate, _] = ClientArgs(ctx);
-  auto [attestation, err] = GetAttestation(ctx, dhstate, config);
+  auto [attestation, err] = GetAttestation(ctx, dhstate, config, minimum_limits);
   if (err != error::OK) {
     COUNTER(client, attestation_refresh_failure)->Increment();
     return err;
@@ -248,9 +248,10 @@ error::Error ClientManager::RefreshAttestation(context::Context* ctx, const encl
   return error::OK;
 }
 
-std::pair<e2e::Attestation, error::Error> ClientManager::GetAttestation(context::Context* ctx, const noise::DHState& dhstate, const enclaveconfig::RaftGroupConfig& config) {
+std::pair<e2e::Attestation, error::Error> ClientManager::GetAttestation(context::Context* ctx, const noise::DHState& dhstate, const enclaveconfig::RaftGroupConfig& config, const minimums::MinimumLimits& minimum_limits) {
   attestation::AttestationData att;
   att.mutable_public_key()->resize(32);
+  att.mutable_minimum_limits()->MergeFrom(minimum_limits);
   e2e::Attestation attestation;
   // get attestation for its public key
   if (NOISE_ERROR_NONE != noise_dhstate_get_public_key(

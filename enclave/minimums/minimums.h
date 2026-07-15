@@ -30,6 +30,7 @@ class Minimums {
   }
   error::Error UpdateLimits(context::Context* ctx, const MinimumLimits& s);
   error::Error CheckValues(context::Context* ctx, const MinimumValues& values) const;
+  MinimumLimits CurrentLimits() const;
   static std::string U64(uint64_t value) {
     std::string v(8, '\0');
     util::BigEndian64Bytes(value, reinterpret_cast<uint8_t*>(v.data()));

@@ -64,8 +64,8 @@ class Client {
 class ClientManager {
  public:
   ClientManager(noise::DHState dhstate, bool pq) : dhstate_(std::move(dhstate)), pq_(pq) {}
-  error::Error RefreshAttestation(context::Context* ctx, const enclaveconfig::RaftGroupConfig& config) EXCLUDES(mu_);
-  error::Error RotateKeyAndRefreshAttestation(context::Context* ctx, const enclaveconfig::RaftGroupConfig& config) EXCLUDES(mu_);
+  error::Error RefreshAttestation(context::Context* ctx, const enclaveconfig::RaftGroupConfig& config, const minimums::MinimumLimits& minimum_limits) EXCLUDES(mu_);
+  error::Error RotateKeyAndRefreshAttestation(context::Context* ctx, const enclaveconfig::RaftGroupConfig& config, const minimums::MinimumLimits& minimum_limits) EXCLUDES(mu_);
   static noise::DHState NewDHState();
 
   std::pair<Client*, error::Error> NewClient(
@@ -79,7 +79,7 @@ class ClientManager {
 
  private:
   std::pair<noise::DHState, e2e::Attestation> ClientArgs(context::Context* ctx) const EXCLUDES(mu_);
-  static std::pair<e2e::Attestation, error::Error> GetAttestation(context::Context* ctx, const noise::DHState& dhstate, const enclaveconfig::RaftGroupConfig& config);
+  static std::pair<e2e::Attestation, error::Error> GetAttestation(context::Context* ctx, const noise::DHState& dhstate, const enclaveconfig::RaftGroupConfig& config, const minimums::MinimumLimits& minimum_limits);
   
   mutable util::mutex mu_;
   noise::DHState dhstate_ GUARDED_BY(mu_);

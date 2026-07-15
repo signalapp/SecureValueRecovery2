@@ -555,6 +555,10 @@ void Core::JoinRaftFromFirstPeer(context::Context* ctx) {
           ReplyWithError(ctx, tx, mem_err);
           return;
         }
+        if (auto min_err = minimums_.UpdateLimits(ctx, got.minimum_limits()); min_err != error::OK) {
+          ReplyWithError(ctx, tx, min_err);
+          return;
+        }
         for (int i = 0; i < got.replica_group().replicas_size(); i++) {
           peerid::PeerID p;
           const auto& replica = got.replica_group().replicas(i);
@@ -582,12 +586,6 @@ void Core::JoinRaftFromFirstPeer(context::Context* ctx) {
           .load_from = peer,
           .join_tx = tx,
         };
-
-        // Reset client attestation based on new group config.
-        if (error::OK != (err = client_manager_->RefreshAttestation(ctx, raft_.loading.group_config))) {
-          ReplyWithError(ctx, tx, err);
-          return;
-        }
 
         RequestRaftReplication(ctx);
       });
@@ -637,6 +635,13 @@ void Core::RequestRaftReplication(context::Context* ctx) {
         ACQUIRE_LOCK(raft_.mu, ctx, lock_core_raft);
         IDLOG(INFO) << "finished replicating database, fully loaded " << raft_.loading.db->row_count() << " rows";
         MaybeUpdateGroupTimeLocked(ctx);
+        // Refresh attestation with potentially updated group config and minimums.
+        if (error::OK != (err = client_manager_->RefreshAttestation(ctx, raft_.loading.group_config, minimums_.CurrentLimits()))) {
+          ReplyWithError(ctx, tx, err);
+          return;
+        }
+        // Check that peers are up to current minimums.
+        peer_manager_->MinimumsUpdated(ctx);
         PromoteRaftToLoaded(ctx);
       });
 }
@@ -664,6 +669,7 @@ void Core::PromoteRaftToLoaded(context::Context* ctx) {
   raft_.loaded.UpdateLastAppliedLog(ctx, db_last_applied_log);
   GAUGE(core, last_index_applied_to_db)->Set(db_last_applied_log);
   RaftRequestMembership(ctx, loading.join_tx);
+
 }
 
 void Core::RaftRequestMembership(context::Context* ctx, internal::TransactionID tx) {
@@ -722,9 +728,10 @@ error::Error Core::HandleRefreshAttestation(context::Context* ctx, bool rotate_k
         return COUNTED_ERROR(Core_RefreshClientAttestationWithoutRaftConfig);
     }
   }
+  minimums::MinimumLimits minimum_limits = minimums_.CurrentLimits();
   return rotate_key
-      ? client_manager_->RotateKeyAndRefreshAttestation(ctx, config)
-      : client_manager_->RefreshAttestation(ctx, config);
+      ? client_manager_->RotateKeyAndRefreshAttestation(ctx, config, minimum_limits)
+      : client_manager_->RefreshAttestation(ctx, config, minimum_limits);
 }
 
 std::pair<EnclaveReplicaStatus, error::Error> Core::HandleGetEnclaveStatus(context::Context* ctx) const {
@@ -1190,6 +1197,7 @@ error::Error Core::HandleE2ETransaction(context::Context* ctx, const peerid::Pee
       }
       *out->mutable_group_config() = raft_.loaded.group_config;
       *out->mutable_replica_group() = raft_.loaded.raft->membership().AsProto();
+      *out->mutable_minimum_limits() = minimums_.CurrentLimits();
     } break;
     case e2e::TransactionRequest::kReplicateState:
       // The response to ReplicateStateRequest will be sent async, not within this transaction call.
@@ -1309,6 +1317,8 @@ void Core::SendNextReplicationState(context::Context* ctx, std::shared_ptr<Core:
     }
   }
   *out->mutable_committed_membership() = raft_.loaded.raft->committed_membership().AsProto();
+  *out->mutable_minimum_limits() = minimums_.CurrentLimits();
+
   IDLOG(INFO) << "Replication: sending " << out->entries_size() << " entries (from "
               << push_state->logs_from_idx_inclusive << ") and " << out->rows_size() << " rows to "
               << push_state->target << ", total size " << out->ByteSizeLong();
@@ -1358,6 +1368,7 @@ error::Error Core::HandleReplicateStatePush(context::Context* ctx, const e2e::Re
   error::Error err;
   std::tie(raft_.loading.mem, err) = raft::Membership::FromProto(repl.committed_membership());
   RETURN_IF_ERROR(err);
+  RETURN_IF_ERROR(minimums_.UpdateLimits(ctx, repl.minimum_limits()));
   LOG(INFO) << "received " << repl.entries_size() << " logs starting at " << repl.first_log_idx()
             << " and " << repl.rows_size() << " database rows (have " << raft_.loading.db->row_count() << " rows)";
 
@@ -1855,6 +1866,22 @@ void Core::HandleRaftMinimumsChange(
     CHECK(nullptr == "failed to update minimums from raft group");
   }
   peer_manager_->MinimumsUpdated(ctx);
+
+  enclaveconfig::RaftGroupConfig config;
+  switch (raft_.state) {
+    case svr2::RAFTSTATE_LOADING:
+      config.MergeFrom(raft_.loading.group_config);
+      break;
+    case svr2::RAFTSTATE_LOADED_REQUESTING_MEMBERSHIP:
+    case svr2::RAFTSTATE_LOADED_PART_OF_GROUP:
+      config.MergeFrom(raft_.loaded.group_config);
+      break;
+    default:
+      return;
+  }
+  if (auto err = client_manager_->RefreshAttestation(ctx, config, minimums_.CurrentLimits())) {
+    LOG(ERROR) << "Failed to refresh client attestation based on updated minimums: " << err;
+  }
 }
 
 db::DB::Effect* Core::RaftApplyLogToDatabase(
