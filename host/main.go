@@ -18,7 +18,6 @@ import (
 	"time"
 
 	metrics "github.com/hashicorp/go-metrics"
-	"github.com/hashicorp/go-metrics/datadog"
 	"google.golang.org/protobuf/encoding/prototext"
 
 	"github.com/signalapp/svr2/auth"
@@ -108,16 +107,6 @@ func main() {
 	cfg := metrics.DefaultConfig("svr2")
 	cfg.EnableHostname = false
 	cfg.EnableHostnameLabel = false
-
-	if hconfig.DatadogAgentHost != "" {
-		logger.Infof("initializing datadog at %v", hconfig.DatadogAgentHost)
-		statsdSink, err := datadog.NewDogStatsdSink(hconfig.DatadogAgentHost, "")
-		if err != nil {
-			logger.Fatalf("error initializing statsd client: %v", err)
-		}
-
-		fanoutSink = append(fanoutSink, statsdSink)
-	}
 
 	if hconfig.OtlpEnabled {
 		logger.Infof("initializing otlp")

@@ -37,8 +37,6 @@ type Config struct {
 	Peer PeerConfig `yaml:"peer"`
 	// The MRENCLAVE this host serves
 	EnclaveID string `yaml:"enclaveId"`
-	// Address to reach a datadog compatible statsd
-	DatadogAgentHost string `yaml:"datadogAgentHost"`
 	// Whether to configure OpenTelemetry Metrics
 	OtlpEnabled bool `yaml:"otlpEnabled"`
 	// TTL of initial Redis peerdb entry.
