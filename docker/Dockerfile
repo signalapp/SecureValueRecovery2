@@ -10,8 +10,8 @@ RUN rm -rf /etc/apt/sources.list.d/*
 COPY docker/sgx_runtime_libraries.sh /tmp/
 RUN /tmp/sgx_runtime_libraries.sh
 
-ARG OPENENCLAVE_VERSION=0.19.15
-ARG OPENENCLAVE_HASH=6d4344dc993f0ad28a87ed57cc483c466ea1076aa2574af161521bc552aa31d0
+ARG OPENENCLAVE_VERSION=0.19.16
+ARG OPENENCLAVE_HASH=30b72b68307cf6d57c48bb1a83bd16814316b21546101cd60a3122e2116953f8
 ADD --checksum=sha256:${OPENENCLAVE_HASH} \
     https://github.com/openenclave/openenclave/releases/download/v${OPENENCLAVE_VERSION}/Ubuntu_2204_open-enclave_${OPENENCLAVE_VERSION}_amd64.deb ./
 RUN dpkg -i Ubuntu_2204_open-enclave_${OPENENCLAVE_VERSION}_amd64.deb
