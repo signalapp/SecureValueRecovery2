@@ -131,8 +131,8 @@ CMD ["/bin/bash"]
 FROM base AS sgxrun
 
 RUN apt-get update && apt-get install -y \
-    libsgx-dcap-default-qpl=1.22.100.3-jammy1 \
-    libsgx-dcap-default-qpl-dev=1.22.100.3-jammy1 \
+    libsgx-dcap-default-qpl=1.26.100.1-jammy1 \
+    libsgx-dcap-default-qpl-dev=1.26.100.1-jammy1 \
     libcurl4 && apt-get clean
 COPY host/main /bin/svr2
 COPY enclave/releases/sgx /enclaves
