@@ -31,12 +31,17 @@ func TestSequenceNumberCmp(t *testing.T) {
 		{
 			a:    sequenceNumber{epoch: 20, seq: 1},
 			b:    sequenceNumber{epoch: 1, seq: 1},
-			want: 19,
+			want: 1,
 		},
 		{
 			a:    sequenceNumber{epoch: 1, seq: 20},
 			b:    sequenceNumber{epoch: 1, seq: 1},
-			want: 19,
+			want: 1,
+		},
+		{
+			a:    sequenceNumber{epoch: 0xF0000001, seq: 1},
+			b:    sequenceNumber{epoch: 10, seq: 1},
+			want: 1,
 		},
 	} {
 		if got := test.a.cmp(test.b); got != test.want {

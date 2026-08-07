@@ -4,6 +4,7 @@
 package peer
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 
@@ -46,10 +47,11 @@ func (s sequenceNumber) nextEpoch() sequenceNumber {
 //	== 0 if this is equal to the provided sequenceNumber
 //	 > 0 if this is greater than the provided sequenceNumber
 func (s sequenceNumber) cmp(o sequenceNumber) int {
-	if ecmp := int(int32(s.epoch - o.epoch)); ecmp != 0 {
+
+	if ecmp := cmp.Compare(s.epoch, o.epoch); ecmp != 0 {
 		return ecmp
 	}
-	return int(s.seq - o.seq)
+	return cmp.Compare(s.seq, o.seq)
 }
 
 func (s sequenceNumber) proto() *pb.SequenceNumber {
