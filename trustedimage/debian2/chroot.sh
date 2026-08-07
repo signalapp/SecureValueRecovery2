@@ -46,7 +46,7 @@ GRUB_DEVICE="/dev/mapper/verity"
 GRUB_DISABLE_LINUX_UUID="true"
 GRUB_DISABLE_LINUX_PARTUUID="true"
 GRUB_CMDLINE_LINUX_DEFAULT="panic=-1"
-GRUB_CMDLINE_LINUX="svr3verity=VERITYHASH loadpin.enabled $AZURE_CMDLINE"
+GRUB_CMDLINE_LINUX="svr3verity=VERITYHASH loadpin.enforce=1 $AZURE_CMDLINE"
 EOF
 grub-mkconfig -o /boot/grub/grub.cfg
 
