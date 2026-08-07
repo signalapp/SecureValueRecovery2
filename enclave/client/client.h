@@ -25,6 +25,7 @@ extern const NoiseProtocolId client_protocol;
 
 class Client {
  public:
+  ~Client();
   ClientID ID() const { return id_; }
   // Returns ClientHandshakeStart, with std::move semantics, so this
   // function should be used only once.
@@ -45,11 +46,9 @@ class Client {
   db::DB::ClientState* State() { return cs_.get(); }
 
  private:
-  ~Client();
   Client(std::unique_ptr<db::DB::ClientState> cs, bool pq);
   error::Error Init(const noise::DHState& dhstate, const e2e::Attestation& attestation) EXCLUDES(mu_);
   friend class ClientManager;
-  friend std::unique_ptr<Client>::deleter_type;
 
   mutable util::mutex mu_;
   ClientHandshakeStart hs_start_ GUARDED_BY(mu_);
@@ -68,7 +67,7 @@ class ClientManager {
   error::Error RotateKeyAndRefreshAttestation(context::Context* ctx, const enclaveconfig::RaftGroupConfig& config, const minimums::MinimumLimits& minimum_limits) EXCLUDES(mu_);
   static noise::DHState NewDHState();
 
-  std::pair<Client*, error::Error> NewClient(
+  std::pair<std::shared_ptr<Client>, error::Error> NewClient(
       context::Context* ctx,
       std::unique_ptr<db::DB::ClientState> cs) EXCLUDES(mu_);
   std::shared_ptr<Client> GetClient(context::Context* ctx, ClientID id) const EXCLUDES(mu_);

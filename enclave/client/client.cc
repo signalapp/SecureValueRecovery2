@@ -155,22 +155,22 @@ std::pair<std::string, error::Error> Client::EncryptResponse(context::Context* c
   return noise::Encrypt(tx_.get(), plaintext, NOISE_VERIFY_LENGTH_WITH_AD);
 }
 
-std::pair<Client*, error::Error> ClientManager::NewClient(
+std::pair<std::shared_ptr<Client>, error::Error> ClientManager::NewClient(
     context::Context* ctx,
     std::unique_ptr<db::DB::ClientState> cs) {
   MEASURE_CPU(ctx, cpu_client_hs_start);
-  std::unique_ptr<Client> c(new Client(std::move(cs), pq_));
+  std::shared_ptr<Client> c(new Client(std::move(cs), pq_));
   auto [dhstate, attestation] = ClientArgs(ctx);
   error::Error err = c->Init(dhstate, attestation);
   if (err != error::OK) {
     return std::make_pair(nullptr, err);
   }
+  auto id = c->ID();
   ACQUIRE_LOCK(mu_, ctx, lock_clientmanager);
-  Client* ptr = c.get();
-  clients_[ptr->ID()] = std::move(c);
+  clients_[id] = c;
   GAUGE(client, clients)->Set(clients_.size());
   COUNTER(client, created)->Increment();
-  return std::make_pair(ptr, error::OK);
+  return std::make_pair(c, error::OK);
 }
 
 std::shared_ptr<Client> ClientManager::GetClient(context::Context* ctx, ClientID id) const {
