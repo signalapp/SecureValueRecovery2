@@ -4,6 +4,8 @@
 package config
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,6 +19,8 @@ log:
 raft:
   tickDuration: 1000ms
   metricPollDuration: 2h
+redis:
+  password: flUFFybuNNy
 `
 	conf, err := unmarshal([]byte(yaml))
 	if err != nil {
@@ -34,5 +38,10 @@ raft:
 	if conf.Raft.MetricPollDuration != 2*time.Hour {
 		t.Errorf("conf.raft.metricPollDuration=%v, want %v", conf.Raft.MetricPollDuration, time.Hour*2)
 	}
-
+	if strings.Contains(fmt.Sprintf("%v", conf), "flUFFybuNNy") {
+		t.Errorf("does not elide password in String")
+	}
+	if strings.Contains(fmt.Sprintf("%#v", conf), "flUFFybuNNy") {
+		t.Errorf("does not elide password in GoString")
+	}
 }
