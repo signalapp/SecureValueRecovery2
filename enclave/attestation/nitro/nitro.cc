@@ -119,7 +119,8 @@ error::Error CoseSign1::ParseFromBytes(const uint8_t* in, size_t size) {
   Clear();
   CborParser p;
   CborValue array;
-  if (CborNoError != cbor_parser_init(in, size, 0, &p, &array)) {
+  if (CborNoError != cbor_parser_init(in, size, 0, &p, &array) ||
+      CborNoError != cbor_value_validate(&array, CborValidateBasic)) {
     return COUNTED_ERROR(AttestationNitro_CborError);
   }
   size_t array_size = 0;
@@ -156,6 +157,7 @@ bool CoseSign1::Valid() const {
   CborParser pheader_p;
   CborValue pheader_v;
   if (CborNoError != cbor_parser_init(protected_header.data(), protected_header.size(), 0, &pheader_p, &pheader_v) ||
+      CborNoError != cbor_value_validate(&pheader_v, CborValidateBasic) ||
       CborMapType != cbor_value_get_type(&pheader_v)) {
     return false;
   }
@@ -163,6 +165,7 @@ bool CoseSign1::Valid() const {
   if (CborNoError != cbor_value_enter_container(&pheader_v, &pheader_map)) {
     return false;
   }
+
   // Nitro promises to only have one protected header, which should be the algorithm set
   // to 384.
   ASSIGN_OR_RETURN(key, CborInt(&pheader_map));
@@ -212,6 +215,7 @@ error::Error AttestationDoc::ParseFromBytes(const uint8_t* in, size_t size) {
   CborParser payload_p;
   CborValue payload_v;
   if (CborNoError != cbor_parser_init(in, size, 0, &payload_p, &payload_v) ||
+      CborNoError != cbor_value_validate(&payload_v, CborValidateBasic) ||
       CborMapType != cbor_value_get_type(&payload_v)) {
     return COUNTED_ERROR(AttestationNitro_AttestationParse);
   }
