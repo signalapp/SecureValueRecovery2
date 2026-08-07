@@ -156,7 +156,7 @@ func startService(t *testing.T) *config.Config {
 	logger.Infof("Starting SGX service")
 	go func() {
 		defer sgx.Close()
-		Start(ctx, hconfig, auth.AlwaysAllow, sgx)
+		Start(ctx, hconfig, auth.AlwaysAllow, sgx, pb.DatabaseVersion_DATABASE_VERSION_SVR2)
 	}()
 	waitForReady(t, hconfig.ControlListenAddr, time.Minute)
 	return hconfig

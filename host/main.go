@@ -139,6 +139,7 @@ func main() {
 	} else if err = prototext.Unmarshal([]byte(os.ExpandEnv(string(configBytes))), &econfig); err != nil {
 		logger.Fatalf("error reading config (ASCII proto): %v", err)
 	}
+	dbVersion := econfig.GetGroupConfig().GetDbVersion()
 
 	var enc enclave.Enclave
 	logger.Infof("creating enclave")
@@ -176,6 +177,6 @@ func main() {
 		logger.Fatalf("invalid enclave type %q", *enclaveType)
 	}
 
-	err = service.Start(ctx, hconfig, authenticator, enc)
+	err = service.Start(ctx, hconfig, authenticator, enc, dbVersion)
 	logger.Fatalw("Shutting down", "error", err)
 }

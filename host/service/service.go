@@ -38,7 +38,7 @@ import (
 
 // Start starts all SVR components and only returns when a component has encountered an
 // unrecoverable error or the provided context has been cancelled.
-func Start(ctx context.Context, hconfig *config.Config, authenticator auth.Auth, enc enclave.Enclave) error {
+func Start(ctx context.Context, hconfig *config.Config, authenticator auth.Auth, enc enclave.Enclave, dbVersion pb.DatabaseVersion) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	g, ctx := errgroup.WithContext(ctx)
@@ -102,7 +102,7 @@ func Start(ctx context.Context, hconfig *config.Config, authenticator auth.Auth,
 			middleware.RateLimit(rateLimiter, handlers.NewWebsocket(&hconfig.Request, dispatcher)))))
 	clientMux.Handle("/v1/delete",
 		middleware.Instrument(middleware.AuthCheck(authenticator,
-			middleware.RateLimit(rateLimiter, handlers.NewDeleteBackup(dispatcher)))))
+			middleware.RateLimit(rateLimiter, handlers.NewDeleteBackup(dispatcher, dbVersion)))))
 
 	// control endpoints
 	controlMux.Handle("/control/loglevel", middleware.Instrument(handlers.NewSetLogLevel(hconfig, dispatcher)))
