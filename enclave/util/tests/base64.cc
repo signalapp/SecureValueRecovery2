@@ -63,4 +63,9 @@ TEST_F(Base64Test, Encode) {
   EXPECT_EQ(Base64Encode("M", B64STD, true), "TQ==");
 }
 
+TEST_F(Base64Test, DecodeTooHigh) {
+  std::string in("\xff");
+  ASSERT_EQ(error::Util_Base64InvalidChar, B64DecodeInline(&in, B64STD));
+}
+
 }  // namespace svr2::util

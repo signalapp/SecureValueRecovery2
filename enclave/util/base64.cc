@@ -73,7 +73,7 @@ error::Error B64DecodeInline(std::string* inout, const Base64Encoding* const enc
       }
       break;
     }
-    char c = encoding->decode[(size_t) next];
+    char c = encoding->decode[(uint8_t) next];
     if (c == -1) {
       LOG(DEBUG) << "Invalid character: " << ((int) next);
       return COUNTED_ERROR(Util_Base64InvalidChar);
