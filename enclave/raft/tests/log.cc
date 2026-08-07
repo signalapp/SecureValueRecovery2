@@ -106,4 +106,20 @@ TEST_F(LogTest, RunningOutOfSpace) {
   ASSERT_EQ(error::Raft_LogOutOfSpace, log.Append(e, 2));
 }
 
+TEST_F(LogTest, CancelDecreasesBytes) {
+  LogEntry e;
+  e.set_data("abc");
+  e.set_hash_chain("12345678901234567890123456789012");
+  e.set_term(1);
+  size_t s = Log::logentry_bytes_in_log(e);
+  ASSERT_EQ(s, 147);
+  Log log(s*3+1);
+  ASSERT_EQ(error::OK, log.Append(e, 1));
+  ASSERT_EQ(error::OK, log.Append(e, 1));
+  ASSERT_EQ(error::OK, log.Append(e, 1));
+  ASSERT_EQ(log.log_data_length_bytes(), 441);
+  log.CancelFrom(2);
+  ASSERT_EQ(log.log_data_length_bytes(), 147);
+}
+
 }  // namespace svr2::raft

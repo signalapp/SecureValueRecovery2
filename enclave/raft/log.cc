@@ -45,6 +45,9 @@ error::Error Log::CancelFrom(LogIdx from_log_idx) {
     return COUNTED_ERROR(Raft_CancelingBeforeFirst);
   }
   size_t index = from_log_idx - oldest_stored_idx_;
+  for (size_t i = index; i < entries_.size(); i++) {
+    curr_bytes_ -= logentry_bytes_in_log(entries_[i]);
+  }
   entries_.resize(index);
   return error::OK;
 }
