@@ -28,7 +28,7 @@ ENV RUSTUP_HOME=/usr/local/rustup \
 RUN yum install -y gcc
 
 RUN set -eux; \
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs/ | sh -s -- --default-toolchain ${RUST_VERSION} -y ; \
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs/ | sh -s -- --profile minimal --default-toolchain ${RUST_VERSION} -y ; \
     chmod -R a+w $RUSTUP_HOME $CARGO_HOME; \
     rustup --version; \
     cargo --version; \
@@ -123,8 +123,9 @@ ARG RUST_VERSION=1.92.0
 ADD --checksum=sha256:d2ccef59dd9f7439f2c694948069f789a044dc1addcc0803613232af8f88ee0c https://static.rust-lang.org/dist/rust-${RUST_VERSION}-x86_64-unknown-linux-gnu.tar.xz /tmp/
 RUN apt-get install -y xz-utils && \
     (cd /tmp && tar xJf /tmp/rust-${RUST_VERSION}-x86_64-unknown-linux-gnu.tar.xz) && \
-    (cd /tmp/rust-${RUST_VERSION}-x86_64-unknown-linux-gnu && ./install.sh) && \
-    (rm -fv /tmp/rust-${RUST_VERSION}-x86_64-unknown-linux-gnu.tar.xz && rm -rf /tmp/rust-${RUST_VERSION}-x86_64-unknown-linux-gnu)
+    (cd /tmp/rust-${RUST_VERSION}-x86_64-unknown-linux-gnu && ./install.sh --components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu) && \
+    (rm -fv /tmp/rust-${RUST_VERSION}-x86_64-unknown-linux-gnu.tar.xz && \
+     rm -rf /tmp/rust-${RUST_VERSION}-x86_64-unknown-linux-gnu)
 
 CMD ["/bin/bash"]
 
