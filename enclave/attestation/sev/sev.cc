@@ -355,7 +355,8 @@ std::pair<attestation_report, error::Error> ReportFromVerifiedBuffer(const std::
 
   // Use VCEK to verify signature.
   EC_KEY* ec_key_not_owned = EVP_PKEY_get0_EC_KEY(vcek_pub.get());
-  if (1 != ECDSA_do_verify(md, md_size, sig.get(), ec_key_not_owned)) {
+  if (ec_key_not_owned == nullptr ||
+      1 != ECDSA_do_verify(md, md_size, sig.get(), ec_key_not_owned)) {
     LOG(ERROR) << "SEV attestation signature verification failed";
     return std::make_pair(report, COUNTED_ERROR(AttestationSEV_SignatureVerify));
   }
