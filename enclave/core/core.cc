@@ -486,7 +486,7 @@ void Core::HandleCreateNewRaftGroupRequest(context::Context* ctx, internal::Tran
 
 void Core::HandleJoinRaft(context::Context* ctx, const JoinRaftRequest& msg, internal::TransactionID tx) {
   ACQUIRE_LOCK(raft_.mu, ctx, lock_core_raft);
-  if (raft_.state == svr2::RAFTSTATE_LOADED_PART_OF_GROUP) {
+  if (raft_.state != svr2::RAFTSTATE_NO_STATE) {
     ReplyWithError(ctx, tx, COUNTED_ERROR(Core_RaftState));
     return;
   }
