@@ -413,6 +413,7 @@ void Raft::MaybeBecomeLeader(context::Context* ctx) {
   SetRole(internal::Role::LEADER);
   leader_ = {
     .heartbeat = 0,
+    .committed_at_current_term = false,
   };
   for (auto peer : membership().all_replicas()) {
     if (peer == me_) continue;
@@ -540,6 +541,13 @@ std::pair<LogLocation, error::Error> Raft::LogRequest(context::Context* ctx, Log
         MELOG(VERBOSE) << "received ReplicaGroupRequest but not leader";
         return std::make_pair(LogLocation(), COUNTED_ERROR(Raft_AppendEntryNotLeader));
       }
+      if (!leader_.committed_at_current_term) {
+        // From https://groups.google.com/g/raft-dev/c/t4xj6dJTP6E/m/d2D9LrWRza8J?pli=1,
+        // it's important to avoid split-brain that we make sure we've committed at least
+        // one entry as leader before we accept any membership changes.
+        MELOG(ERROR) << "requesting membership when leader has not yet committed at its term";
+        return std::make_pair(LogLocation(), COUNTED_ERROR(Raft_MembershipChangePriorToFirstCommit));
+      }
       // We allow only one uncommitted membership change within uncommitted
       // logs.  If we already have one, reject this request.
       if (uncommitted_memberships_.size()) {
@@ -640,6 +648,12 @@ void Raft::MaybeAdvanceCommitIndex(context::Context* ctx) {
     LOG(VERBOSE) << "committing logs " << commit_idx_ << " to " << new_commit;
     COUNTER(raft, logs_committed)->IncrementBy(new_commit - commit_idx_);
     commit_idx_ = new_commit;
+    auto committed = log_->At(commit_idx_);
+    CHECK(committed.Valid());
+    if (!leader_.committed_at_current_term && committed.Term() == current_term_) {
+      LOG(INFO) << "Leader committed at term " << current_term_ << ", allowing membership change requests";
+      leader_.committed_at_current_term = true;
+    }
     GAUGE(raft, commit_index)->Set(commit_idx_);
     // Committing the log has the potential to commit a previously uncomitted
     // membership; check that:

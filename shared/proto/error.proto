@@ -138,6 +138,7 @@ enum Error {
   Raft_MsgTermPromised = 517;
   Raft_MsgAppendEntryIndex = 518;
   Raft_MsgLogIndexOrdering = 519;
+  Raft_MembershipChangePriorToFirstCommit = 520;
 
   DB2_NS = 600;
   DB2_ClientRequestCase = 601;

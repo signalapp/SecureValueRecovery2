@@ -81,6 +81,7 @@ struct LeaderState {
   std::map<peerid::PeerID, ReplicationState> followers;
   util::Ticks heartbeat;
   bool relinquishing;  // if true, this leader is trying to become a follower
+  bool committed_at_current_term;
 };
 
 }  // namespace internal

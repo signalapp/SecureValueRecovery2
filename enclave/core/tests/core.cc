@@ -170,14 +170,14 @@ class CoreTest : public ::testing::Test {
   // Passes back and forth all PeerMessage messages, and returns all non-PeerMessage
   // messages, until there are no more messages to pass.  The messages in SentMessages
   // are considered to be from [first].
-  PassMessagesOut PassMessages(const CoreMap& cores, Core* first, bool drop_offline=true) {
+  PassMessagesOut PassMessages(const CoreMap& cores, Core* first, bool drop_offline=true, std::function<bool()> stop_early = []{return false;}) {
     PassMessagesOut out;
     bool quiescent = false;
     std::map<peerid::PeerID, std::deque<EnclaveMessage>> to_send;
     auto first_msgs = env::test::SentMessages();
     LOG(INFO) << "### starting message passing from " << first->ID() << " with " << first_msgs.size() << " messages";
     std::move(std::begin(first_msgs), std::end(first_msgs), std::back_inserter(to_send[first->ID()]));
-    while (to_send.size()) {
+    while (to_send.size() && !stop_early()) {
       auto i = to_send.begin();
       const peerid::PeerID& from = i->first;
       std::deque<EnclaveMessage>* msgs = &i->second;
@@ -188,7 +188,7 @@ class CoreTest : public ::testing::Test {
       EnclaveMessage msg = std::move(msgs->front());
       msgs->pop_front();
       if (msg.inner_case() != EnclaveMessage::kPeerMessage) {
-        LOG(INFO) << "# non-peer message from " << from;
+        LOG(INFO) << "# OUT: non-peer message from " << from;
         out[from].push_back(std::move(msg));
         continue;
       }
@@ -200,7 +200,7 @@ class CoreTest : public ::testing::Test {
       context::Context ctx;
       auto find = cores.find(to);
       if (find == cores.end()) {
-        LOG(INFO) << "# offline recipient " << to;
+        LOG(INFO) << "# OUT: offline recipient " << to;
         if (!drop_offline) {
           out[from].push_back(std::move(msg));
         }
@@ -3358,6 +3358,150 @@ TEST_F(CoreTest, DB5NewNodeReplication) {
   EXPECT_EQ(h1.db_hash(), h2.db_hash());
   EXPECT_EQ(h1.commit_hash_chain(), h2.commit_hash_chain());
   EXPECT_EQ(h1.commit_idx(), h2.commit_idx());
+}
+
+TEST_F(CoreTest, MembershipChangeRefusedBeforeFirstLogCommitted) {
+  auto [core1, err1] = Core::Create(ctx, valid_init_config);
+  ASSERT_EQ(err1, error::OK);
+  auto [core2, err2] = Core::Create(ctx, valid_init_config);
+  ASSERT_EQ(err2, error::OK);
+  auto [core3, err3] = Core::Create(ctx, valid_init_config);
+  ASSERT_EQ(err3, error::OK);
+  auto [core4, err4] = Core::Create(ctx, valid_init_config);
+  ASSERT_EQ(err4, error::OK);
+  LOG(INFO) << "core1=" << core1->ID() << ", core2=" << core2->ID() << ", core3=" << core3->ID() << ", core4=" << core4->ID();
+
+  // Create cores map for PassMessages
+  CoreMap cores;
+  cores[core1->ID()] = core1.get();
+  cores[core2->ID()] = core2.get();
+  cores[core3->ID()] = core3.get();
+  cores[core4->ID()] = core4.get();
+
+  {
+    LOG(INFO) << "\n\nSet up as one-replica Raft on core 1";
+    UntrustedMessage msg;
+    auto host = msg.mutable_h2e_request();
+    host->set_request_id(1000);
+    host->set_create_new_raft_group(true);
+
+    context::Context ctx;
+    ASSERT_EQ(error::OK, core1->Receive(&ctx, msg));
+    auto out = env::test::SentMessages();
+    ASSERT_EQ(1, out.size());
+    auto resp = out[0].h2e_response();
+    ASSERT_EQ(resp.request_id(), 1000);
+    ASSERT_EQ(resp.inner_case(), HostToEnclaveResponse::kStatus);
+    ASSERT_EQ(resp.status(), error::OK);
+  }
+
+  {
+    LOG(INFO) << "\n\nRequest join on core 2";
+    UntrustedMessage msg;
+    auto host = msg.mutable_h2e_request();
+    host->set_request_id(1001);
+    auto req = host->mutable_join_raft();
+    core1->ID().ToString(req->mutable_peer_id());
+
+    context::Context ctx;
+    ASSERT_EQ(error::OK, core2->Receive(&ctx, msg));
+    auto out = PassMessages(cores, core2.get());
+    ASSERT_EQ(1, out[core2->ID()].size());
+    auto resp = out[core2->ID()][0].h2e_response();
+    ASSERT_EQ(resp.request_id(), 1001);
+    ASSERT_EQ(resp.inner_case(), HostToEnclaveResponse::kStatus);
+    ASSERT_EQ(resp.status(), error::OK);
+  }
+
+  {
+    LOG(INFO) << "\n\nRequest core2 vote";
+    UntrustedMessage msg;
+    auto host = msg.mutable_h2e_request();
+    host->set_request_id(1002);
+    host->set_request_voting(true);
+
+    context::Context ctx;
+    ASSERT_EQ(error::OK, core2->Receive(&ctx, msg));
+    auto out = PassMessages(cores, core2.get());
+    ASSERT_EQ(1, out[core2->ID()].size());
+    auto resp = out[core2->ID()][0].h2e_response();
+    ASSERT_EQ(resp.request_id(), 1002);
+    ASSERT_EQ(resp.inner_case(), HostToEnclaveResponse::kStatus);
+    ASSERT_EQ(resp.status(), error::OK);
+  }
+
+  {
+    LOG(INFO) << "\n\nRequest join on core 3";
+    UntrustedMessage msg;
+    auto host = msg.mutable_h2e_request();
+    host->set_request_id(1003);
+    auto req = host->mutable_join_raft();
+    core1->ID().ToString(req->mutable_peer_id());
+
+    context::Context ctx;
+    ASSERT_EQ(error::OK, core3->Receive(&ctx, msg));
+    auto out = PassMessages(cores, core3.get());
+    ASSERT_EQ(1, out[core3->ID()].size());
+    auto resp = out[core3->ID()][0].h2e_response();
+    ASSERT_EQ(resp.request_id(), 1003);
+    ASSERT_EQ(resp.inner_case(), HostToEnclaveResponse::kStatus);
+    ASSERT_EQ(resp.status(), error::OK);
+  }
+
+  {
+    LOG(INFO) << "\n\nRequest core3 vote";
+    UntrustedMessage msg;
+    auto host = msg.mutable_h2e_request();
+    host->set_request_id(1004);
+    host->set_request_voting(true);
+
+    context::Context ctx;
+    ASSERT_EQ(error::OK, core3->Receive(&ctx, msg));
+    auto out = PassMessages(cores, core3.get());
+    ASSERT_EQ(1, out[core3->ID()].size());
+    auto resp = out[core3->ID()][0].h2e_response();
+    ASSERT_EQ(resp.request_id(), 1004);
+    ASSERT_EQ(resp.inner_case(), HostToEnclaveResponse::kStatus);
+    ASSERT_EQ(resp.status(), error::OK);
+  }
+
+  EXPECT_TRUE(core1->serving());
+  EXPECT_TRUE(core1->leader());
+  EXPECT_TRUE(core2->serving());
+  EXPECT_FALSE(core2->leader());
+  EXPECT_TRUE(core3->serving());
+  EXPECT_FALSE(core3->leader());
+
+  LOG(INFO) << "\n\nElecting next leader";
+  const int max_attempts = 100;
+  for (int i = 0; i < max_attempts && !core2->leader(); i++) {
+    LOG(INFO) << "core2 tick " << i;
+    UntrustedMessage msg;
+    msg.mutable_timer_tick()->set_new_timestamp_unix_secs(i);
+
+    context::Context ctx;
+    ASSERT_EQ(error::OK, core2->Receive(&ctx, msg));
+    Core* c2 = core2.get();
+    ASSERT_EQ(0, PassMessages(cores, core2.get(), true, [c2]{return c2->leader();}).size());
+  }
+  LOG(INFO) << "\n\nCore2 is now the leader but has not yet committed its first log entry.  Creating Core4";
+  {
+    LOG(INFO) << "\n\nRequest join on core 4";
+    UntrustedMessage msg;
+    auto host = msg.mutable_h2e_request();
+    host->set_request_id(1004);
+    auto req = host->mutable_join_raft();
+    core2->ID().ToString(req->mutable_peer_id());
+
+    context::Context ctx;
+    ASSERT_EQ(error::OK, core4->Receive(&ctx, msg));
+    auto out = PassMessages(cores, core4.get());
+    ASSERT_EQ(1, out[core4->ID()].size());
+    auto resp = out[core4->ID()][0].h2e_response();
+    ASSERT_EQ(resp.request_id(), 1004);
+    ASSERT_EQ(resp.inner_case(), HostToEnclaveResponse::kStatus);
+    ASSERT_EQ(resp.status(), error::Raft_MembershipChangePriorToFirstCommit);
+  }
 }
 
 }  // namespace svr2::core

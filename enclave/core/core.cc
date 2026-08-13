@@ -692,8 +692,32 @@ void Core::RaftRequestMembership(context::Context* ctx, internal::TransactionID 
     IDLOG(VERBOSE) << "requesting raft membership from " << peer;
     SendE2ETransaction(ctx, peer, *req, true,
         [this, tx, cancel](context::Context* ctx, error::Error err, const e2e::TransactionResponse* resp) {
-          if (err != error::OK) {
-            LOG(WARNING) << "Error requesting raft membership: " << err;
+          if (err == error::Raft_MembershipChangePriorToFirstCommit) {
+            LOG(WARNING) << "Unexpected error requesting raft membership: " << err;
+            ReplyWithError(ctx, tx, err);
+            return;
+          } else if (err == error::Peers_SendBeforeConnect ||
+                     err == error::Raft_AppendEntryNotLeader ||
+                     err == error::Core_DuplicateMembershipPeer) {
+            // These happen sometimes when certain conditions occur when a valid peer
+            // attempts to add themselves and messages race between peers.
+            //
+            // - Peers_SendBeforeConnect: We send this request when we've connected
+            //       a majority of replicas rather than to all, to avoid being unable
+            //       to join based on one replica being down.  Thus, we sometimes try
+            //       to send to a peer that we haven't finished a connection to yet.
+            // - Raft_AppendEntryNotLeader: We send to all replicas because we don't
+            //       know the leader yet.  We expect this error to come back from all
+            //       non-leader replicas.
+            // - Core_DuplicateMembershipPeer: Let's say we send this request to both
+            //       the leader L and a non-leader N.  L gets it first, and sends an
+            //       update to N saying "add the peer to the membership".  If N gets
+            //       that message before ours, when ours arrives it will say "hey,
+            //       you're already in the membership", returning this error.
+            LOG(INFO) << "Expected error requesting raft membership: " << err;
+            return;
+          } else if (err != error::OK) {
+            LOG(WARNING) << "Unxpected error requesting raft membership: " << err;
             return;
           }
           AddLogTransaction(ctx, resp->raft_membership_response(), [this, tx, cancel](
