@@ -308,4 +308,17 @@ enum Error {
   DB5_ClientDataSize = 2507;
   DB5_ClientBackupIDSize = 2508;
   DB5_InvalidRequestType = 2509;
+
+  AttestationSGX_NS = 2600;
+  AttestationSGX_MissingSignerId = 2601;
+  AttestationSGX_WrongSignerId = 2602;
+  AttestationSGX_MissingAttributes = 2603;
+  AttestationSGX_DebugEnabled = 2604;
+  AttestationSGX_MissingProductId = 2605;
+  AttestationSGX_WrongProductId = 2606;
+  AttestationSGX_MissingSecurityVersion = 2607;
+  AttestationSGX_WrongSecurityVersion = 2608;
+  AttestationSGX_MissingIdVersion = 2609;
+  AttestationSGX_WrongIdVersion = 2610;
+  AttestationSGX_RemoteCapable = 2611;
 };

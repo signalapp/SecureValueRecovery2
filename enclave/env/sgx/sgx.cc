@@ -12,16 +12,73 @@
 #include <memory>
 
 #include "attestation/oe/attestation.h"
+#include "attestation/sgx/attest_policy.h"
 #include "env/env.h"
 #include "metrics/metrics.h"
 #include "svr2/svr2_t.h"
-#include "util/constant.h"
 #include "util/log.h"
 #include "util/bytes.h"
 #include "minimums/minimums.h"
 
 namespace svr2::env {
 namespace sgx {
+
+static_assert(::svr2::attestation::sgx::kAttributeDebug ==
+                  OE_REPORT_ATTRIBUTES_DEBUG,
+              "attest_policy debug bit must match OpenEnclave's claim encoding");
+
+using ::svr2::attestation::sgx::CheckPeerIdentity;
+using ::svr2::attestation::sgx::PeerIdentity;
+
+static bool ReadClaimBytes(const oe_claim_t* claims, size_t claims_length,
+                           const char* name, std::string* out) {
+  const oe_claim_t* claim =
+      attestation::FindClaim(claims, claims_length, name);
+  if (claim == nullptr) return false;
+  out->assign(reinterpret_cast<const char*>(claim->value), claim->value_size);
+  return true;
+}
+
+template <class T>
+static bool ReadClaimInt(const oe_claim_t* claims, size_t claims_length,
+                         const char* name, T* out) {
+  const oe_claim_t* claim =
+      attestation::FindClaim(claims, claims_length, name);
+  if (claim == nullptr || claim->value_size != sizeof(T)) return false;
+  memcpy(out, claim->value, sizeof(T));
+  return true;
+}
+
+// Reads OpenEnclave's required claims into [out].
+static error::Error ReadPeerIdentity(const oe_claim_t* claims,
+                                     size_t claims_length, PeerIdentity* out) {
+  if (!ReadClaimInt(claims, claims_length, OE_CLAIM_ID_VERSION,
+                    &out->id_version)) {
+    return COUNTED_ERROR(AttestationSGX_MissingIdVersion);
+  }
+  // OE_CLAIM_UNIQUE_ID is MRENCLAVE and OE_CLAIM_SIGNER_ID is MRSIGNER on SGX.
+  if (!ReadClaimBytes(claims, claims_length, OE_CLAIM_UNIQUE_ID,
+                      &out->mrenclave)) {
+    return COUNTED_ERROR(Env_MissingMRENCLAVE);
+  }
+  if (!ReadClaimBytes(claims, claims_length, OE_CLAIM_SIGNER_ID,
+                      &out->signer_id)) {
+    return COUNTED_ERROR(AttestationSGX_MissingSignerId);
+  }
+  if (!ReadClaimBytes(claims, claims_length, OE_CLAIM_PRODUCT_ID,
+                      &out->product_id)) {
+    return COUNTED_ERROR(AttestationSGX_MissingProductId);
+  }
+  if (!ReadClaimInt(claims, claims_length, OE_CLAIM_SECURITY_VERSION,
+                    &out->security_version)) {
+    return COUNTED_ERROR(AttestationSGX_MissingSecurityVersion);
+  }
+  if (!ReadClaimInt(claims, claims_length, OE_CLAIM_ATTRIBUTES,
+                    &out->attributes)) {
+    return COUNTED_ERROR(AttestationSGX_MissingAttributes);
+  }
+  return error::OK;
+}
 
 static const char* unattested_evidence_prefix = "UNATTESTED EVIDENCE:";
 static const char* custom_claim_pk = "pk";
@@ -41,7 +98,7 @@ class Environment : public ::svr2::env::Environment {
         LOG(ERROR) << "oe_verifier_initialize: " << r;
         CHECK(false);
       }
-      CHECK(error::OK == GetMRENCLAVE());
+      CHECK(error::OK == GetExpectedIdentity());
     }
   }
 
@@ -243,8 +300,8 @@ class Environment : public ::svr2::env::Environment {
 
  private:
   bool simulated_;
-  std::string expected_mrenclave_;
-  error::Error GetMRENCLAVE() {
+  PeerIdentity expected_;
+  error::Error GetExpectedIdentity() {
     context::Context ctx;
     attestation::AttestationData data;
     data.mutable_public_key()->resize(sizeof(env::PublicKey));
@@ -262,36 +319,15 @@ class Environment : public ::svr2::env::Environment {
     std::unique_ptr<oe_claim_t, decltype(free_claims_known_size)> free_claims(
         claims, free_claims_known_size);
 
-    // read the MRENCLAVE - this is our MRENCLAVE and we expect all peers to
-    // have the same value OE_CLAIM_UNIQUE_ID retrieves MRENCLAVE on SGX
-    const oe_claim_t* claim;
-    if ((claim = attestation::FindClaim(claims, claims_length,
-                                        OE_CLAIM_UNIQUE_ID)) == nullptr) {
-      return COUNTED_ERROR(Env_AttestationFailure);
-    }
-    expected_mrenclave_ = std::string(
-        reinterpret_cast<const char*>(claim->value), claim->value_size);
-    return error::OK;
+    // Read our own identity; we expect all peers to report the same values.
+    return ReadPeerIdentity(claims, claims_length, &expected_);
   }
 
   error::Error ValidateStandardClaims(oe_claim_t* claims,
                                       size_t claims_length) const {
-    const oe_claim_t* claim;
-
-    // OE_CLAIM_UNIQUE_ID is MRENCLAVE for SGX
-    if ((claim = attestation::FindClaim(claims, claims_length,
-                                        OE_CLAIM_UNIQUE_ID)) == nullptr) {
-      return COUNTED_ERROR(Env_MissingMRENCLAVE);
-    }
-    auto actual_mrenclave = std::string(
-        reinterpret_cast<const char*>(claim->value), claim->value_size);
-
-    // Don't need constant time, but we have it so we use it.
-    if (!util::ConstantTimeEquals(actual_mrenclave, expected_mrenclave_)) {
-      return COUNTED_ERROR(Env_WrongMRENCLAVE);
-    }
-
-    return error::OK;
+    PeerIdentity peer;
+    RETURN_IF_ERROR(ReadPeerIdentity(claims, claims_length, &peer));
+    return CheckPeerIdentity(peer, expected_);
   }
 
   static void SecsToOEDatetime(util::UnixSecs secs, oe_datetime_t* dt) {

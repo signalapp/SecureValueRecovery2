@@ -196,6 +196,7 @@ SGX_LIBRARIES = \
   $(CORE_LIBRARIES_PRE_ENV) \
   env/sgx \
   attestation/oe \
+  attestation/sgx \
   $(CORE_LIBRARIES_POST_ENV) \
 ## SGX_LIBRARIES
 
