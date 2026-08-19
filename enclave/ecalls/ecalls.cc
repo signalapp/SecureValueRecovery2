@@ -23,7 +23,7 @@ void SeedWeakRandom() {
   LOG(INFO) << "Seeding weak randomness with strong";
   // Best-effort seeding of weak randomness from strong.
   uint8_t bytes[8];
-  env::environment->RandomBytes(bytes, sizeof(bytes));
+  CHECK(error::OK == env::environment->RandomBytes(bytes, sizeof(bytes)));
   srand(util::BigEndian64FromBytes(bytes));
 }
 std::unique_ptr<svr2::core::Core> global_core;

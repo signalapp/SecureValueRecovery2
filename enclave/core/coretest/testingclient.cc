@@ -131,7 +131,7 @@ void TestingClient::HandleNewClientReply(NewClientReply ncr) {
   NOISE_OK(noise_handshakestate_write_message(hsp, &write_buf, nullptr));
   data.resize(write_buf.size, '\0');
 
-  core_.ExistingClientRequest(this, client_id_, data);
+  CHECK(error::OK == core_.ExistingClientRequest(this, client_id_, data));
   // now we wait for the existing client reply to finish the handshake
 }
 

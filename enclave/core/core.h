@@ -327,6 +327,7 @@ class Core {
       bool with_timeout,  // If false, allow to run forever.
       E2ECallback callback) EXCLUDES(e2e_txn_mu_);
   error::Error SendE2EError(context::Context* ctx, const peerid::PeerID& from, internal::TransactionID id, error::Error err);
+  void SendE2EErrorOrLog(context::Context* ctx, const peerid::PeerID& from, internal::TransactionID id, error::Error err);
   // Called when a peer ID reset is requested by the host.  This means that the
   // host has abandoned the peer.  In this case, we treat all transactions
   // to that host as having failed.

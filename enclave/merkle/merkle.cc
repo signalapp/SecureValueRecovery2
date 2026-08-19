@@ -21,7 +21,7 @@ static std::once_flag sip_key_once;
 static void SetSIPKey() {
   LOG(INFO) << "Setting SIP key to random bytes";
   std::array<uint8_t, 16> new_sip_key;
-  env::environment->RandomBytes(new_sip_key.data(), new_sip_key.size());
+  CHECK(error::OK == env::environment->RandomBytes(new_sip_key.data(), new_sip_key.size()));
   sip_full.ResetKey(new_sip_key);
 }
 

@@ -225,7 +225,7 @@ TEST_F(PeerManagerTest, SendEnoughToRekey) {
 TEST_F(PeerManagerTest, HalfConnectedDisconnects) {
   Connect1To2();
 
-  mgr2->ResetPeer(&ctx, mgr1->ID());
+  ASSERT_EQ(error::OK, mgr2->ResetPeer(&ctx, mgr1->ID()));
   EnclaveMessage em1 = Sent();
   ASSERT_EQ(em1.peer_message().inner_case(), PeerMessage::kRst);
   // We drop this RST without passing it to mgr1.

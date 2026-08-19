@@ -102,7 +102,7 @@ TEST_F(SocketTest, SendAndReceive) {
 
 TEST_F(SocketTest, ReadTooBig) {
   uint8_t too_big_buf[4] = {0xff, 0xff, 0xff, 0xff};
-  s[0]->WriteAll(too_big_buf, sizeof(too_big_buf));
+  ASSERT_EQ(error::OK, s[0]->WriteAll(too_big_buf, sizeof(too_big_buf)));
 
   tests::SimplePB pb;
   context::Context ctx;

@@ -25,6 +25,8 @@ PROTO_FILES= \
   $(patsubst proto/%.proto,build/proto/%.pb.h,$(wildcard proto/*.proto)) \
 ## PROTO_FILES
 protos: $(PROTO_FILES)
+	$(QUIET) echo "ERROR_NODISCARD"
+	$(QUIET) sed -i 's/^enum Error : int/enum [[nodiscard]] Error : int/' build/proto/error.pb.h
 
 build/proto:
 	$(QUIET) echo -e "MKDIR\t$@"
@@ -146,7 +148,7 @@ $(firstword $(EDGER8R_FILES)): ../shared/svr2.edl
 		--search-path $(OE_INCDIR) \
 		--search-path $(OE_INCDIR)/openenclave/edl/sgx $(QUIET_OUT)
 
-generated: $(EDGER8R_FILES) $(PROTO_FILES)
+generated: $(EDGER8R_FILES) protos
 build/%/SGX.a: generated
 	$(QUIET) $(MAKE) -f Makefile.subdir DIR=$* ENV=SGX $(MAKEFILTER)
 build/%/X86.a: generated

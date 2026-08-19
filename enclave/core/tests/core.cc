@@ -195,7 +195,7 @@ class CoreTest : public ::testing::Test {
       UntrustedMessage req;
       *req.mutable_peer_message() = std::move(*msg.mutable_peer_message());
       peerid::PeerID to;
-      to.FromString(req.peer_message().peer_id());
+      CHECK(error::OK == to.FromString(req.peer_message().peer_id()));
       from.ToString(req.mutable_peer_message()->mutable_peer_id());
       context::Context ctx;
       auto find = cores.find(to);
@@ -208,7 +208,9 @@ class CoreTest : public ::testing::Test {
       }
       LOG(INFO) << "#####################################################";
       LOG(INFO) << "# peer message to " << to << " from " << from;
-      find->second->Receive(&ctx, req);
+      if (auto err = find->second->Receive(&ctx, req); err != error::OK) {
+        LOG(ERROR) << "Peer message receive failed: " << err;
+      }
       auto out_msgs = env::test::SentMessages();
       LOG(INFO) << "# yielded " << out_msgs.size();
       std::move(std::begin(out_msgs), std::end(out_msgs), std::back_inserter(to_send[to]));
@@ -797,7 +799,7 @@ TEST_F(CoreTest, TestPartition) {
   replica_group.ForwardBlockedMessages();
   replica_group.TickTock(true);
   // replica_group.ClearBlockedMessages(); // This will drop all messages and leave replicas stuck in-flight until self-healing
-  replica_group.PassMessagesUntilQuiet();
+  ASSERT_EQ(error::OK, replica_group.PassMessagesUntilQuiet());
 
   // for(size_t i = 0; i < 2*valid_enclave_config.raft().election_ticks(); ++i) {
   //   replica_group.TickTock(false);
@@ -969,10 +971,10 @@ TEST_F(CoreTest, EnclaveStatus) {
   auto follower = replica_group.get_core(1);
   ASSERT_EQ(error::OK, leader->ProcessAllH2EResponses());
   ASSERT_EQ(error::OK, follower->ProcessAllH2EResponses());
-  leader->GetEnclaveStatus();
-  follower->GetEnclaveStatus();
+  ASSERT_EQ(error::OK, leader->GetEnclaveStatus());
+  ASSERT_EQ(error::OK, follower->GetEnclaveStatus());
 
-  replica_group.PassMessagesUntilQuiet();
+  ASSERT_EQ(error::OK, replica_group.PassMessagesUntilQuiet());
   auto leader_status = leader->TakeExpectedEnclaveStatusReply();
   auto follower_status = follower->TakeExpectedEnclaveStatusReply();
 
@@ -991,10 +993,10 @@ TEST_F(CoreTest, EnclaveStatus) {
 
   ASSERT_EQ(error::OK, leader->ProcessAllH2EResponses());
   ASSERT_EQ(error::OK, follower->ProcessAllH2EResponses());
-  leader->GetEnclaveStatus();
-  follower->GetEnclaveStatus();
+  ASSERT_EQ(error::OK, leader->GetEnclaveStatus());
+  ASSERT_EQ(error::OK, follower->GetEnclaveStatus());
 
-  replica_group.PassMessagesUntilQuiet();
+  ASSERT_EQ(error::OK, replica_group.PassMessagesUntilQuiet());
   leader_status = leader->TakeExpectedEnclaveStatusReply();
   follower_status = follower->TakeExpectedEnclaveStatusReply();
 }
@@ -1286,14 +1288,14 @@ TEST_F(CoreTest, MultiJoinCausesDisconnectedPeersWhichThenConnect) {
   // 1 and 2 create peer connections to core 0, but they do not establish
   // a peer connection to each other.
   LOG(INFO) << "Sending joins";
-  replica_group.get_core(1)->JoinRaft(replica_group.get_core(0)->ID());
-  replica_group.get_core(2)->JoinRaft(replica_group.get_core(0)->ID());
+  ASSERT_EQ(error::OK, replica_group.get_core(1)->JoinRaft(replica_group.get_core(0)->ID()));
+  ASSERT_EQ(error::OK, replica_group.get_core(2)->JoinRaft(replica_group.get_core(0)->ID()));
   LOG(INFO) << "Processing messages";
   ASSERT_EQ(error::OK, replica_group.PassMessagesUntilQuiet());
   LOG(INFO) << "Requesting voting";
-  replica_group.get_core(1)->RequestVoting();
+  ASSERT_EQ(error::OK, replica_group.get_core(1)->RequestVoting());
   ASSERT_EQ(error::OK, replica_group.PassMessagesUntilQuiet());
-  replica_group.get_core(2)->RequestVoting();
+  ASSERT_EQ(error::OK, replica_group.get_core(2)->RequestVoting());
   ASSERT_EQ(error::OK, replica_group.PassMessagesUntilQuiet());
   LOG(INFO) << "Partitioning";
   replica_group.CreatePartition(std::map<size_t, test::PartitionID>{
@@ -1366,15 +1368,15 @@ TEST_F(CoreTest, ResetPeer){
   auto leader = replica_group.get_core(0);
   auto follower = replica_group.get_core(1);
   ASSERT_EQ(error::OK, leader->ResetPeer(follower->ID()));
-  replica_group.PassMessagesUntilQuiet();
+  ASSERT_EQ(error::OK, replica_group.PassMessagesUntilQuiet());
   LOG(INFO) << "Reset peer";
 
   ASSERT_EQ(error::OK, leader->ProcessAllH2EResponses());
   ASSERT_EQ(error::OK, follower->ProcessAllH2EResponses());
-  leader->GetEnclaveStatus();
-  follower->GetEnclaveStatus();
+  ASSERT_EQ(error::OK, leader->GetEnclaveStatus());
+  ASSERT_EQ(error::OK, follower->GetEnclaveStatus());
 
-  replica_group.PassMessagesUntilQuiet();
+  ASSERT_EQ(error::OK, replica_group.PassMessagesUntilQuiet());
   auto leader_status = leader->TakeExpectedEnclaveStatusReply();
   auto follower_status = follower->TakeExpectedEnclaveStatusReply();
 
@@ -1392,10 +1394,10 @@ TEST_F(CoreTest, ResetPeer){
 
   ASSERT_EQ(error::OK, leader->ProcessAllH2EResponses());
   ASSERT_EQ(error::OK, follower->ProcessAllH2EResponses());
-  leader->GetEnclaveStatus();
-  follower->GetEnclaveStatus();
+  ASSERT_EQ(error::OK, leader->GetEnclaveStatus());
+  ASSERT_EQ(error::OK, follower->GetEnclaveStatus());
 
-  replica_group.PassMessagesUntilQuiet();
+  ASSERT_EQ(error::OK, replica_group.PassMessagesUntilQuiet());
   leader_status = leader->TakeExpectedEnclaveStatusReply();
   follower_status = follower->TakeExpectedEnclaveStatusReply();
 
@@ -1616,8 +1618,8 @@ TEST_F(CoreTest, RaftRemoval) {
   EXPECT_TRUE(replica_group.get_core(1)->voting());
 
   LOG(INFO) << "================================== REMOVING " << replica_group.get_core(1)->ID();
-  replica_group.get_core(1)->RaftRemoval();
-  replica_group.PassMessagesUntilQuiet();
+  ASSERT_EQ(error::OK, replica_group.get_core(1)->RaftRemoval());
+  ASSERT_EQ(error::OK, replica_group.PassMessagesUntilQuiet());
   EXPECT_TRUE(replica_group.get_core(0)->leader());
   EXPECT_EQ(0, replica_group.get_core(0)->all_replicas().count(replica_group.get_core(1)->ID()));
   EXPECT_EQ(0, replica_group.get_core(2)->all_replicas().count(replica_group.get_core(1)->ID()));
@@ -1642,8 +1644,8 @@ TEST_F(CoreTest, RaftRemovalOfLeaderFails) {
   EXPECT_TRUE(replica_group.get_core(0)->leader());
   EXPECT_TRUE(replica_group.get_core(1)->active());
   EXPECT_TRUE(replica_group.get_core(1)->voting());
-  replica_group.get_core(0)->RaftRemoval();
-  replica_group.PassMessagesUntilQuiet();
+  ASSERT_EQ(error::OK, replica_group.get_core(0)->RaftRemoval());
+  ASSERT_EQ(error::OK, replica_group.PassMessagesUntilQuiet());
   EXPECT_TRUE(replica_group.get_core(0)->leader());
   EXPECT_EQ(1, replica_group.get_core(0)->all_replicas().count(replica_group.get_core(1)->ID()));
   EXPECT_EQ(error::Core_LeaderRemovingSelf, replica_group.ProcessAllH2EResponses());
@@ -2440,8 +2442,8 @@ TEST_F(CoreTest, AcceptsAndRejectsMinimums) {
   {
     minimums::MinimumLimits lims;
     (*lims.mutable_lim())["minimums_test_version"] = minimums::Minimums::U64(env::test::minimums_test_version-1);
-    leader->UpdateMinimums(lims);
-    replica_group.PassMessagesUntilQuiet();
+    ASSERT_EQ(error::OK, leader->UpdateMinimums(lims));
+    ASSERT_EQ(error::OK, replica_group.PassMessagesUntilQuiet());
     auto h2e_msgs = leader->take_host_to_enclave_responses();
     ASSERT_EQ(h2e_msgs.size(), 1);
     auto& h2e_response = h2e_msgs[0];
@@ -2451,8 +2453,8 @@ TEST_F(CoreTest, AcceptsAndRejectsMinimums) {
   {
     minimums::MinimumLimits lims;
     (*lims.mutable_lim())["minimums_test_version"] = minimums::Minimums::U64(env::test::minimums_test_version-2);
-    leader->UpdateMinimums(lims);
-    replica_group.PassMessagesUntilQuiet();
+    ASSERT_EQ(error::OK, leader->UpdateMinimums(lims));
+    ASSERT_EQ(error::OK, replica_group.PassMessagesUntilQuiet());
     auto h2e_msgs = leader->take_host_to_enclave_responses();
     ASSERT_EQ(h2e_msgs.size(), 1);
     auto& h2e_response = h2e_msgs[0];
@@ -2462,8 +2464,8 @@ TEST_F(CoreTest, AcceptsAndRejectsMinimums) {
   {
     minimums::MinimumLimits lims;
     (*lims.mutable_lim())["minimums_test_version"] = minimums::Minimums::U64(env::test::minimums_test_version+1);
-    leader->UpdateMinimums(lims);
-    replica_group.PassMessagesUntilQuiet();
+    ASSERT_EQ(error::OK, leader->UpdateMinimums(lims));
+    ASSERT_EQ(error::OK, replica_group.PassMessagesUntilQuiet());
     auto h2e_msgs = leader->take_host_to_enclave_responses();
     ASSERT_EQ(h2e_msgs.size(), 1);
     auto& h2e_response = h2e_msgs[0];
@@ -2475,8 +2477,8 @@ TEST_F(CoreTest, AcceptsAndRejectsMinimums) {
   {
     minimums::MinimumLimits lims;
     (*lims.mutable_lim())["minimums_test_version"] = minimums::Minimums::U64(env::test::minimums_test_version);
-    follower->UpdateMinimums(lims);
-    replica_group.PassMessagesUntilQuiet();
+    ASSERT_EQ(error::OK, follower->UpdateMinimums(lims));
+    ASSERT_EQ(error::OK, replica_group.PassMessagesUntilQuiet());
     auto h2e_msgs = follower->take_host_to_enclave_responses();
     ASSERT_EQ(h2e_msgs.size(), 1);
     auto& h2e_response = h2e_msgs[0];
@@ -2486,8 +2488,8 @@ TEST_F(CoreTest, AcceptsAndRejectsMinimums) {
   {
     minimums::MinimumLimits lims;
     (*lims.mutable_lim())["minimums_test_version"] = minimums::Minimums::U64(env::test::minimums_test_version-1);
-    follower->UpdateMinimums(lims);
-    replica_group.PassMessagesUntilQuiet();
+    ASSERT_EQ(error::OK, follower->UpdateMinimums(lims));
+    ASSERT_EQ(error::OK, replica_group.PassMessagesUntilQuiet());
     auto h2e_msgs = follower->take_host_to_enclave_responses();
     ASSERT_EQ(h2e_msgs.size(), 1);
     auto& h2e_response = h2e_msgs[0];
@@ -2497,8 +2499,8 @@ TEST_F(CoreTest, AcceptsAndRejectsMinimums) {
   {
     minimums::MinimumLimits lims;
     (*lims.mutable_lim())["minimums_test_version"] = minimums::Minimums::U64(env::test::minimums_test_version+1);
-    follower->UpdateMinimums(lims);
-    replica_group.PassMessagesUntilQuiet();
+    ASSERT_EQ(error::OK, follower->UpdateMinimums(lims));
+    ASSERT_EQ(error::OK, replica_group.PassMessagesUntilQuiet());
     auto h2e_msgs = follower->take_host_to_enclave_responses();
     ASSERT_EQ(h2e_msgs.size(), 1);
     auto& h2e_response = h2e_msgs[0];
@@ -2647,8 +2649,8 @@ TEST_F(CoreTest, AcceptsMultiKeyMinimums) {
     (*lims.mutable_lim())["f"] = minimums::Minimums::U64(6);
     (*lims.mutable_lim())["g"] = minimums::Minimums::U64(7);
     (*lims.mutable_lim())["h"] = minimums::Minimums::U64(8);
-    leader->UpdateMinimums(lims);
-    replica_group.PassMessagesUntilQuiet();
+    ASSERT_EQ(error::OK, leader->UpdateMinimums(lims));
+    ASSERT_EQ(error::OK, replica_group.PassMessagesUntilQuiet());
     auto h2e_msgs = leader->take_host_to_enclave_responses();
     ASSERT_EQ(h2e_msgs.size(), 1);
     auto& h2e_response = h2e_msgs[0];
@@ -2674,8 +2676,8 @@ TEST_F(CoreTest, HostDatabaseRequest) {
     DatabaseRequest d;
     d.set_authenticated_id(util::ByteArrayToString(backup_id));
     req.SerializeToString(d.mutable_request());
-    leader->DBRequest(d);
-    replica_group.PassMessagesUntilQuiet();
+    ASSERT_EQ(error::OK, leader->DBRequest(d));
+    ASSERT_EQ(error::OK, replica_group.PassMessagesUntilQuiet());
     auto h2e_msgs = leader->take_host_to_enclave_responses();
     ASSERT_EQ(h2e_msgs.size(), 1);
     auto& h2e_response = h2e_msgs[0];
@@ -2715,24 +2717,24 @@ TEST_F(CoreTest, OldLeaderRelinquishesLeadershipWhenItCannotTalkToNewLeader) {
   LOG(INFO) << "LIMITS1 - create a few logs in the new leader, to get its logs ahead of the old one";
   minimums::MinimumLimits lim;
   (*lim.mutable_lim())["a"] = "b";
-  leader2_core->UpdateMinimums(lim);
-  leader2_core->UpdateMinimums(lim);
-  leader2_core->UpdateMinimums(lim);
-  leader2_core->UpdateMinimums(lim);
-  replica_group.PassMessagesUntilQuiet();
+  ASSERT_EQ(error::OK, leader2_core->UpdateMinimums(lim));
+  ASSERT_EQ(error::OK, leader2_core->UpdateMinimums(lim));
+  ASSERT_EQ(error::OK, leader2_core->UpdateMinimums(lim));
+  ASSERT_EQ(error::OK, leader2_core->UpdateMinimums(lim));
+  ASSERT_EQ(error::OK, replica_group.PassMessagesUntilQuiet());
   leader2_core->take_host_to_enclave_responses();
 
   LOG(INFO) << "DISCONNECT - since we drop some messages, reset all the peer connections to old leader";
   replica_group.ClearPartition();
-  replica_group.get_core(0)->ResetPeer(replica_group.get_core(1)->ID());
-  replica_group.get_core(0)->ResetPeer(replica_group.get_core(2)->ID());
-  replica_group.get_core(1)->ResetPeer(replica_group.get_core(0)->ID());
-  replica_group.get_core(2)->ResetPeer(replica_group.get_core(0)->ID());
-  replica_group.PassMessagesUntilQuiet();
+  ASSERT_EQ(error::OK, replica_group.get_core(0)->ResetPeer(replica_group.get_core(1)->ID()));
+  ASSERT_EQ(error::OK, replica_group.get_core(0)->ResetPeer(replica_group.get_core(2)->ID()));
+  ASSERT_EQ(error::OK, replica_group.get_core(1)->ResetPeer(replica_group.get_core(0)->ID()));
+  ASSERT_EQ(error::OK, replica_group.get_core(2)->ResetPeer(replica_group.get_core(0)->ID()));
+  ASSERT_EQ(error::OK, replica_group.PassMessagesUntilQuiet());
   LOG(INFO) << "RECONNECT - since we drop some messages, reset all the peer connections to old leader";
-  replica_group.get_core(0)->ConnectPeer(replica_group.get_core(1)->ID());
-  replica_group.get_core(0)->ConnectPeer(replica_group.get_core(2)->ID());
-  replica_group.PassMessagesUntilQuiet();
+  ASSERT_EQ(error::OK, replica_group.get_core(0)->ConnectPeer(replica_group.get_core(1)->ID()));
+  ASSERT_EQ(error::OK, replica_group.get_core(0)->ConnectPeer(replica_group.get_core(2)->ID()));
+  ASSERT_EQ(error::OK, replica_group.PassMessagesUntilQuiet());
   replica_group.ClearBlockedMessages();
   LOG(INFO) << "REPARTITION - put the old leader and the current follower together, away from the new leader";
   std::map<size_t, test::PartitionID> part2 = {
@@ -2743,8 +2745,8 @@ TEST_F(CoreTest, OldLeaderRelinquishesLeadershipWhenItCannotTalkToNewLeader) {
   replica_group.CreatePartition(part2);
   LOG(INFO) << "LIMITS2 - have the old leader try to append a log entry";
   auto leader1_core = replica_group.get_core(leader1_idx);
-  leader1_core->UpdateMinimums(lim);
-  replica_group.PassMessagesUntilQuiet(3);
+  ASSERT_EQ(error::OK, leader1_core->UpdateMinimums(lim));
+  ASSERT_EQ(error::OK, replica_group.PassMessagesUntilQuiet(3));
   LOG(INFO) << "CHECK - the old leader should learn that the term has increased from the follower, relinquishing leadership";
   ASSERT_FALSE(leader1_core->leader());
   LOG(INFO) << "REPARTITION - put the new leader and follower together, have some time pass";
@@ -2755,9 +2757,9 @@ TEST_F(CoreTest, OldLeaderRelinquishesLeadershipWhenItCannotTalkToNewLeader) {
   };
   replica_group.CreatePartition(part3);
   LOG(INFO) << "LIMITS3 - write more logs, which should stop the old leader from becoming leader when it reconnects";
-  leader2_core->UpdateMinimums(lim);
-  leader2_core->UpdateMinimums(lim);
-  replica_group.PassMessagesUntilQuiet();
+  ASSERT_EQ(error::OK, leader2_core->UpdateMinimums(lim));
+  ASSERT_EQ(error::OK, leader2_core->UpdateMinimums(lim));
+  ASSERT_EQ(error::OK, replica_group.PassMessagesUntilQuiet());
   LOG(INFO) << "TIME PASSES - both partitions experience a few election cycles";
   for (int i = 0; i < 30; i++) {
     replica_group.TickTock(3, true);
@@ -2766,12 +2768,12 @@ TEST_F(CoreTest, OldLeaderRelinquishesLeadershipWhenItCannotTalkToNewLeader) {
   LOG(INFO) << "PASS ALL - allow all messages to flow freely";
   replica_group.ClearPartition();
   replica_group.ForwardBlockedMessages();
-  replica_group.PassMessagesUntilQuiet();
+  ASSERT_EQ(error::OK, replica_group.PassMessagesUntilQuiet());
   ASSERT_FALSE(leader1_core->leader());
   LOG(INFO) << "LEADER ELECT - allow for a few election cycles to go by, since first may not elect a leader";
   for (int i = 0; i < 100 && replica_group.GroupLeaderIndex() >= 3; i++) {
-    replica_group.TickAllTimers();
-    replica_group.PassMessagesUntilQuiet();
+    ASSERT_EQ(error::OK, replica_group.TickAllTimers());
+    ASSERT_EQ(error::OK, replica_group.PassMessagesUntilQuiet());
   }
   ASSERT_LT(replica_group.GroupLeaderIndex(), 3);
   ASSERT_FALSE(leader1_core->leader());

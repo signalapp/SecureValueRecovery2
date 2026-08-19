@@ -118,7 +118,7 @@ TEST_F(LogTest, CancelDecreasesBytes) {
   ASSERT_EQ(error::OK, log.Append(e, 1));
   ASSERT_EQ(error::OK, log.Append(e, 1));
   ASSERT_EQ(log.log_data_length_bytes(), 441);
-  log.CancelFrom(2);
+  ASSERT_EQ(error::OK, log.CancelFrom(2));
   ASSERT_EQ(log.log_data_length_bytes(), 147);
 }
 

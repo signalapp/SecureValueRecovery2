@@ -58,7 +58,7 @@ error::Error TestingCore::ProcessIncomingMessage() {
         peer_msg = std::move(*response.mutable_peer_message());
 
         // read who this message is *to*
-        to.FromString(peer_msg.peer_id());
+        CHECK(error::OK == to.FromString(peer_msg.peer_id()));
 
         // Now reset the peer_id in the message to our ID so the
         // recipient knows who it is *from*
@@ -118,7 +118,7 @@ error::Error TestingCore::ProcessAllH2EResponses() {
 error::Error TestingCore::AddPeerMessage(PeerMessage&& peer_message) {
   if (state_ == State::ACTIVE || state_ == State::PAUSED_SAVE_MSGS) {
     peerid::PeerID other_id;
-    other_id.FromString(peer_message.peer_id());
+    CHECK(error::OK == other_id.FromString(peer_message.peer_id()));
     LOG(VERBOSE) << " core " << ID() << " receiving message from " << other_id;
     ::svr2::UntrustedMessage req;
     *req.mutable_peer_message() = std::move(peer_message);

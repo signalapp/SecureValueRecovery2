@@ -16,7 +16,7 @@ bool ReplicaGroup::IsQuiet() const {
 
 error::Error ReplicaGroup::SendMessage(peerid::PeerID to, PeerMessage msg) {
   peerid::PeerID from;
-  from.FromString(msg.peer_id());
+  CHECK(error::OK == from.FromString(msg.peer_id()));
   PartitionID to_partition = partition_[to];
   PartitionID from_partition = partition_[from];
 
@@ -136,11 +136,11 @@ void ReplicaGroup::ForwardBlockedMessages() {
   for (auto&& [peer_id, msgs] : blocked_peer_messages_) {
     for (auto&& msg : msgs) {
       peerid::PeerID from;
-      from.FromString(msg.peer_id());
+      CHECK(error::OK == from.FromString(msg.peer_id()));
       LOG(VERBOSE) << "#******************************************#";
       LOG(VERBOSE) << "# Forwarding blocked peer message to " << peer_id
                    << " from " << from;
-      peers_by_id_[peer_id]->AddPeerMessage(std::move(msg));
+      CHECK(error::OK == peers_by_id_[peer_id]->AddPeerMessage(std::move(msg)));
     }
   }
 }

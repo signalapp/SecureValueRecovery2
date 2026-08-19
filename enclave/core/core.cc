@@ -299,7 +299,9 @@ error::Error Core::HandleHostToEnclave(context::Context* ctx, const HostToEnclav
       if (msg.inner_case() == HostToEnclaveRequest::kRequestMetrics ||
           msg.metrics().update_env_stats()) {
         MEASURE_CPU(ctx, cpu_core_update_env_stats);
-        env::environment->UpdateEnvStats();
+        if (auto err = env::environment->UpdateEnvStats(); err != error::OK) {
+          LOG(WARNING) << "Failed to update env stats: " << err;
+        }
       }
       EnclaveMessage* out = ctx->Protobuf<EnclaveMessage>();
       auto resp = out->mutable_h2e_response();
@@ -511,7 +513,9 @@ void Core::HandleJoinRaft(context::Context* ctx, const JoinRaftRequest& msg, int
     case PEER_CONNECTING:
       break;
     default:
-      peer_manager_->ConnectToPeer(ctx, peer);
+      if (auto err = peer_manager_->ConnectToPeer(ctx, peer); err != error::OK) {
+        LOG(WARNING) << "Connecting to peer " << peer << " failed: " << err;
+      }
       break;
   }
 }
@@ -612,10 +616,13 @@ void Core::RequestRaftReplication(context::Context* ctx) {
     }
     raft_.loading.started = true;
   }
-  uint8_t repl_id[8];
-  env::environment->RandomBytes(repl_id, sizeof(repl_id));
-  raft_.loading.replication_id = util::BigEndian64FromBytes(repl_id);
   internal::TransactionID tx = raft_.loading.join_tx;
+  uint8_t repl_id[8];
+  if (auto err = env::environment->RandomBytes(repl_id, sizeof(repl_id)); err != error::OK) {
+    ReplyWithError(ctx, tx, err);
+    return;
+  }
+  raft_.loading.replication_id = util::BigEndian64FromBytes(repl_id);
   const peerid::PeerID& from = raft_.loading.load_from;
 
   auto req = ctx->Protobuf<e2e::TransactionRequest>();
@@ -1328,7 +1335,7 @@ void Core::SendNextReplicationState(context::Context* ctx, std::shared_ptr<Core:
       if (err != error::OK) {
         LOG(WARNING) << "Error getting rows as protos: " << err;
         if (!push_state->sent_response.exchange(true)) {
-          SendE2EError(ctx, push_state->target, push_state->tx, err);
+          SendE2EErrorOrLog(ctx, push_state->target, push_state->tx, err);
         }
         return;
       }
@@ -1355,7 +1362,7 @@ void Core::SendNextReplicationState(context::Context* ctx, std::shared_ptr<Core:
         if (push_state->sent_response.load()) {
           return;
         } else if (err != error::OK && !push_state->sent_response.exchange(true)) {
-          SendE2EError(ctx, push_state->target, push_state->tx, err);
+          SendE2EErrorOrLog(ctx, push_state->target, push_state->tx, err);
           return;
         }
         ACQUIRE_LOCK(raft_.mu, ctx, lock_core_raft);
@@ -1364,7 +1371,7 @@ void Core::SendNextReplicationState(context::Context* ctx, std::shared_ptr<Core:
         // whether this is it or not.
         if (last_sent_transaction && !push_state->sent_response.exchange(true)) {
           LOG(INFO) << "All replication state pushes complete, returning success for replication";
-          SendE2EError(ctx, push_state->target, push_state->tx, error::OK);
+          SendE2EErrorOrLog(ctx, push_state->target, push_state->tx, error::OK);
         } else if (!push_state->finished_sending) {
           SendNextReplicationState(ctx, push_state);
         }
@@ -1402,7 +1409,7 @@ error::Error Core::HandleReplicateStatePush(context::Context* ctx, const e2e::Re
   // a mismatch between our log index and theirs.  So, when our log is empty, use their
   // first log index to set what our next index will be.
   if (log->empty()) {
-    log->SetNextIdx(repl.first_log_idx());
+    RETURN_IF_ERROR(log->SetNextIdx(repl.first_log_idx()));
   }
   // The `ReplicateStateResponse` we are processing contains log entries that have been 
   // committed by the sender and db rows that reflect the state up to the last log sent.
@@ -1558,8 +1565,7 @@ error::Error Core::HandlePeerRequestedRaftRemoval(context::Context* ctx, const p
   IDLOG(VERBOSE) << "HandlePeerRequestedRaftRemoval " << from;
   ACQUIRE_LOCK(raft_.mu, ctx, lock_core_raft);
   if (raft_.state != svr2::RAFTSTATE_LOADED_PART_OF_GROUP) {
-    SendE2EError(ctx, from, tx, COUNTED_ERROR(Core_RaftState));
-    return error::OK;
+    return SendE2EError(ctx, from, tx, COUNTED_ERROR(Core_RaftState));
   }
   std::string peer_string = from.AsString();
   raft::ReplicaGroup g = raft_.loaded.raft->membership().AsProto();
@@ -1574,15 +1580,13 @@ error::Error Core::HandlePeerRequestedRaftRemoval(context::Context* ctx, const p
     }
   }
   if (!found_peer) {
-    SendE2EError(ctx, from, tx, COUNTED_ERROR(Core_RemoveNonexistentMember));
-    return error::OK;
+    return SendE2EError(ctx, from, tx, COUNTED_ERROR(Core_RemoveNonexistentMember));
   }
   auto log_entry = ctx->Protobuf<raft::LogEntry>();
   log_entry->mutable_membership_change()->MergeFrom(next);
   auto [loc, err] = raft_.loaded.raft->LogRequest(ctx, log_entry);
   if (err != error::OK) {
-    SendE2EError(ctx, from, tx, err);
-    return error::OK;
+    return SendE2EError(ctx, from, tx, err);
   }
   peerid::PeerID from_copy = from;
   AddLogTransaction(ctx, loc, [this, f = std::move(from_copy), tx](
@@ -1590,7 +1594,7 @@ error::Error Core::HandlePeerRequestedRaftRemoval(context::Context* ctx, const p
       error::Error err,
       const raft::LogEntry* entry,
       const db::DB::Effect* effect) {
-    SendE2EError(ctx, f, tx, err);
+    SendE2EErrorOrLog(ctx, f, tx, err);
   });
   RaftStep(ctx);
   return error::OK;
@@ -1778,6 +1782,12 @@ error::Error Core::SendE2EError(context::Context* ctx, const peerid::PeerID& fro
     IDLOG(VERBOSE) << "request " << id << " from " << from << " error: " << err;
   }
   return peer_manager_->SendToPeer(ctx, from, *e2e);
+}
+
+void Core::SendE2EErrorOrLog(context::Context* ctx, const peerid::PeerID& from, internal::TransactionID id, error::Error err) {
+  if (auto send_err = SendE2EError(ctx, from, id, err); send_err != error::OK) {
+    LOG(WARNING) << "Sending E2E error " << err << " to " << from << " failed: " << send_err;
+  }
 }
 
 error::Error Core::ResetPeer(context::Context* ctx, const peerid::PeerID& id) {

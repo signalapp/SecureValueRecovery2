@@ -63,7 +63,7 @@ error::Error ReturnsCoreReInit() {
 
 TEST_F(MetricsTest, CountsReturnedErrors) {
   for (int i = 0; i < 3; i++) {
-    ReturnsGeneralUnimplemented();
+    ASSERT_EQ(error::General_Unimplemented, ReturnsGeneralUnimplemented());
   }
   MetricsPB* got = AllAsPB(&ctx);
   ASSERT_EQ(got->counters_size(), 1 + COUNTERS_ARRAY_SIZE);
@@ -71,7 +71,7 @@ TEST_F(MetricsTest, CountsReturnedErrors) {
   ASSERT_EQ(c.v(), 3);
   ASSERT_EQ(c.tags().at("error"), "General_Unimplemented");
   for (int i = 0; i < 5; i++) {
-    ReturnsCoreReInit();
+    ASSERT_EQ(error::Core_ReInit, ReturnsCoreReInit());
   }
   got = AllAsPB(&ctx);
   ASSERT_EQ(got->counters_size(), 2 + COUNTERS_ARRAY_SIZE);
