@@ -340,6 +340,7 @@ void DB3::Remove(
   auto find = rows_.find(id);
   if (find != rows_.end()) {
     // This calls the destructor of row.merkle_leaf_, updating the merkle tree.
+    find->second.Clear();
     rows_.erase(find);
     GAUGE(db, rows)->Set(rows_.size());
   }
@@ -361,5 +362,8 @@ void DB3::Query(
 }
 
 DB3::Row::Row(merkle::Tree* t) : merkle_leaf_(t) {}
+void DB3::Row::Clear() {
+  util::MemZeroS(&priv, sizeof(priv));
+}
 
 }  // namespace svr2::db

@@ -108,6 +108,7 @@ class DB3 : public DB {
   merkle::Tree* merkle_tree_;
   struct Row {
     Row(merkle::Tree* t);
+    void Clear();
     PrivateKey priv;
     uint8_t tries;
     merkle::Leaf merkle_leaf_;
