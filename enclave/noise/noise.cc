@@ -54,6 +54,12 @@ std::pair<std::string, error::Error> Encrypt(NoiseCipherState* cs, const std::st
 }
 
 std::pair<std::string, error::Error> Decrypt(NoiseCipherState* cs, const std::string& ciphertext, bool with_length_verifying_ad) {
+  if (ciphertext.size() == 0) {
+    // An empty ciphertext is not a valid one... an empty string should
+    // encrypt to a MAC verifying that an empty string was passed over
+    // the wire, and should advance the ciphertext states.
+    return std::make_pair("", COUNTED_ERROR(Peers_DecryptEmpty));
+  }
   std::string plaintext(ciphertext.size(), 0);
   size_t plaintext_start = 0;
   // Data comes in as [ciphertext][mac][ciphertext][mac].

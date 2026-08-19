@@ -117,6 +117,7 @@ enum Error {
   Peers_InvalidMsg = 432;
   Peers_ResetMissingPeer = 433;
   Peers_AttestationKeyChanged = 434;
+  Peers_DecryptEmpty = 435;
 
   Raft_NS = 500;
   Raft_LogOutOfSpace = 501;

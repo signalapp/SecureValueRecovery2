@@ -187,4 +187,16 @@ TEST_F(CipherStateTest, BenchmarkAesGcm) {
   LOG(INFO) << "took " << ((util::asm_rdtsc() - start) * 1.0 / (times * plaintext.size())) << " cycles/byte";
 }
 
+TEST_F(CipherStateTest, DisallowEmptyCiphertext) {
+  std::array<uint8_t, 32> key = {1};
+  NoiseCipherState* s2n;
+  ASSERT_EQ(NOISE_ERROR_NONE, noise_cipherstate_new_by_id(&s2n, NOISE_CIPHER_CHACHAPOLY));
+  ASSERT_EQ(NOISE_ERROR_NONE, noise_cipherstate_init_key(s2n, key.data(), key.size()));
+  noise::CipherState s2 = noise::WrapCipherState(s2n);
+  auto [_pt1, err1] = noise::Decrypt(s2n, "", false);
+  ASSERT_EQ(error::Peers_DecryptEmpty, err1);
+  auto [_pt2, err2] = noise::Decrypt(s2n, "", true);
+  ASSERT_EQ(error::Peers_DecryptEmpty, err2);
+}
+
 }  // namespace svr2::noise
