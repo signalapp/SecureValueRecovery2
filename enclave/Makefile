@@ -14,7 +14,7 @@ include .testdepends
 
 .PHONY: build
 
-build: build/enclave.bin build/enclave.nsm build/enclave.gcpsnp build/attest.gcpsnp build/enclave.azuresnp build/attest.azuresnp
+build: build/enclave.bin build/enclave.nsm
 
 sign: build/enclave.test build/enclave.Standard_DC2s_v3 build/enclave.Standard_DC8s_v3 build/enclave.Standard_DC24s_v3
 
@@ -230,49 +230,6 @@ NSM_LIBRARIES = \
 ## NSM_LIBRARIES
 
 build/enclave.nsm: $(patsubst %,build/%/X86.a,$(NSM_LIBRARIES))
-	$(QUIET) echo -e "BUILD\t$@"
-	$(QUIET) $(CXX) -o $@ $(X86_LDFLAGS) -Wl,--start-group $^ -Wl,--end-group $(X86_LDFLAGS)
-
-GCPSNP_LIBRARIES = \
-  $(CORE_LIBRARIES_PRE_ENV) \
-  env/gcpsnp \
-  env/socket \
-  attestation/sev \
-  attestation/tpm2 \
-  attestation/tpm2snp \
-  fs \
-  socketwrap \
-  $(CORE_LIBRARIES_POST_ENV) \
-  boringssl \
-## GCPSNP_LIBRARIES
-
-build/enclave.gcpsnp: build/socketmain/X86.a $(patsubst %,build/%/X86.a,$(GCPSNP_LIBRARIES))
-	$(QUIET) echo -e "BUILD\t$@"
-	$(QUIET) $(CXX) -o $@ $(X86_LDFLAGS) -Wl,--start-group $^ -Wl,--end-group $(X86_LDFLAGS)
-
-build/attest.gcpsnp: build/initmain/X86.a $(patsubst %,build/%/X86.a,$(GCPSNP_LIBRARIES))
-	$(QUIET) echo -e "BUILD\t$@"
-	$(QUIET) $(CXX) -o $@ $(X86_LDFLAGS) -Wl,--start-group $^ -Wl,--end-group $(X86_LDFLAGS)
-
-AZURESNP_LIBRARIES = \
-  $(CORE_LIBRARIES_PRE_ENV) \
-  env \
-  env/azuresnp \
-  env/socket \
-  fs \
-  attestation/sev \
-  attestation/tpm2 \
-  attestation/tpm2snp \
-  socketwrap \
-  $(CORE_LIBRARIES_POST_ENV) \
-  boringssl \
-## AZURESNP_LIBRARIES
-
-build/enclave.azuresnp: build/socketmain/X86.a $(patsubst %,build/%/X86.a,$(AZURESNP_LIBRARIES))
-	$(QUIET) echo -e "BUILD\t$@"
-	$(QUIET) $(CXX) -o $@ $(X86_LDFLAGS) -Wl,--start-group $^ -Wl,--end-group $(X86_LDFLAGS)
-
-build/attest.azuresnp: build/initmain/X86.a $(patsubst %,build/%/X86.a,$(AZURESNP_LIBRARIES))
 	$(QUIET) echo -e "BUILD\t$@"
 	$(QUIET) $(CXX) -o $@ $(X86_LDFLAGS) -Wl,--start-group $^ -Wl,--end-group $(X86_LDFLAGS)
 
