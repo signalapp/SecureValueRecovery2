@@ -3523,8 +3523,8 @@ TEST_F(CoreTest, HostDatabaseRequestInvalidLog) {
     DatabaseRequest d;
     d.set_authenticated_id(util::ByteArrayToString(backup_id));
     req.SerializeToString(d.mutable_request());
-    leader->DBRequest(d);
-    replica_group.PassMessagesUntilQuiet();
+    ASSERT_EQ(error::OK, leader->DBRequest(d));
+    ASSERT_EQ(error::OK, replica_group.PassMessagesUntilQuiet());
     auto h2e_msgs = leader->take_host_to_enclave_responses();
     ASSERT_EQ(h2e_msgs.size(), 1);
     auto& h2e_response = h2e_msgs[0];
