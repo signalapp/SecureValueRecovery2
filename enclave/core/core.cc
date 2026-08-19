@@ -808,6 +808,7 @@ error::Error Core::HandleHostDatabaseRequest(context::Context* ctx, internal::Tr
   auto client_state = db_protocol_->NewClientState(req.authenticated_id());
   auto [log, err] = client_state->LogFromRequest(ctx, *cli_req);
   RETURN_IF_ERROR(err);
+  RETURN_IF_ERROR(db_protocol_->ValidateClientLog(*log));
   std::string serialized;
   if (!log->SerializeToString(&serialized)) {
     return COUNTED_ERROR(Core_SerializeClientLog);
